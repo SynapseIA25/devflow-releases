@@ -1,3 +1,5 @@
+import { useWorkflowStore } from "../store/workflowStore";
+
 const NODE_PALETTE = [
   {
     type: "mimo",
@@ -30,8 +32,20 @@ const NODE_PALETTE = [
 ];
 
 export function Sidebar() {
+  const order = useWorkflowStore((s) => s.order);
+  const activeId = useWorkflowStore((s) => s.activeId);
+  const workflows = useWorkflowStore((s) => s.workflows);
+  const otherFlows = order.filter((id) => id !== activeId);
+
   const onDragStart = (e: React.DragEvent, nodeType: string) => {
     e.dataTransfer.setData("application/reactflow", nodeType);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  // Arrastrar un flujo guardado crea un nodo "subflow" que lo referencia (lleva el flowId aparte).
+  const onFlowDragStart = (e: React.DragEvent, flowId: string) => {
+    e.dataTransfer.setData("application/reactflow", "subflow");
+    e.dataTransfer.setData("application/devflow-flowid", flowId);
     e.dataTransfer.effectAllowed = "move";
   };
 
@@ -56,6 +70,29 @@ export function Sidebar() {
           </div>
         ))}
       </div>
+
+      {otherFlows.length > 0 && (
+        <div className="sidebar-section">
+          <div className="sidebar-label">Flujos (sub-flujo)</div>
+          {otherFlows.map((fid) => (
+            <div
+              key={fid}
+              className="node-item"
+              draggable
+              onDragStart={(e) => onFlowDragStart(e, fid)}
+              title={`Insertar "${workflows[fid].name}" como sub-flujo`}
+            >
+              <div className="node-item-icon" style={{ background: "rgba(14,165,233,0.2)" }}>
+                🧩
+              </div>
+              <div className="node-item-info">
+                <div className="node-item-name">{workflows[fid].name}</div>
+                <div className="node-item-desc">{workflows[fid].nodes.length} nodos</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </aside>
   );
 }

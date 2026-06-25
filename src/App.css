@@ -367,6 +367,25 @@ html, body, #root {
 .wf-run-btn:hover { filter: brightness(1.08); }
 .wf-run-btn.running { background: #f85149; color: #2a0a08; }
 .wf-toolbar-hint { font-size: 11px; color: var(--text-muted); }
+.wf-toolbar-spacer { flex: 1; }
+.wf-flow-select {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; color: var(--text); font-size: 12px; font-family: inherit; outline: none; cursor: pointer;
+  max-width: 180px;
+}
+.wf-flow-name {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; color: var(--text); font-size: 12px; font-family: inherit; outline: none; width: 150px;
+}
+.wf-flow-name:focus, .wf-flow-select:focus { border-color: var(--accent-2); }
+.wf-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  width: 28px; height: 28px; color: var(--text-2); font-family: inherit;
+}
+.wf-icon-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent-2); }
+.wf-icon-btn--danger:hover:not(:disabled) { color: #f85149; border-color: #f85149; }
+.wf-icon-btn:disabled, .wf-flow-select:disabled, .wf-flow-name:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Output panel (in workflow) */
 .output-panel {
@@ -453,6 +472,11 @@ html, body, #root {
 .file-node .rf-node-badge { background: rgba(249,115,22,0.15); color: var(--orange); }
 .condition-node .rf-node-icon { background: rgba(56,189,248,0.15); }
 .condition-node .rf-node-badge { background: rgba(56,189,248,0.15); color: var(--blue); }
+.subflow-node .rf-node-icon { background: rgba(14,165,233,0.18); }
+.subflow-node .rf-node-badge { background: rgba(14,165,233,0.18); color: var(--blue); }
+.subflow-node { border-style: dashed; }
+.subflow-meta { font-size: 10px; color: var(--text-2); margin-top: 5px; }
+.subflow-meta--warn { color: var(--orange); }
 
 /* Badge del id del nodo: referenciable en templating ({{<id>.output}}) desde otros nodos. */
 .rf-node-id {

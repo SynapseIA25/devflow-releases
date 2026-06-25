@@ -24,6 +24,9 @@ export type EngineCallbacks = {
   onLog: (level: LogEntry["level"], message: string) => void;
   setNodeStatus: (id: string, status: NodeStatus) => void;
   isCancelled: () => boolean;
+  // Resuelve un nodo "subflow" a su flujo referenciado (referencia viva, no copia). Si falta,
+  // los nodos subflow fallan con un error claro.
+  resolveFlow?: (flowId: string) => { name: string; nodes: WorkflowNode[]; edges: Edge[] } | undefined;
 };
 
 // ── Templating ──────────────────────────────────────────────────────────────
@@ -139,33 +142,70 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   return { output: text };
 }
 
-async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+// Ejecuta un nodo sub-flujo corriendo el flujo referenciado entero por dentro. El input del padre
+// se inyecta como {{input}} de los nodos de entrada del sub-flujo; el output del sub-flujo es la
+// concatenación de las salidas de sus nodos hoja. `stack` evita recursión infinita (un flujo que se
+// incluye a sí mismo, directa o indirectamente).
+async function execSubflow(node: WorkflowNode, input: string, cb: EngineCallbacks, stack: Set<string>): Promise<NodeResult> {
+  const flowId = String(node.data.flowId ?? "");
+  if (!flowId) throw new Error("Sub-flujo sin flujo asignado");
+  const flow = cb.resolveFlow?.(flowId);
+  if (!flow) throw new Error(`Sub-flujo no encontrado (${flowId})`);
+  if (stack.has(flowId)) throw new Error(`Recursión de sub-flujos: "${flow.name}" se incluye a sí mismo`);
+  cb.onLog("info", `🧩 Sub-flujo "${flow.name}" (${flow.nodes.length} nodos)…`);
+  const childCb: EngineCallbacks = {
+    onLog: (lvl, msg) => cb.onLog(lvl, `  ↳ [${flow.name}] ${msg}`),
+    setNodeStatus: () => {}, // los nodos internos no están en el canvas activo
+    isCancelled: cb.isCancelled,
+    resolveFlow: cb.resolveFlow,
+  };
+  const sub = await runGraph(flow.nodes, flow.edges, childCb, input, new Set(stack).add(flowId));
+  if (sub.cancelled) throw new Error("Cancelado");
+  if (sub.errored) throw new Error(`El sub-flujo "${flow.name}" falló`);
+  cb.onLog("success", `🧩 Sub-flujo "${flow.name}" completado (${sub.output.length} chars)`);
+  return { output: sub.output };
+}
+
+async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, stack: Set<string>): Promise<NodeResult> {
   switch (node.type) {
     case "file": return execFile(node, results, input, cb);
     case "terminal": return execTerminal(node, results, input, cb);
     case "condition": return execCondition(node, results, input, cb);
     case "mimo": return execMimo(node, results, input, cb);
+    case "subflow": return execSubflow(node, input, cb, stack);
     default: throw new Error(`Tipo de nodo desconocido: ${node.type}`);
   }
 }
 
 // ── Motor ───────────────────────────────────────────────────────────────────
-export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks): Promise<void> {
-  if (nodes.length === 0) {
-    cb.onLog("warn", "El canvas está vacío — nada que ejecutar.");
-    return;
-  }
+type GraphRun = { errored: boolean; cancelled: boolean; output: string };
+
+// Recorre y ejecuta un grafo. `initialInput` alimenta el {{input}} de los nodos de entrada (lo usa
+// el sub-flujo para pasar el input del padre). `stack` lleva la cadena de flujos en ejecución para
+// detectar recursión. Devuelve el resultado agregado (output = salidas de los nodos hoja).
+async function runGraph(
+  nodes: WorkflowNode[],
+  edges: Edge[],
+  cb: EngineCallbacks,
+  initialInput: string,
+  stack: Set<string>
+): Promise<GraphRun> {
+  if (nodes.length === 0) return { errored: false, cancelled: false, output: "" };
 
   const order = topoSort(nodes, edges);
   if (!order) {
     cb.onLog("error", "El grafo tiene un ciclo — no se puede ejecutar. Revisá las conexiones.");
-    return;
+    return { errored: true, cancelled: false, output: "" };
   }
 
   const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
   const incoming = new Map<string, Edge[]>();
+  const hasOutgoing = new Set<string>();
   for (const n of nodes) incoming.set(n.id, []);
-  for (const e of edges) if (incoming.has(e.target)) incoming.get(e.target)!.push(e);
+  for (const e of edges) {
+    if (incoming.has(e.target)) incoming.get(e.target)!.push(e);
+    hasOutgoing.add(e.source);
+  }
 
   const results = new Map<string, NodeResult>(); // solo nodos ejecutados con éxito
 
@@ -183,7 +223,7 @@ export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: Engi
   for (const id of order) {
     if (cb.isCancelled()) {
       cb.onLog("warn", "Ejecución cancelada.");
-      return;
+      return { errored: false, cancelled: true, output: "" };
     }
     const node = nodeById.get(id)!;
     const inEdges = incoming.get(id) ?? [];
@@ -193,12 +233,13 @@ export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: Engi
       continue;
     }
     const activeIn = inEdges.filter(isEdgeActive);
-    const input = activeIn.map((e) => results.get(e.source)?.output ?? "").join("\n");
+    // Nodo de entrada (sin edges entrantes) → recibe el input inicial del grafo.
+    const input = inEdges.length === 0 ? initialInput : activeIn.map((e) => results.get(e.source)?.output ?? "").join("\n");
 
     cb.setNodeStatus(id, "running");
     const title = String(node.data.label ?? node.type ?? id);
     try {
-      const result = await execNode(node, results, input, cb);
+      const result = await execNode(node, results, input, cb, stack);
       results.set(id, result);
       // Un comando que corrió pero terminó con exit ≠ 0 NO detiene el flujo (un condition
       // aguas abajo puede ramificar sobre {{id.exitCode}}), pero se marca "warn" (ámbar) para
@@ -213,6 +254,23 @@ export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: Engi
     }
   }
 
-  if (!errored) cb.onLog("success", "✓ Workflow completado.");
+  // Output del grafo = salidas de los nodos hoja (sin edges salientes) que corrieron.
+  const output = nodes
+    .filter((n) => !hasOutgoing.has(n.id))
+    .map((n) => results.get(n.id)?.output ?? "")
+    .filter((o) => o !== "")
+    .join("\n");
+
+  return { errored, cancelled: false, output };
+}
+
+export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks): Promise<void> {
+  if (nodes.length === 0) {
+    cb.onLog("warn", "El canvas está vacío — nada que ejecutar.");
+    return;
+  }
+  const r = await runGraph(nodes, edges, cb, "", new Set());
+  if (r.cancelled) return; // ya logueó "Ejecución cancelada."
+  if (!r.errored) cb.onLog("success", "✓ Workflow completado.");
   else cb.onLog("error", "Workflow detenido por un error.");
 }

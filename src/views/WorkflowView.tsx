@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Play, Square } from "lucide-react";
+import { Play, Square, Plus, Trash2 } from "lucide-react";
 import { Canvas } from "../components/Canvas";
 import { Sidebar } from "../components/Sidebar";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
@@ -14,6 +14,15 @@ export function WorkflowView() {
   const [running, setRunning] = useState(false);
   const cancelRef = useRef(false);
 
+  const order = useWorkflowStore((s) => s.order);
+  const activeId = useWorkflowStore((s) => s.activeId);
+  const workflows = useWorkflowStore((s) => s.workflows);
+  const setActiveWorkflow = useWorkflowStore((s) => s.setActiveWorkflow);
+  const createWorkflow = useWorkflowStore((s) => s.createWorkflow);
+  const renameWorkflow = useWorkflowStore((s) => s.renameWorkflow);
+  const deleteWorkflow = useWorkflowStore((s) => s.deleteWorkflow);
+  const activeName = workflows[activeId]?.name ?? "";
+
   const addLog = useCallback((entry: LogEntry) => {
     setLogs((l) => [...l, entry]);
   }, []);
@@ -25,16 +34,23 @@ export function WorkflowView() {
   );
 
   const handleRun = useCallback(async () => {
-    const { nodes, edges, resetStatuses, setNodeStatus } = useWorkflowStore.getState();
+    const st = useWorkflowStore.getState();
+    const w = st.workflows[st.activeId];
+    if (!w) return;
     cancelRef.current = false;
     setRunning(true);
-    resetStatuses();
-    log("info", `▶ Ejecutando workflow (${nodes.length} nodos)…`);
+    st.resetStatuses();
+    log("info", `▶ Ejecutando "${w.name}" (${w.nodes.length} nodos)…`);
     try {
-      await runWorkflow(nodes, edges, {
+      await runWorkflow(w.nodes, w.edges, {
         onLog: log,
-        setNodeStatus,
+        setNodeStatus: st.setNodeStatus,
         isCancelled: () => cancelRef.current,
+        // El motor resuelve los nodos sub-flujo contra los flujos guardados (referencia viva).
+        resolveFlow: (flowId) => {
+          const f = useWorkflowStore.getState().workflows[flowId];
+          return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
+        },
       });
     } catch (e) {
       log("error", `Error inesperado: ${e instanceof Error ? e.message : String(e)}`);
@@ -54,6 +70,46 @@ export function WorkflowView() {
         <Sidebar />
         <div className="workflow-canvas-area">
           <div className="workflow-toolbar">
+            <select
+              className="wf-flow-select"
+              value={activeId}
+              onChange={(e) => setActiveWorkflow(e.target.value)}
+              disabled={running}
+              title="Cambiar de flujo"
+            >
+              {order.map((id) => (
+                <option key={id} value={id}>
+                  {workflows[id].name}
+                </option>
+              ))}
+            </select>
+            <input
+              className="wf-flow-name"
+              value={activeName}
+              onChange={(e) => renameWorkflow(activeId, e.target.value)}
+              disabled={running}
+              title="Renombrar flujo activo"
+              placeholder="Nombre del flujo"
+            />
+            <button
+              className="wf-icon-btn"
+              onClick={() => createWorkflow()}
+              disabled={running}
+              title="Nuevo flujo"
+            >
+              <Plus size={14} />
+            </button>
+            <button
+              className="wf-icon-btn wf-icon-btn--danger"
+              onClick={() => deleteWorkflow(activeId)}
+              disabled={running || order.length <= 1}
+              title={order.length <= 1 ? "No podés borrar el último flujo" : "Borrar flujo activo"}
+            >
+              <Trash2 size={14} />
+            </button>
+
+            <div className="wf-toolbar-spacer" />
+
             <button
               className={`wf-run-btn${running ? " running" : ""}`}
               onClick={running ? handleStop : handleRun}
