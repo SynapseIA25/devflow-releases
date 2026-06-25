@@ -89,3 +89,12 @@ export async function createDir(path: string): Promise<void> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   return invoke<void>("create_dir", { path });
 }
+
+export type ShellResult = { output: string; exitCode: number };
+
+// One-shot: ejecuta un comando y devuelve stdout+stderr + exit code (no es la PTY interactiva).
+// Lo usa el motor de workflows para el nodo terminal.
+export async function runShellCommand(command: string, cwd: string): Promise<ShellResult> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<ShellResult>("run_shell_command", { command, cwd });
+}

@@ -264,6 +264,56 @@ fn create_dir(path: String) -> Result<(), String> {
     std::fs::create_dir(&path).map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShellResult {
+    output: String,
+    exit_code: i32,
+}
+
+// One-shot: ejecuta un comando, espera a que termine y devuelve stdout+stderr combinados +
+// el exit code estructurado. Distinto de la PTY (pty_spawn): aquella es interactiva/persistente
+// por pestaña; esto es "correr y devolver el resultado", justo lo que necesita el motor de
+// workflows (nodo terminal). En Windows usa Git Bash (mismo windows_bash_path() que la PTY) para
+// que la sintaxis (ls/cat/pipes) sea igual que en Linux/Mac; fallback a sh en Unix.
+#[tauri::command]
+fn run_shell_command(command: String, cwd: String) -> Result<ShellResult, String> {
+    let mut cmd = if cfg!(target_os = "windows") {
+        match windows_bash_path() {
+            Some(bash) => {
+                let mut c = Command::new(bash);
+                c.args(["-c", &command]);
+                c
+            }
+            None => {
+                let mut c = Command::new("powershell.exe");
+                c.args(["-NoProfile", "-Command", &command]);
+                c
+            }
+        }
+    } else {
+        let mut c = Command::new("sh");
+        c.args(["-c", &command]);
+        c
+    };
+    let out = cmd
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| format!("No se pudo ejecutar '{}': {}", command, e))?;
+    let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !stderr.is_empty() {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        output.push_str(&stderr);
+    }
+    Ok(ShellResult {
+        output,
+        exit_code: out.status.code().unwrap_or(-1),
+    })
+}
+
 // En Windows, `bash` en el PATH resuelve al stub de System32 que lanza WSL (lento en frío
 // y requiere traducir cwd a /mnt/...). Usamos Git Bash directo si está instalado, así la
 // sintaxis de comandos (ls, cat, grep, pipes) es la misma que en Linux/Mac sin esa fricción.
@@ -424,6 +474,7 @@ pub fn run() {
             write_text_file,
             read_dir,
             create_dir,
+            run_shell_command,
             pty_spawn,
             pty_write,
             pty_resize,

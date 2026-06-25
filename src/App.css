@@ -354,6 +354,20 @@ html, body, #root {
 .workflow-view { display: flex; flex: 1; overflow: hidden; }
 .workflow-canvas-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
+/* Toolbar del editor de workflows (Run/Stop) */
+.workflow-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  padding: 8px 14px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
+}
+.wf-run-btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: var(--green); color: #06270f; border: none; border-radius: 6px;
+  padding: 6px 14px; font-size: 12px; font-weight: 700; font-family: inherit;
+}
+.wf-run-btn:hover { filter: brightness(1.08); }
+.wf-run-btn.running { background: #f85149; color: #2a0a08; }
+.wf-toolbar-hint { font-size: 11px; color: var(--text-muted); }
+
 /* Output panel (in workflow) */
 .output-panel {
   height: 160px; background: var(--bg-panel); border-top: 1px solid var(--border);
@@ -439,6 +453,25 @@ html, body, #root {
 .file-node .rf-node-badge { background: rgba(249,115,22,0.15); color: var(--orange); }
 .condition-node .rf-node-icon { background: rgba(56,189,248,0.15); }
 .condition-node .rf-node-badge { background: rgba(56,189,248,0.15); color: var(--blue); }
+
+/* Badge del id del nodo: referenciable en templating ({{<id>.output}}) desde otros nodos. */
+.rf-node-id {
+  font-family: var(--mono, monospace); font-size: 9px; color: var(--text-muted);
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px;
+}
+.rf-node-op {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  background: rgba(249,115,22,0.15); color: var(--orange); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 4px; outline: none; cursor: pointer;
+}
+
+/* Estado de ejecución por nodo (transitorio, lo setea el motor). idle = sin borde extra. */
+.rf-node--running { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(0,0,0,0.4); animation: rf-pulse 1.2s ease-in-out infinite; }
+.rf-node--success { border-color: var(--green); box-shadow: 0 0 0 1px var(--green), 0 4px 12px rgba(0,0,0,0.4); }
+.rf-node--warn { border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange), 0 4px 12px rgba(0,0,0,0.4); }
+.rf-node--error { border-color: #f85149; box-shadow: 0 0 0 1px #f85149, 0 4px 12px rgba(0,0,0,0.4); }
+.rf-node--skipped { opacity: 0.45; }
+@keyframes rf-pulse { 0%, 100% { box-shadow: 0 0 0 1px var(--accent), 0 4px 12px rgba(0,0,0,0.4); } 50% { box-shadow: 0 0 0 3px var(--accent), 0 4px 16px rgba(0,0,0,0.5); } }
 
 /* ── Agents View ─────────────────────────────────────── */
 .agents-view { display: flex; flex: 1; overflow: hidden; }
