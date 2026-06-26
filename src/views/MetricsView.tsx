@@ -1,22 +1,47 @@
-import { Zap, DollarSign, Clock, TrendingUp } from "lucide-react";
+import { Zap, Clock, TrendingUp, MessageSquare, RotateCcw } from "lucide-react";
+import { useMetricsStore, approxTokens } from "../store/metricsStore";
+import { useSettingsStore } from "../store/settingsStore";
 
-const STATS = [
-  { icon: Zap,         label: "Tokens usados",      value: "0",      sub: "este mes" },
-  { icon: DollarSign,  label: "Costo estimado",      value: "$0.00",  sub: "este mes" },
-  { icon: Clock,       label: "Tiempo de respuesta", value: "—",      sub: "promedio" },
-  { icon: TrendingUp,  label: "Ejecuciones",         value: "0",      sub: "totales" },
-];
+const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`);
+const fmtTokens = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(1)}k` : `${t}`);
+const fmtTime = (epoch: number | null) => (epoch ? new Date(epoch).toLocaleString() : "—");
 
 export function MetricsView() {
+  const m = useMetricsStore();
+  const providers = useSettingsStore((s) => s.providers);
+  const reset = useMetricsStore((s) => s.reset);
+
+  const totalExec = m.chatPrompts + m.workflowRuns;
+  const avgLatency = m.latencySamples > 0 ? m.totalLatencyMs / m.latencySamples : null;
+  const totalTokens = approxTokens(m.inChars + m.outChars);
+  const providerEntries = Object.entries(m.byProvider).sort((a, b) => b[1].prompts - a[1].prompts);
+
+  const stats = [
+    { icon: TrendingUp,    label: "Ejecuciones",         value: String(totalExec),               sub: `${m.chatPrompts} chat · ${m.workflowRuns} workflows` },
+    { icon: Clock,         label: "Tiempo de respuesta", value: avgLatency != null ? fmtMs(avgLatency) : "—", sub: "promedio" },
+    { icon: Zap,           label: "Tokens (aprox.)",     value: fmtTokens(totalTokens),          sub: `${fmtTokens(approxTokens(m.inChars))} in · ${fmtTokens(approxTokens(m.outChars))} out` },
+    { icon: MessageSquare, label: "Mensajes al agente",  value: String(m.chatPrompts),           sub: "turnos de chat" },
+  ];
+
+  const providerName = (id: string) => providers.find((p) => p.id === id)?.name ?? id;
+  const providerColor = (id: string) => providers.find((p) => p.id === id)?.color ?? "#888";
+
   return (
     <div className="metrics-view">
-      <div className="settings-header">
-        <h2 className="settings-title">Métricas</h2>
-        <p className="settings-subtitle">Monitoreo de uso, costos y rendimiento por proveedor.</p>
+      <div className="settings-header metrics-header-row">
+        <div>
+          <h2 className="settings-title">Métricas</h2>
+          <p className="settings-subtitle">Uso real de agentes y workflows. Última actividad: {fmtTime(m.lastActivity)}</p>
+        </div>
+        {totalExec > 0 && (
+          <button className="metrics-reset-btn" onClick={reset} title="Reiniciar métricas">
+            <RotateCcw size={13} /> Reiniciar
+          </button>
+        )}
       </div>
 
       <div className="metrics-stats">
-        {STATS.map(({ icon: Icon, label, value, sub }) => (
+        {stats.map(({ icon: Icon, label, value, sub }) => (
           <div key={label} className="stat-card">
             <div className="stat-icon"><Icon size={18} /></div>
             <div className="stat-value">{value}</div>
@@ -26,10 +51,42 @@ export function MetricsView() {
         ))}
       </div>
 
-      <div className="metrics-empty">
-        <TrendingUp size={40} opacity={0.2} />
-        <p>Las métricas aparecerán aquí una vez que configures un proveedor y empieces a usar los agentes.</p>
-      </div>
+      {providerEntries.length > 0 ? (
+        <div className="metrics-table-wrap">
+          <div className="detail-label" style={{ marginBottom: 8 }}>Por proveedor</div>
+          <table className="metrics-table">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th>Mensajes</th>
+                <th>Latencia prom.</th>
+                <th>Tokens (aprox.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providerEntries.map(([id, st]) => (
+                <tr key={id}>
+                  <td>
+                    <span className="provider-dot" style={{ background: providerColor(id), display: "inline-block", marginRight: 8 }} />
+                    {providerName(id)}
+                  </td>
+                  <td>{st.prompts}</td>
+                  <td>{st.samples > 0 ? fmtMs(st.latencyMs / st.samples) : "—"}</td>
+                  <td>{fmtTokens(approxTokens(st.inChars + st.outChars))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="detail-hint">
+            Los tokens son una aproximación (≈ caracteres ÷ 4): ACP no reporta uso exacto de tokens.
+          </p>
+        </div>
+      ) : (
+        <div className="metrics-empty">
+          <TrendingUp size={40} opacity={0.2} />
+          <p>Las métricas aparecerán acá una vez que uses un agente en el chat o ejecutes un workflow.</p>
+        </div>
+      )}
     </div>
   );
 }

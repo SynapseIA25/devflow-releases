@@ -80,7 +80,10 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
 }
 
 export function SettingsView() {
-  const { providers } = useSettingsStore();
+  const providers = useSettingsStore((s) => s.providers);
+  const selectedProviderId = useSettingsStore((s) => s.selectedProviderId);
+  const selectedModel = useSettingsStore((s) => s.selectedModel);
+  const active = providers.find((p) => p.id === selectedProviderId);
 
   return (
     <div className="settings-view">
@@ -89,6 +92,16 @@ export function SettingsView() {
         <p className="settings-subtitle">
           Configurá los proveedores y modelos que los agentes usarán para procesar tus solicitudes.
         </p>
+        {active && (
+          <div className="settings-active-summary">
+            <span className="provider-dot" style={{ background: active.color }} />
+            Activo: <strong>{active.name}</strong>
+            <span className="settings-active-model">{selectedModel}</span>
+            <span className={`provider-status ${active.enabled ? "enabled" : "disabled"}`}>
+              {active.enabled ? <><CheckCircle size={12} /> listo</> : <><AlertCircle size={12} /> sin configurar</>}
+            </span>
+          </div>
+        )}
       </div>
       <div className="providers-grid">
         {providers.map((p) => (

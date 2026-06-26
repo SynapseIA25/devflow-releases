@@ -5,6 +5,7 @@ import { Canvas } from "../components/Canvas";
 import { Sidebar } from "../components/Sidebar";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
 import { useWorkflowStore } from "../store/workflowStore";
+import { useMetricsStore } from "../store/metricsStore";
 import { runWorkflow } from "../lib/workflowEngine";
 
 export function WorkflowView() {
@@ -41,6 +42,7 @@ export function WorkflowView() {
     setRunning(true);
     st.resetStatuses();
     log("info", `▶ Ejecutando "${w.name}" (${w.nodes.length} nodos)…`);
+    const startedAt = performance.now();
     try {
       await runWorkflow(w.nodes, w.edges, {
         onLog: log,
@@ -55,6 +57,7 @@ export function WorkflowView() {
     } catch (e) {
       log("error", `Error inesperado: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      useMetricsStore.getState().recordWorkflowRun({ latencyMs: performance.now() - startedAt });
       setRunning(false);
     }
   }, [log]);

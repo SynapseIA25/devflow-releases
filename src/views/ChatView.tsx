@@ -4,8 +4,10 @@ import remarkGfm from "remark-gfm";
 import { Plus, X, Send, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useContextStore } from "../store/contextStore";
+import { useAgentsStore } from "../store/agentsStore";
+import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
-import { DEFAULT_AGENTS, DEFAULT_PROVIDERS } from "../lib/providers";
+import { DEFAULT_PROVIDERS } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import { readTextFile } from "../lib/tauriApi";
 import { PROJECT_CWD } from "../lib/constants";
@@ -209,10 +211,12 @@ export function ChatView() {
   const resizing   = useRef(false);
   const startY     = useRef(0);
   const startH     = useRef(0);
-  const currentTurnRef = useRef<{ wsId: string; aiBlockId: string } | null>(null);
+  const currentTurnRef = useRef<{ wsId: string; aiBlockId: string; outChars: number } | null>(null);
 
   const { activeAgentId, setActiveAgent } = useChatStore();
-  const activeAgent = DEFAULT_AGENTS.find((a) => a.id === activeAgentId);
+  const agents = useAgentsStore((s) => s.agents);
+  const recordChat = useMetricsStore((s) => s.recordChat);
+  const activeAgent = agents.find((a) => a.id === activeAgentId);
   const ws = workspaces.find((w) => w.id === activeWs)!;
   const steps = ws?.steps ?? [];
   const contextItems = useContextStore((s) => s.items);
@@ -263,7 +267,7 @@ export function ChatView() {
       const kind = update.sessionUpdate;
       if (kind === "agent_message_chunk") {
         const text = extractChunkText(update);
-        if (text) appendAiChunk(turn.wsId, turn.aiBlockId, text);
+        if (text) { appendAiChunk(turn.wsId, turn.aiBlockId, text); turn.outChars += text.length; }
       } else if (kind === "agent_thought_chunk") {
         const text = extractChunkText(update);
         if (!text) return;
@@ -392,26 +396,42 @@ export function ChatView() {
   const runAcp = async (text: string, provider: string, spawn: acpClient.AcpSpawnConfig) => {
     const wsId = activeWs;
     const aiBlockId = makeId();
-    currentTurnRef.current = { wsId, aiBlockId };
+    currentTurnRef.current = { wsId, aiBlockId, outChars: 0 };
     updateWsSteps(wsId, () => []);
     for (const key of thoughtBlockIdsRef.current.keys()) {
       if (key.startsWith(`${wsId}:`)) thoughtBlockIdsRef.current.delete(key);
     }
     setLoading(true);
+    const startedAt = performance.now();
+    let inChars = text.length;
     try {
       const ws = workspaces.find((w) => w.id === wsId);
       // Si el workspace ya tenía sesión pero de OTRO provider (ej. cambiaste de agente a
       // mitad de conversación), esa session id no existe en el proceso nuevo — hay que abrir una.
       let sid = ws?.sessionProvider === provider ? ws?.sessionId : undefined;
+      const isNewSession = !sid;
       if (!sid) {
         sid = await acpClient.newSession(provider, spawn, PROJECT_CWD);
         setSession(wsId, sid, provider);
       }
-      const fullPrompt = await buildPromptWithContext(wsId, sid, text);
+      let fullPrompt = await buildPromptWithContext(wsId, sid, text);
+      // El system prompt del agente se inyecta una sola vez, al abrir la sesión ACP: una sesión es
+      // una conversación continua del lado del agente, así que alcanza con mandarlo en el primer turno.
+      const systemPrompt = activeAgent?.systemPrompt?.trim();
+      if (isNewSession && systemPrompt) {
+        fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
+      }
+      inChars = fullPrompt.length;
       await acpClient.prompt(provider, sid, fullPrompt);
     } catch (e) {
       appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      recordChat({
+        provider,
+        latencyMs: performance.now() - startedAt,
+        inChars,
+        outChars: currentTurnRef.current?.outChars ?? 0,
+      });
       currentTurnRef.current = null;
       setLoading(false);
     }
@@ -476,7 +496,7 @@ export function ChatView() {
         <div className="ws-tabs">
           {workspaces.map((w) => (
             <div key={w.id} className={`ws-tab${w.id === activeWs ? " active" : ""}`} onClick={() => setActiveWs(w.id)}>
-              <span className="ws-tab-dot" style={{ background: DEFAULT_AGENTS.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
+              <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
               <span className="ws-tab-title">{w.title}</span>
               {workspaces.length > 1 && (
                 <button className="ws-tab-close" onClick={(e) => { e.stopPropagation(); closeWorkspace(w.id); }}>
@@ -494,7 +514,7 @@ export function ChatView() {
             <ChevronDown size={11} />
             {showAgentMenu && (
               <div className="agent-dropdown ws-dropdown">
-                {DEFAULT_AGENTS.map((a) => (
+                {agents.map((a) => (
                   <div key={a.id} className={`agent-option${a.id === activeAgentId ? " active" : ""}`}
                     onClick={(e) => { e.stopPropagation(); setActiveAgent(a.id); setShowAgentMenu(false); }}>
                     <span style={{ color: a.color, fontSize: 15 }}>{a.icon}</span>
