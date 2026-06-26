@@ -264,6 +264,20 @@ fn create_dir(path: String) -> Result<(), String> {
     std::fs::create_dir(&path).map_err(|e| e.to_string())
 }
 
+// Abre el diálogo nativo del SO para elegir una carpeta de proyecto (estilo "Abrir carpeta"
+// de VS Code). Devuelve la ruta absoluta elegida, o None si el usuario canceló. Usa rfd
+// (Rust File Dialog) en vez del plugin de diálogo de Tauri para mantenerlo como comando
+// propio de la app (sin tener que tocar capabilities). En Windows rfd inicializa COM por su
+// cuenta y el diálogo Win32 corre bien desde el hilo del comando; en macOS el panel nativo
+// debe correr en el main thread (a tener en cuenta cuando se porte a Mac).
+#[tauri::command]
+fn pick_folder() -> Option<String> {
+    rfd::FileDialog::new()
+        .set_title("Elegí la carpeta del proyecto")
+        .pick_folder()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ShellResult {
@@ -474,6 +488,7 @@ pub fn run() {
             write_text_file,
             read_dir,
             create_dir,
+            pick_folder,
             run_shell_command,
             pty_spawn,
             pty_write,

@@ -90,6 +90,13 @@ export async function createDir(path: string): Promise<void> {
   return invoke<void>("create_dir", { path });
 }
 
+// Abre el diálogo nativo del SO para elegir una carpeta. Devuelve la ruta elegida o null si
+// el usuario canceló. Usado por el selector de carpeta de proyecto del File Explorer.
+export async function pickFolder(): Promise<string | null> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string | null>("pick_folder");
+}
+
 export type ShellResult = { output: string; exitCode: number };
 
 // One-shot: ejecuta un comando y devuelve stdout+stderr + exit code (no es la PTY interactiva).

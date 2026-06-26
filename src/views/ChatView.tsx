@@ -10,7 +10,7 @@ import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, 
 import { DEFAULT_PROVIDERS } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import { readTextFile } from "../lib/tauriApi";
-import { PROJECT_CWD } from "../lib/constants";
+import { useProjectStore } from "../store/projectStore";
 import { TerminalPane } from "../components/TerminalPane";
 
 type SpeechRecognitionLike = {
@@ -221,6 +221,7 @@ export function ChatView() {
   const steps = ws?.steps ?? [];
   const contextItems = useContextStore((s) => s.items);
   const removeContextItem = useContextStore((s) => s.removeItem);
+  const projectPath = useProjectStore((s) => s.projectPath);
 
   useEffect(() => { docEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [ws?.blocks, loading]);
 
@@ -411,7 +412,7 @@ export function ChatView() {
       let sid = ws?.sessionProvider === provider ? ws?.sessionId : undefined;
       const isNewSession = !sid;
       if (!sid) {
-        sid = await acpClient.newSession(provider, spawn, PROJECT_CWD);
+        sid = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath);
         setSession(wsId, sid, provider);
       }
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
@@ -565,13 +566,13 @@ export function ChatView() {
         <div className="term-pane" style={{ height: termHeight }}>
           <div className="term-output">
             {workspaces.map((w) => (
-              <TerminalPane key={w.id} workspaceId={w.id} cwd={PROJECT_CWD} active={w.id === activeWs} />
+              <TerminalPane key={w.id} workspaceId={w.id} cwd={projectPath} active={w.id === activeWs} />
             ))}
           </div>
 
           {/* Status bar */}
           <div className="term-statusbar">
-            <span className="term-path">{PROJECT_CWD}</span>
+            <span className="term-path">{projectPath}</span>
             <span className="term-model">{activeAgent?.name ?? "MiMo"} · devflow v0.1</span>
           </div>
         </div>

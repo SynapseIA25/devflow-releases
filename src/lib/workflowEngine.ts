@@ -13,7 +13,7 @@
 import { runShellCommand, readTextFile, writeTextFile } from "./tauriApi";
 import * as acpClient from "./acpClient";
 import { DEFAULT_PROVIDERS } from "./providers";
-import { PROJECT_CWD } from "./constants";
+import { useProjectStore } from "../store/projectStore";
 import type { Edge } from "@xyflow/react";
 import type { WorkflowNode, NodeStatus } from "../store/workflowStore";
 import type { LogEntry } from "../components/OutputPanel";
@@ -96,7 +96,7 @@ async function execTerminal(node: WorkflowNode, results: Map<string, NodeResult>
   const command = resolveTemplate(String(node.data.command ?? ""), results, input);
   if (!command.trim()) throw new Error("Comando vacío");
   cb.onLog("info", `$ ${command}`);
-  const res = await runShellCommand(command, PROJECT_CWD);
+  const res = await runShellCommand(command, useProjectStore.getState().projectPath);
   if (res.output.trim()) cb.onLog(res.exitCode === 0 ? "info" : "error", res.output.trimEnd());
   cb.onLog(res.exitCode === 0 ? "success" : "error", `[exit code ${res.exitCode}]`);
   return { output: res.output, exitCode: res.exitCode };
@@ -123,7 +123,7 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 MiMo: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
-  const sessionId = await acpClient.newSession("mimo", mimo.acp, PROJECT_CWD);
+  const sessionId = await acpClient.newSession("mimo", mimo.acp, useProjectStore.getState().projectPath);
   let text = "";
   const unsub = acpClient.onUpdate((provider, sid, update) => {
     if (provider !== "mimo" || sid !== sessionId) return;

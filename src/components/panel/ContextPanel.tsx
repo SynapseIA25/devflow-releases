@@ -1,6 +1,6 @@
 import { FolderOpen, FileText, Folder, Info, BookOpen, Paperclip, X } from "lucide-react";
 import { useContextStore } from "../../store/contextStore";
-import { PROJECT_CWD } from "../../lib/constants";
+import { useProjectStore } from "../../store/projectStore";
 
 type ContextPanelProps = {
   task?: string;
@@ -18,6 +18,7 @@ export function ContextPanel(props: ContextPanelProps) {
   const d = { ...DEFAULT, ...props };
   const items = useContextStore((s) => s.items);
   const removeItem = useContextStore((s) => s.removeItem);
+  const projectPath = useProjectStore((s) => s.projectPath);
 
   return (
     <div className="context-panel">
@@ -30,7 +31,7 @@ export function ContextPanel(props: ContextPanelProps) {
 
       <div className="ctx-section">
         <div className="ctx-section-title"><FolderOpen size={11} /> Directorio de trabajo</div>
-        <code className="ctx-path">{PROJECT_CWD}</code>
+        <code className="ctx-path">{projectPath}</code>
       </div>
 
       <div className="ctx-section">

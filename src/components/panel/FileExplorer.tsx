@@ -4,9 +4,9 @@ import {
   ChevronRight, ChevronDown, Loader2, X, ArrowUp, FilePlus, FolderPlus,
   BookmarkPlus, BookmarkCheck,
 } from "lucide-react";
-import { readDir, readTextFile, createDir, writeTextFile, isTauri, type FsEntry } from "../../lib/tauriApi";
-import { PROJECT_CWD } from "../../lib/constants";
+import { readDir, readTextFile, createDir, writeTextFile, pickFolder, isTauri, type FsEntry } from "../../lib/tauriApi";
 import { useContextStore } from "../../store/contextStore";
+import { useProjectStore } from "../../store/projectStore";
 
 const EXT_COLORS: Record<string, string> = {
   tsx: "#38bdf8", ts: "#38bdf8", js: "#fbbf24", jsx: "#fbbf24",
@@ -215,8 +215,10 @@ function TreeNode({ entry, depth, selected, onSelectFile }: TreeNodeProps) {
 }
 
 export function FileExplorer() {
-  const [root, setRoot] = useState(PROJECT_CWD);
-  const [pathInput, setPathInput] = useState(PROJECT_CWD);
+  const projectPath = useProjectStore((s) => s.projectPath);
+  const setProjectPath = useProjectStore((s) => s.setProjectPath);
+  const [root, setRoot] = useState(projectPath);
+  const [pathInput, setPathInput] = useState(projectPath);
   const [rootEntries, setRootEntries] = useState<FsEntry[] | null>(null);
   const [rootError, setRootError] = useState<string | null>(null);
   const [creatingRoot, setCreatingRoot] = useState<"file" | "dir" | null>(null);
@@ -236,7 +238,19 @@ export function FileExplorer() {
       .catch((e) => setRootError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  useEffect(() => { load(PROJECT_CWD); }, [load]);
+  // La raíz del explorer sigue a la carpeta de proyecto activa: al elegir otra carpeta
+  // (botón de abajo) o si cambia desde otro lado, se re-rootea acá. Navegar con el input de
+  // ruta NO cambia projectPath (es solo browsing), por eso ese camino setea root directo.
+  useEffect(() => { load(projectPath); }, [load, projectPath]);
+
+  const openProjectFolder = async () => {
+    try {
+      const picked = await pickFolder();
+      if (picked) { setProjectPath(picked); load(picked); }
+    } catch (e) {
+      setRootError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const navigateUp = () => {
     const parent = parentOf(root);
@@ -286,6 +300,9 @@ export function FileExplorer() {
   return (
     <div className="file-explorer">
       <div className="fe-toolbar">
+        <button className="fe-action-btn" onClick={openProjectFolder} title="Abrir carpeta de proyecto...">
+          <FolderOpen size={12} color="#fbbf24" />
+        </button>
         <button className="fe-action-btn" onClick={navigateUp} disabled={!parentOf(root)} title="Subir un nivel">
           <ArrowUp size={12} />
         </button>
