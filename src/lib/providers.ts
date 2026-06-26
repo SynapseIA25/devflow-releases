@@ -69,9 +69,18 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     acp: { command: "mimo", args: ["acp", "--print-logs", "--log-level", "ERROR"] },
   },
   {
+    // INTEGRACIÓN DE REFERENCIA, NO PRODUCTIVA (decisión Fase 3, 2026-06-26).
+    // Hermes habla ACP de verdad y la integración funciona end-to-end, pero corre sobre
+    // Ollama local con llama3.2:3b — un modelo de 3B cuyo system prompt casi llena el
+    // contexto (4096 tok), así que nunca emite tool calls confiables y es lento (~40s).
+    // Sirve como prueba de que DevFlow soporta múltiples agentes ACP simultáneos, no como
+    // agente de trabajo real. Para volverlo productivo: apuntar `model.base_url`/`model.default`
+    // de Hermes (vía `hermes config set`) a un modelo más grande con buen function-calling.
+    // Los campos models/baseUrl/defaultModel de abajo son cosméticos para Settings (el modelo
+    // real lo fija la config global de Hermes, no estos valores).
     id: "hermes",
     name: "Nous Hermes",
-    description: "Agente multi-plataforma con memoria",
+    description: "Agente multi-plataforma con memoria (referencia, no productivo)",
     color: "#a78bfa",
     icon: "⬡",
     apiKey: "",
