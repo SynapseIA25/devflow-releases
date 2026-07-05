@@ -18,6 +18,9 @@ src-tauri/target
 # Ad-hoc debug scripts
 .acp-raw-test*.cjs
 
+# Config MCP por-proyecto del agente MiMo — puede contener secrets (env de brave/slack/postgres/etc.)
+mimocode.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

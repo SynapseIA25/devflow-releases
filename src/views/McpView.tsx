@@ -3,12 +3,11 @@ import {
   Server, Plus, Play, Square, Trash2, RefreshCw,
   CheckCircle, AlertCircle, Circle, Terminal, Globe,
   Database, Search, GitBranch, FileCode, Globe2, Hash,
-  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot,
+  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch,
 } from "lucide-react";
-import {
-  isTauri, startMcpServer, stopMcpServer,
-  getRunningServers, checkPrerequisites,
-} from "../lib/tauriApi";
+import { isTauri, checkPrerequisites, acpStop } from "../lib/tauriApi";
+import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
+import { useProjectStore } from "../store/projectStore";
 
 /* ── Types ─────────────────────────────────────────────── */
 type McpTool     = { name: string; description: string };
@@ -48,6 +47,19 @@ const CATALOG: McpServer[] = [
       { name: "get_file_info",   description: "Obtiene metadata de un archivo" },
     ],
     resources: [{ uri: "file://.", name: "Directorio actual" }],
+  },
+  {
+    id: "code-index", name: "Code Index", transport: "stdio", official: false, version: "0.6.0",
+    description: "Indexa el código del proyecto de forma estructural (símbolos, funciones, imports — sin embeddings ni API externa) y permite al agente buscar código y archivos por lenguaje natural. Ideal para proyectos grandes.",
+    icon: <ScanSearch size={16} />, status: "stopped",
+    command: "uvx code-index-mcp",
+    tools: [
+      { name: "set_project_path",  description: "Fija la carpeta base a indexar" },
+      { name: "search_code",       description: "Busca patrones/símbolos en el código indexado" },
+      { name: "find_files",        description: "Encuentra archivos por patrón glob" },
+      { name: "get_file_summary",  description: "Resume un archivo: funciones, imports, líneas" },
+      { name: "refresh_index",     description: "Reconstruye el índice del proyecto" },
+    ],
   },
   {
     id: "git", name: "Git", transport: "stdio", official: true, version: "0.6.2",
@@ -362,18 +374,21 @@ export function McpView() {
   const [showAdd, setShowAdd]   = useState(false);
   const [prereqs, setPrereqs]   = useState<Prereqs | null>(null);
   const inTauri = isTauri();
+  const projectPath = useProjectStore((s) => s.projectPath);
 
-  // On mount: sync running servers from Tauri backend + check prereqs
+  // On mount / cambio de proyecto: refleja qué servers están habilitados en mimocode.json (la fuente
+  // de verdad que lee el agente MiMo) + chequea prereqs. "running" acá = habilitado en la config del
+  // agente, no un proceso que spawnee DevFlow (el propio mimo acp lo lanza al abrir sesión).
   useEffect(() => {
     if (!inTauri) return;
-    getRunningServers().then((running) => {
+    readMcpServers(projectPath).then((cfg) => {
       setServers((prev) => prev.map((s) => ({
         ...s,
-        status: running.includes(s.id) ? "running" : "stopped",
+        status: cfg[s.id]?.enabled ? "running" : "stopped",
       })));
-    });
+    }).catch(() => {});
     checkPrerequisites().then(setPrereqs).catch(() => {});
-  }, [inTauri]);
+  }, [inTauri, projectPath]);
 
   const setServerStatus = useCallback((id: string, status: McpServer["status"], err?: string) => {
     setServers((prev) => prev.map((s) =>
@@ -389,36 +404,34 @@ export function McpView() {
       // Browser mode: just toggle UI and show hint
       setServerStatus(id, server.status === "running" ? "stopped" : "running",
         server.status === "stopped"
-          ? "Simulado — ejecutá 'npm run tauri dev' para iniciar procesos reales"
+          ? "Simulado — ejecutá 'npm run tauri dev' para escribir mimocode.json real"
           : undefined
       );
       return;
     }
-
-    if (server.status === "running") {
-      setServerStatus(id, "connecting");
-      try {
-        await stopMcpServer(id);
-        setServerStatus(id, "stopped");
-      } catch (e) {
-        setServerStatus(id, "error", String(e));
-      }
-    } else {
-      if (!server.command) return;
-      setServerStatus(id, "connecting");
-      try {
-        await startMcpServer(id, server.command, envVals);
-        setServerStatus(id, "running");
-      } catch (e) {
-        setServerStatus(id, "error", String(e));
-      }
+    if (!server.command) {
+      setServerStatus(id, "error", "Este server no tiene comando configurado");
+      return;
     }
-  }, [servers, inTauri, setServerStatus]);
+
+    const enabling = server.status !== "running";
+    setServerStatus(id, "connecting");
+    try {
+      // Escribe/actualiza la entrada en mimocode.json (habilitada o no). El comando del catálogo es
+      // un string tipo "uvx code-index-mcp" → lo pasamos como array de argumentos.
+      await setMcpServer(projectPath, id, server.command.split(/\s+/).filter(Boolean), envVals, enabling);
+      // MiMo lee mimocode.json al arrancar su proceso; lo reiniciamos (best-effort) para que la
+      // próxima sesión del chat tome el cambio. La sesión ACP se re-spawnea sola en el próximo prompt.
+      await acpStop("mimo").catch(() => {});
+      setServerStatus(id, enabling ? "running" : "stopped");
+    } catch (e) {
+      setServerStatus(id, "error", String(e));
+    }
+  }, [servers, inTauri, projectPath, setServerStatus]);
 
   const removeServer = (id: string) => {
-    if (servers.find((s) => s.id === id)?.status === "running") {
-      stopMcpServer(id).catch(() => {});
-    }
+    removeMcpServer(projectPath, id).catch(() => {});
+    acpStop("mimo").catch(() => {});
     setServers((prev) => prev.filter((s) => s.id !== id));
     if (selected === id) setSelected(servers.find((s) => s.id !== id)?.id ?? "");
   };

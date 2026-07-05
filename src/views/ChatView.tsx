@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Plus, X, Send, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder } from "lucide-react";
+import { Plus, X, Send, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useContextStore } from "../store/contextStore";
+import { useEditorStore } from "../store/editorStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
@@ -221,6 +222,8 @@ export function ChatView() {
   const steps = ws?.steps ?? [];
   const contextItems = useContextStore((s) => s.items);
   const removeContextItem = useContextStore((s) => s.removeItem);
+  // Archivo activo del editor de código — se inyecta como contexto del agente (ver buildPromptWithContext).
+  const editorActivePath = useEditorStore((s) => s.activePath);
   const projectPath = useProjectStore((s) => s.projectPath);
 
   useEffect(() => { docEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [ws?.blocks, loading]);
@@ -365,8 +368,6 @@ export function ChatView() {
   // si todavía no se mandó en esta sesión o si su contenido cambió desde la última vez — evita
   // re-pagar en tokens el contenido completo de cada archivo adjunto en cada mensaje.
   const buildPromptWithContext = async (wsId: string, sessionId: string, text: string): Promise<string> => {
-    const fileItems = contextItems.filter((i) => !i.isDir);
-    if (fileItems.length === 0) return text;
     const sessionKey = `${wsId}:${sessionId}`;
     let sent = sentContextRef.current.get(sessionKey);
     if (!sent) {
@@ -374,6 +375,24 @@ export function ChatView() {
       sentContextRef.current.set(sessionKey, sent);
     }
     const parts: string[] = [];
+
+    // Archivo activo del editor de código: el agente "ve" lo que estás editando ahora mismo, incluidos
+    // los cambios SIN guardar (usamos el buffer del editor, no el disco). Mismo dedup por sesión que los
+    // adjuntos: solo se re-manda si su contenido cambió desde el último turno.
+    const ed = useEditorStore.getState();
+    const activeTab = ed.tabs.find((t) => t.path === ed.activePath);
+    const editorPath = activeTab && !activeTab.loading && !activeTab.error ? activeTab.path : null;
+    if (activeTab && editorPath) {
+      const key = `@editor:${editorPath}`;
+      const block = `Archivo abierto en el editor (el usuario lo está editando ahora): ${editorPath}\n\`\`\`\n${activeTab.content}\n\`\`\``;
+      if (sent.get(key) !== block) {
+        sent.set(key, block);
+        parts.push(block);
+      }
+    }
+
+    // Adjuntos del panel Contexto (excluimos el que ya va como archivo del editor, para no duplicar).
+    const fileItems = contextItems.filter((i) => !i.isDir && i.path !== editorPath);
     for (const item of fileItems) {
       let content: string;
       try {
@@ -579,8 +598,14 @@ export function ChatView() {
 
         {/* Unified input */}
         <div className="hterm-input-area">
-          {contextItems.length > 0 && (
+          {(editorActivePath || contextItems.length > 0) && (
             <div className="ctx-chip-row">
+              {editorActivePath && (
+                <div className="ctx-chip ctx-chip--editor" title={`El agente ve este archivo del editor: ${editorActivePath}`}>
+                  <FileCode size={10} />
+                  <span>editando: {editorActivePath.split(/[\\/]/).pop()}</span>
+                </div>
+              )}
               {contextItems.map((item) => (
                 <div key={item.path} className="ctx-chip" title={item.path}>
                   {item.isDir ? <Folder size={10} /> : <FileText size={10} />}

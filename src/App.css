@@ -58,6 +58,20 @@ html, body, #root {
 /* ── Layout additions ────────────────────────────────── */
 .view-area { flex: 1; display: flex; overflow: hidden; min-width: 0; }
 
+/* ── Chat dock (instancia única de ChatView, reposicionada por `order`) ── */
+/* full: ocupa el lugar de la vista (order:-1 → primero, a la izquierda del panel derecho).
+   side: dock lateral (order:10 → después del panel derecho, en el extremo derecho).
+   hidden: montado pero oculto (preserva sesión ACP + PTYs). */
+.chat-dock--full   { order: -1; flex: 1; min-width: 0; display: flex; overflow: hidden; }
+.chat-dock--side   { order: 10; flex-shrink: 0; display: flex; overflow: hidden; position: relative; border-left: 1px solid var(--border); min-width: 300px; }
+.chat-dock--hidden { display: none; }
+.chat-dock-resize {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  cursor: col-resize; z-index: 10;
+}
+.chat-dock-resize:hover { background: var(--accent); opacity: 0.4; }
+.navbar-chat-toggle { margin-top: auto; }
+
 /* ── Right Panel ─────────────────────────────────────── */
 .right-panel {
   display: flex; flex-direction: column; background: var(--bg-panel);
@@ -1319,3 +1333,136 @@ html, body, #root {
 }
 .mcp-btn-add:hover { opacity: 0.85; }
 .mcp-btn-add:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Workflow: inspector de nodo ─────────────────────── */
+.wf-inspector {
+  width: 288px; flex-shrink: 0; border-left: 1px solid var(--border);
+  background: var(--bg-panel); display: flex; flex-direction: column; overflow-y: auto;
+}
+.wf-inspector-empty {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 12px; padding: 24px; text-align: center;
+}
+.wf-inspector-header {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border-2);
+}
+.wf-inspector-icon { font-size: 20px; line-height: 1; }
+.wf-inspector-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.wf-inspector-id { font-size: 10px; color: var(--text-3); font-family: 'Cascadia Code','Consolas',monospace; }
+.wf-inspector-desc {
+  padding: 10px 14px; font-size: 11px; color: var(--text-2); line-height: 1.5;
+  border-bottom: 1px solid var(--border-2);
+}
+.wf-inspector-fields { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.wf-field { display: flex; flex-direction: column; gap: 5px; }
+.wf-field-label { font-size: 11px; color: var(--text-2); font-weight: 500; }
+.wf-field-select, .wf-var-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 12px; padding: 7px 9px; font-family: inherit; outline: none;
+}
+.wf-field-select:focus, .wf-var-input:focus { border-color: var(--accent); }
+textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas',monospace; line-height: 1.5; }
+
+.wf-var-wrap { position: relative; }
+.wf-var-pop {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 20; margin-top: 2px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  max-height: 220px; overflow-y: auto; box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+}
+.wf-var-opt { display: flex; flex-direction: column; gap: 1px; padding: 6px 9px; cursor: pointer; }
+.wf-var-opt.active, .wf-var-opt:hover { background: var(--bg-hover); }
+.wf-var-opt code { font-size: 11px; color: var(--accent-2); font-family: 'Cascadia Code','Consolas',monospace; }
+.wf-var-opt span { font-size: 10px; color: var(--text-3); }
+
+/* Chip del archivo activo del editor en la barra de contexto del chat (sin botón de quitar). */
+.ctx-chip--editor { border-color: var(--accent); color: var(--accent-2); }
+
+/* ── Mapa del codebase ───────────────────────────────── */
+.codebase-map { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.cbmap-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-panel); flex-shrink: 0;
+}
+.cbmap-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.cbmap-count { font-size: 11px; font-weight: 400; color: var(--text-3); }
+.cbmap-warn { font-size: 11px; font-weight: 400; color: var(--yellow); }
+.cbmap-refresh {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-2); font-size: 12px; cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.cbmap-refresh:hover { background: var(--bg-hover); color: var(--text); }
+.cbmap-refresh:disabled { opacity: 0.6; cursor: default; }
+.cbmap-canvas { flex: 1; position: relative; min-height: 0; }
+.cbmap-empty {
+  height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: var(--text-3); font-size: 13px; padding: 24px; text-align: center;
+}
+.cbmap-error { color: var(--red); }
+
+/* ── Editor de código ────────────────────────────────── */
+.editor-view { display: flex; flex: 1; overflow: hidden; }
+.editor-sidebar {
+  width: 240px; flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.editor-main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+.editor-tabs {
+  display: flex; align-items: stretch;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; flex-shrink: 0;
+}
+.editor-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; height: 34px; cursor: pointer;
+  border-right: 1px solid var(--border);
+  color: var(--text-2); font-size: 12px; white-space: nowrap;
+  background: transparent; transition: background 0.12s, color 0.12s;
+}
+.editor-tab:hover { background: var(--bg-hover); }
+.editor-tab.active { background: var(--bg); color: var(--text); }
+.editor-tab-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.editor-tab-dirty { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; }
+.editor-tab-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border: none; border-radius: 4px;
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.editor-tab-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+.editor-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 10px; height: 32px; flex-shrink: 0;
+  background: var(--bg-panel); border-bottom: 1px solid var(--border-2);
+}
+.editor-path {
+  font-size: 11px; color: var(--text-3);
+  font-family: 'Cascadia Code','Consolas',monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.editor-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.editor-tb-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-card); color: var(--text-2);
+  font-size: 11px; cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.editor-tb-btn:hover { background: var(--bg-hover); color: var(--text); }
+.editor-tb-save:not(:disabled) { border-color: var(--accent); color: var(--accent-2); }
+.editor-tb-btn:disabled { opacity: 0.5; cursor: default; }
+
+.editor-body { flex: 1; overflow: hidden; min-height: 0; }
+.code-editor-host { height: 100%; width: 100%; overflow: hidden; }
+.code-editor-host .cm-editor { height: 100%; }
+
+.editor-empty, .editor-loading, .editor-error {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; color: var(--text-3); font-size: 13px; padding: 20px; text-align: center;
+}
+.editor-loading { color: var(--text-2); }
+.editor-error { color: var(--red); }

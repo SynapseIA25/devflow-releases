@@ -3,6 +3,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { Play, Square, Plus, Trash2 } from "lucide-react";
 import { Canvas } from "../components/Canvas";
 import { Sidebar } from "../components/Sidebar";
+import { NodeInspector } from "../components/workflow/NodeInspector";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useMetricsStore } from "../store/metricsStore";
@@ -127,6 +128,7 @@ export function WorkflowView() {
           <Canvas onLog={addLog} />
           <OutputPanel logs={logs} onClear={() => setLogs([])} />
         </div>
+        <NodeInspector />
       </ReactFlowProvider>
     </div>
   );

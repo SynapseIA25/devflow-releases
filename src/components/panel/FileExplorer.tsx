@@ -214,7 +214,13 @@ function TreeNode({ entry, depth, selected, onSelectFile }: TreeNodeProps) {
   );
 }
 
-export function FileExplorer() {
+type FileExplorerProps = {
+  // Si se provee, clickear un archivo lo abre por acá (ej. como pestaña del editor) en vez de
+  // mostrar el preview de solo lectura interno. Lo usa la vista Editor.
+  onOpenFile?: (path: string) => void;
+};
+
+export function FileExplorer({ onOpenFile }: FileExplorerProps = {}) {
   const projectPath = useProjectStore((s) => s.projectPath);
   const setProjectPath = useProjectStore((s) => s.setProjectPath);
   const [root, setRoot] = useState(projectPath);
@@ -285,6 +291,11 @@ export function FileExplorer() {
 
   const onSelectFile = useCallback(async (path: string) => {
     setSelected(path);
+    // Modo editor: delega la apertura (pestaña editable) y no carga el preview interno.
+    if (onOpenFile) {
+      onOpenFile(path);
+      return;
+    }
     setPreview("");
     setPreviewError(null);
     setPreviewLoading(true);
@@ -295,7 +306,7 @@ export function FileExplorer() {
     } finally {
       setPreviewLoading(false);
     }
-  }, []);
+  }, [onOpenFile]);
 
   return (
     <div className="file-explorer">
@@ -324,7 +335,7 @@ export function FileExplorer() {
           <TreeNode key={entry.path} entry={entry} depth={0} selected={selected} onSelectFile={onSelectFile} />
         ))}
       </div>
-      {selected && (
+      {!onOpenFile && selected && (
         <div className="fe-preview">
           <div className="fe-preview-header">
             <span className="fe-preview-name">{selected.split(/[\\/]/).pop()}</span>
