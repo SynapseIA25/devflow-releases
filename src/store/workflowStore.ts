@@ -59,6 +59,9 @@ const seedEdges: Edge[] = [
 
 const defaultsByType: Record<string, WorkflowNodeData> = {
   mimo: { label: "MiMo Agent", prompt: "" },
+  agent: { label: "Agente", agentId: "mimo-coder", prompt: "" },
+  http: { label: "HTTP Request", method: "GET", url: "", headers: "", body: "" },
+  mcp: { label: "MCP Tool", command: "", tool: "", arguments: "" },
   terminal: { label: "Terminal", command: "" },
   file: { label: "File", path: "", operation: "read" },
   condition: { label: "Condition", condition: "" },

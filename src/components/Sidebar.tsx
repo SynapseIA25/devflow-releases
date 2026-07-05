@@ -9,6 +9,27 @@ const NODE_PALETTE = [
     color: "rgba(124,58,237,0.2)",
   },
   {
+    type: "agent",
+    icon: "🤖",
+    name: "Agente",
+    desc: "IA (elegible)",
+    color: "rgba(167,139,250,0.2)",
+  },
+  {
+    type: "http",
+    icon: "🌐",
+    name: "HTTP",
+    desc: "Llamar una API",
+    color: "rgba(34,211,238,0.2)",
+  },
+  {
+    type: "mcp",
+    icon: "🧩",
+    name: "MCP Tool",
+    desc: "Tool de un MCP",
+    color: "rgba(56,189,248,0.2)",
+  },
+  {
     type: "terminal",
     icon: "⚡",
     name: "Terminal",

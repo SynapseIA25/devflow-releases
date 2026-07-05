@@ -1,4 +1,6 @@
 import { useWorkflowStore } from "../../store/workflowStore";
+import { useAgentsStore } from "../../store/agentsStore";
+import { DEFAULT_PROVIDERS } from "../../lib/providers";
 import { NODE_SCHEMAS } from "../../nodes/nodeSchema";
 import { VarInput, type Variable } from "./VarInput";
 
@@ -12,6 +14,7 @@ export function NodeInspector() {
   const order = useWorkflowStore((s) => s.order);
   const workflows = useWorkflowStore((s) => s.workflows);
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData);
+  const agents = useAgentsStore((s) => s.agents);
 
   const selected = nodes.find((n) => n.selected);
   const schema = selected ? NODE_SCHEMAS[selected.type ?? ""] : undefined;
@@ -58,6 +61,10 @@ export function NodeInspector() {
             const opts =
               f.dynamicOptions === "flows"
                 ? order.filter((fid) => fid !== activeId).map((fid) => ({ value: fid, label: workflows[fid].name }))
+                : f.dynamicOptions === "agents"
+                ? agents
+                    .filter((a) => DEFAULT_PROVIDERS.find((p) => p.id === a.providerId)?.acp)
+                    .map((a) => ({ value: a.id, label: a.name }))
                 : f.options ?? [];
             return (
               <label key={f.key} className="wf-field">

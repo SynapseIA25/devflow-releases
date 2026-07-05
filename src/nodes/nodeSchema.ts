@@ -13,7 +13,7 @@ export type NodeField = {
   rows?: number;
   vars?: boolean; // soporta templating {{...}} → autocompletado en el inspector
   options?: { value: string; label: string }[];
-  dynamicOptions?: "flows"; // opciones calculadas en runtime (ej. lista de flujos para subflow)
+  dynamicOptions?: "flows" | "agents"; // opciones calculadas en runtime (flujos para subflow, agentes para agent)
 };
 
 export type NodeSchema = {
@@ -59,6 +59,48 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
         { value: "write", label: "Escribir" },
       ] },
       { key: "path", label: "Ruta", type: "text", vars: true, placeholder: "./src/main.ts" },
+    ],
+  },
+  agent: {
+    type: "agent",
+    title: "Agente",
+    icon: "🤖",
+    description: "Le manda un prompt al agente elegido (elegible por nodo). Solo funcionan agentes con backend ACP real (MiMo).",
+    fields: [
+      LABEL_FIELD,
+      { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents" },
+      { key: "prompt", label: "Prompt", type: "textarea", rows: 6, vars: true, placeholder: "Describí qué debe hacer el agente…" },
+    ],
+  },
+  http: {
+    type: "http",
+    title: "HTTP Request",
+    icon: "🌐",
+    description: "Llama a una API (email, Telegram, deploy webhooks…). Salida = cuerpo de la respuesta; exitCode = 0 si 2xx, si no el código HTTP.",
+    fields: [
+      LABEL_FIELD,
+      { key: "method", label: "Método", type: "select", options: [
+        { value: "GET", label: "GET" },
+        { value: "POST", label: "POST" },
+        { value: "PUT", label: "PUT" },
+        { value: "PATCH", label: "PATCH" },
+        { value: "DELETE", label: "DELETE" },
+      ] },
+      { key: "url", label: "URL", type: "text", vars: true, placeholder: "https://api.telegram.org/bot{{token}}/sendMessage" },
+      { key: "headers", label: "Headers (JSON)", type: "textarea", rows: 3, vars: true, placeholder: "{ \"Content-Type\": \"application/json\" }" },
+      { key: "body", label: "Body", type: "textarea", rows: 5, vars: true, placeholder: "{ \"chat_id\": \"...\", \"text\": \"{{msg.output}}\" }" },
+    ],
+  },
+  mcp: {
+    type: "mcp",
+    title: "MCP Tool",
+    icon: "🧩",
+    description: "Llama una tool de un MCP server (DevFlow spawnea el server, hace el handshake y ejecuta tools/call). One-shot: ideal para tools sin estado (filesystem, fetch, brave-search…).",
+    fields: [
+      LABEL_FIELD,
+      { key: "command", label: "Comando del server", type: "text", placeholder: "uvx code-index-mcp" },
+      { key: "tool", label: "Tool", type: "text", placeholder: "search_code" },
+      { key: "arguments", label: "Argumentos (JSON)", type: "textarea", rows: 4, vars: true, placeholder: "{ \"pattern\": \"{{1.output}}\" }" },
     ],
   },
   condition: {

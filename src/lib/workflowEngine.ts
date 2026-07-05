@@ -10,10 +10,11 @@
 //   herramienta local de dev, no input no confiable).
 // - mimo: sesión ACP por nodo; los permisos se auto-aprueban (WorkflowView no monta el listener
 //   de permisos → acpClient cae al fail-safe allow-first-option ya existente).
-import { runShellCommand, readTextFile, writeTextFile } from "./tauriApi";
+import { runShellCommand, readTextFile, writeTextFile, httpRequest, mcpCallTool } from "./tauriApi";
 import * as acpClient from "./acpClient";
 import { DEFAULT_PROVIDERS } from "./providers";
 import { useProjectStore } from "../store/projectStore";
+import { useAgentsStore } from "../store/agentsStore";
 import type { Edge } from "@xyflow/react";
 import type { WorkflowNode, NodeStatus } from "../store/workflowStore";
 import type { LogEntry } from "../components/OutputPanel";
@@ -142,6 +143,83 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   return { output: text };
 }
 
+// Nodo agente genérico: como execMimo pero el agente se elige por nodo (data.agentId → agentsStore).
+// Solo funcionan los agentes cuyo provider tiene config ACP (MiMo, Hermes); el resto es placeholder.
+async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  const agentId = String(node.data.agentId ?? "");
+  const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
+  if (!agent) throw new Error("Nodo agente sin agente seleccionado (o el agente ya no existe)");
+  const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
+  if (!provider?.acp) throw new Error(`El agente "${agent.name}" no tiene backend ACP — elegí uno con motor real (ej. MiMo)`);
+  const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
+  if (!promptText.trim()) throw new Error("Prompt vacío");
+  cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
+  const sessionId = await acpClient.newSession(agent.providerId, provider.acp, useProjectStore.getState().projectPath);
+  let text = "";
+  const unsub = acpClient.onUpdate((prov, sid, update) => {
+    if (prov !== agent.providerId || sid !== sessionId) return;
+    if (update.sessionUpdate === "agent_message_chunk") {
+      const content = update.content as { type?: string; text?: string } | string | undefined;
+      if (typeof content === "string") text += content;
+      else if (content?.type === "text" && typeof content.text === "string") text += content.text;
+    }
+  });
+  try {
+    await acpClient.prompt(agent.providerId, sessionId, promptText);
+  } finally {
+    unsub();
+  }
+  cb.onLog("success", `🤖 ${agent.name} respondió (${text.length} chars)`);
+  return { output: text };
+}
+
+// Nodo HTTP: request genérico vía Rust (sin CORS). Los campos url/headers/body admiten templating.
+// exitCode = 0 si la respuesta es 2xx, si no el código HTTP (así un condition puede ramificar sobre
+// {{id.exitCode}} y un no-2xx se marca "warn" ámbar, igual que un comando con exit ≠ 0).
+async function execHttp(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  const method = String(node.data.method ?? "GET");
+  const url = resolveTemplate(String(node.data.url ?? ""), results, input);
+  if (!url.trim()) throw new Error("URL vacía");
+  const headersRaw = resolveTemplate(String(node.data.headers ?? ""), results, input).trim();
+  let headers: Record<string, string> = {};
+  if (headersRaw) {
+    try {
+      headers = JSON.parse(headersRaw);
+    } catch {
+      throw new Error("Los headers deben ser un objeto JSON válido (ej. {\"Authorization\":\"Bearer …\"})");
+    }
+  }
+  const body = resolveTemplate(String(node.data.body ?? ""), results, input);
+  cb.onLog("info", `🌐 ${method.toUpperCase()} ${url}`);
+  const res = await httpRequest(method, url, headers, body);
+  const ok = res.status >= 200 && res.status < 300;
+  const preview = res.body.trim().slice(0, 200);
+  cb.onLog(ok ? "success" : "error", `↳ ${res.status}${preview ? ` · ${preview}` : ""}`);
+  return { output: res.body, exitCode: ok ? 0 : res.status };
+}
+
+// Nodo MCP: llama una tool de un MCP server (one-shot: DevFlow spawnea el server, hace el handshake y
+// ejecuta tools/call vía el comando Rust mcp_call_tool). Los argumentos admiten templating.
+async function execMcp(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  const command = String(node.data.command ?? "").trim();
+  if (!command) throw new Error("Comando del MCP server vacío (ej. 'uvx code-index-mcp')");
+  const tool = String(node.data.tool ?? "").trim();
+  if (!tool) throw new Error("Nombre de la tool vacío");
+  const argsRaw = resolveTemplate(String(node.data.arguments ?? ""), results, input).trim();
+  let args: unknown = {};
+  if (argsRaw) {
+    try {
+      args = JSON.parse(argsRaw);
+    } catch {
+      throw new Error("Los argumentos deben ser un objeto JSON válido");
+    }
+  }
+  cb.onLog("info", `🧩 MCP ${tool} (${command})`);
+  const out = await mcpCallTool(command, {}, tool, args);
+  cb.onLog("success", `🧩 ${tool} → ${out.slice(0, 200)}${out.length > 200 ? "…" : ""}`);
+  return { output: out };
+}
+
 // Ejecuta un nodo sub-flujo corriendo el flujo referenciado entero por dentro. El input del padre
 // se inyecta como {{input}} de los nodos de entrada del sub-flujo; el output del sub-flujo es la
 // concatenación de las salidas de sus nodos hoja. `stack` evita recursión infinita (un flujo que se
@@ -172,6 +250,9 @@ async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, in
     case "terminal": return execTerminal(node, results, input, cb);
     case "condition": return execCondition(node, results, input, cb);
     case "mimo": return execMimo(node, results, input, cb);
+    case "agent": return execAgent(node, results, input, cb);
+    case "http": return execHttp(node, results, input, cb);
+    case "mcp": return execMcp(node, results, input, cb);
     case "subflow": return execSubflow(node, input, cb, stack);
     default: throw new Error(`Tipo de nodo desconocido: ${node.type}`);
   }

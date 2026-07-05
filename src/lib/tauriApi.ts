@@ -58,6 +58,31 @@ export async function writeTextFile(path: string, content: string): Promise<void
   return invoke<void>("write_text_file", { path, content });
 }
 
+export type HttpResponse = { status: number; body: string };
+
+// Request HTTP corrido en Rust (reqwest) — sin CORS, para el nodo "http" de los workflows.
+export async function httpRequest(
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body: string
+): Promise<HttpResponse> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<HttpResponse>("http_request", { method, url, headers, body });
+}
+
+// Cliente MCP one-shot: spawnea el server, hace el handshake y ejecuta una tool. Devuelve el texto
+// del resultado. Para el nodo "mcp" de los workflows.
+export async function mcpCallTool(
+  command: string,
+  envVars: Record<string, string>,
+  tool: string,
+  args: unknown
+): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("mcp_call_tool", { command, envVars, tool, arguments: args });
+}
+
 export async function ptySpawn(id: string, cwd: string, rows: number, cols: number): Promise<void> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   return invoke<void>("pty_spawn", { id, cwd, rows, cols });

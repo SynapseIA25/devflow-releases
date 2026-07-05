@@ -228,6 +228,175 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct HttpResponse {
+    status: u16,
+    body: String,
+}
+
+// Request HTTP genérico para el nodo "http" del motor de workflows. Corre en Rust (reqwest) en vez
+// del webview para evitar CORS y poder llamar cualquier API (Telegram, email, deploy webhooks…).
+#[tauri::command]
+async fn http_request(
+    method: String,
+    url: String,
+    headers: HashMap<String, String>,
+    body: String,
+) -> Result<HttpResponse, String> {
+    let m = reqwest::Method::from_bytes(method.trim().to_uppercase().as_bytes())
+        .map_err(|e| format!("Método HTTP inválido: {e}"))?;
+    let client = reqwest::Client::new();
+    let mut req = client.request(m, url.trim());
+    for (k, v) in headers {
+        req = req.header(k, v);
+    }
+    if !body.is_empty() {
+        req = req.body(body);
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    Ok(HttpResponse { status, body })
+}
+
+// Extrae el texto de un `result` de tools/call: concatena los items {type:"text", text}. Si no hay
+// texto, cae a serializar el result crudo (para tools que devuelven structured content).
+fn extract_mcp_text(result: &serde_json::Value) -> String {
+    let mut out = String::new();
+    if let Some(content) = result.get("content").and_then(|c| c.as_array()) {
+        for item in content {
+            if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(t);
+            }
+        }
+    }
+    if out.is_empty() {
+        out = serde_json::to_string(result).unwrap_or_default();
+    }
+    out
+}
+
+// Cliente MCP one-shot para el nodo "mcp" de los workflows: spawnea el server, hace el handshake
+// JSON-RPC (initialize → notifications/initialized → tools/call) y devuelve el texto del resultado.
+// No mantiene el server vivo entre llamadas (cold start por ejecución) — simple y determinista para
+// un nodo. Timeout de 30s por respuesta vía un hilo lector + channel, así un server colgado no bloquea
+// para siempre. En Windows va por `cmd /C` (igual que start_mcp_server) para resolver shims de npx/uvx.
+#[tauri::command]
+fn mcp_call_tool(
+    command: String,
+    env_vars: HashMap<String, String>,
+    tool: String,
+    arguments: serde_json::Value,
+) -> Result<String, String> {
+    let filtered_env: HashMap<_, _> = env_vars.iter().filter(|(_, v)| !v.is_empty()).collect();
+
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = Command::new("cmd");
+        c.args(["/C", &command]);
+        c
+    } else {
+        let mut parts = command.split_whitespace();
+        let prog = parts.next().unwrap_or("").to_string();
+        let rest: Vec<String> = parts.map(|s| s.to_string()).collect();
+        let mut c = Command::new(prog);
+        c.args(rest);
+        c
+    };
+
+    let mut child = cmd
+        .envs(&filtered_env)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("no se pudo iniciar el MCP server '{command}': {e}"))?;
+
+    let mut stdin = child.stdin.take().ok_or("sin stdin del MCP server")?;
+    let stdout = child.stdout.take().ok_or("sin stdout del MCP server")?;
+
+    // Hilo lector: parsea cada línea JSON-RPC y la manda por el channel.
+    let (tx, rx) = std::sync::mpsc::channel::<serde_json::Value>();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let t = line.trim();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(t) {
+                        if tx.send(v).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    fn send_msg(stdin: &mut std::process::ChildStdin, v: &serde_json::Value) -> Result<(), String> {
+        let line = serde_json::to_string(v).map_err(|e| e.to_string())?;
+        stdin.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+        stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+        stdin.flush().map_err(|e| e.to_string())
+    }
+    fn recv_id(rx: &std::sync::mpsc::Receiver<serde_json::Value>, id: i64) -> Result<serde_json::Value, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let remaining = deadline
+                .checked_duration_since(std::time::Instant::now())
+                .ok_or("timeout esperando respuesta del MCP server")?;
+            match rx.recv_timeout(remaining) {
+                Ok(msg) => {
+                    if msg.get("id").and_then(|v| v.as_i64()) == Some(id) {
+                        return Ok(msg);
+                    }
+                }
+                Err(_) => return Err("timeout esperando respuesta del MCP server".into()),
+            }
+        }
+    }
+
+    // Envuelto para poder matar el child pase lo que pase (éxito, error o timeout).
+    let mut run = || -> Result<String, String> {
+        send_msg(&mut stdin, &serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "DevFlow", "version": "0.1" } }
+        }))?;
+        let init = recv_id(&rx, 1)?;
+        if let Some(err) = init.get("error") {
+            return Err(format!("initialize falló: {err}"));
+        }
+        send_msg(&mut stdin, &serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))?;
+        send_msg(&mut stdin, &serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": tool, "arguments": arguments }
+        }))?;
+        let resp = recv_id(&rx, 2)?;
+        if let Some(err) = resp.get("error") {
+            return Err(format!("tools/call falló: {err}"));
+        }
+        let result = resp.get("result").ok_or("respuesta del MCP server sin 'result'")?;
+        let text = extract_mcp_text(result);
+        if result.get("isError").and_then(|v| v.as_bool()) == Some(true) {
+            return Err(format!("la tool devolvió un error: {text}"));
+        }
+        Ok(text)
+    };
+
+    let out = run();
+    let _ = child.kill();
+    out
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FsEntry {
     name: String,
     path: String,
@@ -486,6 +655,8 @@ pub fn run() {
             acp_stop,
             read_text_file,
             write_text_file,
+            http_request,
+            mcp_call_tool,
             read_dir,
             create_dir,
             pick_folder,
