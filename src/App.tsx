@@ -3,6 +3,7 @@ import { type ReactElement } from "react";
 import "./App.css";
 import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
+import { TriggerRunner } from "./components/TriggerRunner";
 import { FloatingWindow } from "./components/FloatingWindow";
 import { CodeFlowPanel } from "./components/panel/CodeFlowPanel";
 import { ChatView } from "./views/ChatView";
@@ -57,6 +58,8 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Scheduler global de triggers (no renderiza UI; corre mientras la app está abierta). */}
+      <TriggerRunner />
       <NavBar
         active={view}
         onChange={setView}

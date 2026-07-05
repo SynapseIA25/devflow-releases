@@ -463,12 +463,12 @@ async function runGraph(
   return { errored, cancelled: false, output };
 }
 
-export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks): Promise<void> {
+export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks, initialInput = ""): Promise<void> {
   if (nodes.length === 0) {
     cb.onLog("warn", "El canvas está vacío — nada que ejecutar.");
     return;
   }
-  const r = await runGraph(nodes, edges, cb, "", new Set());
+  const r = await runGraph(nodes, edges, cb, initialInput, new Set());
   if (r.cancelled) return; // ya logueó "Ejecución cancelada."
   if (!r.errored) cb.onLog("success", "✓ Workflow completado.");
   else cb.onLog("error", "Workflow detenido por un error.");

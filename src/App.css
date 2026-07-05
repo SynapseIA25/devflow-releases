@@ -1388,6 +1388,50 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3);
 }
 
+/* ── Triggers modal ──────────────────────────────────── */
+.trg-modal { width: 620px; max-width: 92vw; }
+.trg-note {
+  margin: 0 16px 12px; padding: 8px 10px; font-size: 11px; color: var(--text-2);
+  background: rgba(124,58,237,0.08); border: 1px solid var(--border); border-radius: 6px;
+}
+.trg-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; max-height: 46vh; overflow-y: auto; }
+.trg-empty { padding: 18px; text-align: center; color: var(--text-3); font-size: 12px; }
+.trg-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+}
+.trg-row--on { border-color: var(--accent); }
+.trg-toggle {
+  flex-shrink: 0; width: 34px; height: 18px; border-radius: 10px; border: none;
+  background: var(--bg-hover); cursor: pointer; position: relative; transition: background 0.15s;
+}
+.trg-toggle.on { background: var(--accent); }
+.trg-toggle-dot {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; transition: left 0.15s;
+}
+.trg-toggle.on .trg-toggle-dot { left: 18px; }
+.trg-type, .trg-input {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); font-size: 12px; padding: 4px 6px; outline: none;
+}
+.trg-type:focus, .trg-input:focus { border-color: var(--accent); }
+.trg-config { display: flex; align-items: center; gap: 5px; flex: 1; color: var(--text-3); min-width: 0; }
+.trg-input--num { width: 58px; }
+.trg-input--cron { width: 110px; font-family: 'Cascadia Code','Consolas',monospace; }
+.trg-input--cron.invalid { border-color: var(--red); }
+.trg-input--url, .trg-input--path { flex: 1; min-width: 0; font-family: 'Cascadia Code','Consolas',monospace; font-size: 10.5px; }
+.trg-input--url { color: var(--text-3); }
+.trg-unit { font-size: 11px; color: var(--text-3); }
+.trg-cron-desc { font-size: 10px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trg-status { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-3); width: 92px; flex-shrink: 0; }
+.trg-del {
+  flex-shrink: 0; background: none; border: none; color: var(--text-3); cursor: pointer; padding: 4px;
+  border-radius: 4px; display: flex;
+}
+.trg-del:hover { color: var(--red); background: rgba(248,81,73,0.1); }
+.trg-add { margin: 14px 16px 16px; }
+
 /* Chip del archivo activo del editor en la barra de contexto del chat (sin botón de quitar). */
 .ctx-chip--editor { border-color: var(--accent); color: var(--accent-2); }
 

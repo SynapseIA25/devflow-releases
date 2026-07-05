@@ -9,6 +9,10 @@ pub struct McpProcesses(pub Mutex<HashMap<String, Child>>);
 // Keyed por provider ("mimo", "hermes", ...) — cada agente ACP corre en su propio proceso hijo,
 // así DevFlow puede tener una sesión de MiMo y una de Hermes activas al mismo tiempo.
 pub struct AcpProcesses(pub Mutex<HashMap<String, Child>>);
+// Trigger webhook: puerto del servidor HTTP si está corriendo (se arranca una sola vez).
+pub struct WebhookState(pub Mutex<Option<u16>>);
+// Trigger on-file-change: un watcher de notify por trigger, keyed por su id.
+pub struct WatchState(pub Mutex<HashMap<String, notify::RecommendedWatcher>>);
 
 #[tauri::command]
 fn start_mcp_server(
@@ -395,6 +399,71 @@ fn mcp_call_tool(
     out
 }
 
+// Arranca (una sola vez) un servidor HTTP local para el trigger webhook. Cada request a
+// /hook/<token> emite el evento "webhook-fired" {token, body} al frontend (el TriggerRunner dispara
+// el workflow cuyo trigger tiene ese id, usando el body como {{input}}). Escucha en 127.0.0.1 (local).
+#[tauri::command]
+fn webhook_start(app: AppHandle, port: u16, state: State<WebhookState>) -> Result<u16, String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(p) = *guard {
+        return Ok(p);
+    }
+    let server = tiny_http::Server::http(format!("127.0.0.1:{port}")).map_err(|e| e.to_string())?;
+    *guard = Some(port);
+    std::thread::spawn(move || {
+        for mut req in server.incoming_requests() {
+            let token = req
+                .url()
+                .strip_prefix("/hook/")
+                .map(|rest| rest.split(|c| c == '?' || c == '/').next().unwrap_or("").to_string())
+                .filter(|s| !s.is_empty());
+            let mut body = String::new();
+            let _ = req.as_reader().read_to_string(&mut body);
+            if let Some(token) = token {
+                let _ = app.emit("webhook-fired", serde_json::json!({ "token": token, "body": body }));
+            }
+            let _ = req.respond(tiny_http::Response::from_string("ok"));
+        }
+    });
+    Ok(port)
+}
+
+// Empieza a vigilar `path` (archivo o carpeta) para el trigger `id`. Ante cualquier cambio emite
+// "file-changed" con el id (el TriggerRunner dispara el workflow, con debounce del lado del cliente).
+#[tauri::command]
+fn watch_start(app: AppHandle, id: String, path: String, state: State<WatchState>) -> Result<(), String> {
+    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    map.remove(&id); // reemplaza un watcher previo del mismo trigger si lo había
+    let app_cloned = app.clone();
+    let id_cloned = id.clone();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        if let Ok(event) = res {
+            if matches!(
+                event.kind,
+                notify::EventKind::Modify(_) | notify::EventKind::Create(_) | notify::EventKind::Remove(_)
+            ) {
+                let _ = app_cloned.emit("file-changed", &id_cloned);
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    let p = std::path::Path::new(&path);
+    let mode = if p.is_dir() {
+        notify::RecursiveMode::Recursive
+    } else {
+        notify::RecursiveMode::NonRecursive
+    };
+    notify::Watcher::watch(&mut watcher, p, mode).map_err(|e| e.to_string())?;
+    map.insert(id, watcher);
+    Ok(())
+}
+
+#[tauri::command]
+fn watch_stop(id: String, state: State<WatchState>) -> Result<(), String> {
+    state.0.lock().map_err(|e| e.to_string())?.remove(&id);
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FsEntry {
@@ -645,6 +714,8 @@ pub fn run() {
         .manage(McpProcesses(Mutex::new(HashMap::new())))
         .manage(AcpProcesses(Mutex::new(HashMap::new())))
         .manage(PtySessions(Mutex::new(HashMap::new())))
+        .manage(WebhookState(Mutex::new(None)))
+        .manage(WatchState(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             start_mcp_server,
             stop_mcp_server,
@@ -657,6 +728,9 @@ pub fn run() {
             write_text_file,
             http_request,
             mcp_call_tool,
+            webhook_start,
+            watch_start,
+            watch_stop,
             read_dir,
             create_dir,
             pick_folder,

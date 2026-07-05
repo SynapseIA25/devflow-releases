@@ -71,6 +71,23 @@ export async function httpRequest(
   return invoke<HttpResponse>("http_request", { method, url, headers, body });
 }
 
+// Trigger webhook: arranca el servidor HTTP local (idempotente) y devuelve el puerto.
+export async function webhookStart(port: number): Promise<number> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<number>("webhook_start", { port });
+}
+
+// Trigger on-file-change: empieza/actualiza el watcher del path para un trigger.
+export async function watchStart(id: string, path: string): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("watch_start", { id, path });
+}
+
+export async function watchStop(id: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("watch_stop", { id });
+}
+
 // Cliente MCP one-shot: spawnea el server, hace el handshake y ejecuta una tool. Devuelve el texto
 // del resultado. Para el nodo "mcp" de los workflows.
 export async function mcpCallTool(

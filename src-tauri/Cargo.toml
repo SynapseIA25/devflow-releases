@@ -26,4 +26,6 @@ portable-pty = "0.9.0"
 rfd = "0.15"
 # rustls en vez de la TLS del sistema → compila igual en Windows/Linux/Mac sin openssl del SO.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "charset", "http2"] }
+tiny_http = "0.12"   # servidor HTTP mínimo para el trigger webhook
+notify = "6"         # watcher de filesystem para el trigger on-file-change
 

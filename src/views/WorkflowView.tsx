@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Play, Square, Plus, Trash2 } from "lucide-react";
+import { Play, Square, Plus, Trash2, Clock } from "lucide-react";
 import { Canvas } from "../components/Canvas";
 import { Sidebar } from "../components/Sidebar";
 import { NodeInspector } from "../components/workflow/NodeInspector";
+import { TriggersModal } from "../components/workflow/TriggersModal";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useMetricsStore } from "../store/metricsStore";
@@ -14,6 +15,7 @@ export function WorkflowView() {
     { time: new Date().toLocaleTimeString(), level: "info", message: "Editor de workflows listo. Arrastrá nodos desde el panel izquierdo y dale Run." },
   ]);
   const [running, setRunning] = useState(false);
+  const [showTriggers, setShowTriggers] = useState(false);
   const cancelRef = useRef(false);
 
   const order = useWorkflowStore((s) => s.order);
@@ -115,6 +117,14 @@ export function WorkflowView() {
             <div className="wf-toolbar-spacer" />
 
             <button
+              className="wf-icon-btn"
+              onClick={() => setShowTriggers(true)}
+              title="Triggers / programar este flujo"
+            >
+              <Clock size={14} />
+            </button>
+
+            <button
               className={`wf-run-btn${running ? " running" : ""}`}
               onClick={running ? handleStop : handleRun}
             >
@@ -130,6 +140,10 @@ export function WorkflowView() {
         </div>
         <NodeInspector />
       </ReactFlowProvider>
+
+      {showTriggers && (
+        <TriggersModal workflowId={activeId} workflowName={activeName} onClose={() => setShowTriggers(false)} />
+      )}
     </div>
   );
 }
