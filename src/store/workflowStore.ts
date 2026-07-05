@@ -65,6 +65,7 @@ const defaultsByType: Record<string, WorkflowNodeData> = {
   terminal: { label: "Terminal", command: "" },
   file: { label: "File", path: "", operation: "read" },
   condition: { label: "Condition", condition: "" },
+  loop: { label: "Loop", list: "", flowId: "", parallel: "sequential" },
   subflow: { label: "Sub-flujo", flowId: "", flowName: "" },
 };
 

@@ -50,6 +50,13 @@ const NODE_PALETTE = [
     desc: "Branch logic",
     color: "rgba(14,165,233,0.2)",
   },
+  {
+    type: "loop",
+    icon: "🔁",
+    name: "Loop / ForEach",
+    desc: "Iterar una lista",
+    color: "rgba(245,158,11,0.2)",
+  },
 ];
 
 export function Sidebar() {

@@ -109,6 +109,30 @@ export function NodeInspector() {
             </label>
           );
         })}
+
+        {/* Manejo de errores — genérico para cualquier nodo (lo lee runGraph en el motor). */}
+        <div className="wf-adv-sep">Avanzado</div>
+        <label className="wf-field">
+          <span className="wf-field-label">Reintentos si falla</span>
+          <input
+            className="wf-var-input"
+            type="number"
+            min={0}
+            value={String(selected.data.retries ?? 0)}
+            onChange={(e) => updateNodeData(selected.id, { retries: Math.max(0, Math.floor(Number(e.target.value)) || 0) })}
+          />
+        </label>
+        <label className="wf-field">
+          <span className="wf-field-label">Si falla (tras reintentos)</span>
+          <select
+            className="wf-field-select"
+            value={String(selected.data.onError ?? "stop")}
+            onChange={(e) => updateNodeData(selected.id, { onError: e.target.value })}
+          >
+            <option value="stop">Detener el flujo</option>
+            <option value="continue">Continuar (capturar error)</option>
+          </select>
+        </label>
       </div>
     </div>
   );

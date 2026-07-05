@@ -113,6 +113,21 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
       { key: "condition", label: "Expresión", type: "text", vars: true, placeholder: "{{3.exitCode}} === 0" },
     ],
   },
+  loop: {
+    type: "loop",
+    title: "Loop / ForEach",
+    icon: "🔁",
+    description: "Ejecuta un sub-flujo una vez por cada item de una lista (array JSON o líneas). El item se pasa como {{input}} (accedé campos con {{input.campo}}). Salida = array JSON con el resultado de cada iteración.",
+    fields: [
+      LABEL_FIELD,
+      { key: "list", label: "Lista (array JSON o líneas)", type: "textarea", rows: 4, vars: true, placeholder: "[{\"email\":\"a@x.com\"},{\"email\":\"b@x.com\"}]" },
+      { key: "flowId", label: "Sub-flujo por item", type: "select", dynamicOptions: "flows" },
+      { key: "parallel", label: "Ejecución", type: "select", options: [
+        { value: "sequential", label: "Secuencial" },
+        { value: "parallel", label: "Paralelo (todas a la vez)" },
+      ] },
+    ],
+  },
   subflow: {
     type: "subflow",
     title: "Sub-flujo",

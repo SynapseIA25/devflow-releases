@@ -495,6 +495,9 @@ html, body, #root {
 .http-node .rf-node-badge { background: rgba(34,211,238,0.18); color: #22d3ee; }
 .mcp-node .rf-node-icon { background: rgba(56,189,248,0.15); }
 .mcp-node .rf-node-badge { background: rgba(56,189,248,0.15); color: var(--blue); }
+.loop-node .rf-node-icon { background: rgba(245,158,11,0.18); }
+.loop-node .rf-node-badge { background: rgba(245,158,11,0.18); color: var(--yellow); }
+.loop-node { border-style: dashed; }
 .subflow-meta { font-size: 10px; color: var(--text-2); margin-top: 5px; }
 .subflow-meta--warn { color: var(--orange); }
 
@@ -1380,6 +1383,10 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .wf-var-opt.active, .wf-var-opt:hover { background: var(--bg-hover); }
 .wf-var-opt code { font-size: 11px; color: var(--accent-2); font-family: 'Cascadia Code','Consolas',monospace; }
 .wf-var-opt span { font-size: 10px; color: var(--text-3); }
+.wf-adv-sep {
+  margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-2);
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3);
+}
 
 /* Chip del archivo activo del editor en la barra de contexto del chat (sin botón de quitar). */
 .ctx-chip--editor { border-color: var(--accent); color: var(--accent-2); }
