@@ -28,6 +28,8 @@ export type EngineCallbacks = {
   // Resuelve un nodo "subflow" a su flujo referenciado (referencia viva, no copia). Si falta,
   // los nodos subflow fallan con un error claro.
   resolveFlow?: (flowId: string) => { name: string; nodes: WorkflowNode[]; edges: Edge[] } | undefined;
+  // Se llama cuando un nodo file escribe un archivo — la UI lo ofrece para abrir en el editor.
+  onFileWritten?: (path: string) => void;
 };
 
 // ── Templating ──────────────────────────────────────────────────────────────
@@ -127,6 +129,7 @@ async function execFile(node: WorkflowNode, results: Map<string, NodeResult>, in
   }
   await writeTextFile(path, input);
   cb.onLog("success", `📄 Wrote ${input.length} chars to ${path}`);
+  cb.onFileWritten?.(path);
   return { output: "" };
 }
 

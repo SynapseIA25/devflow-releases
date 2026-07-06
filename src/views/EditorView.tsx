@@ -71,6 +71,12 @@ export function EditorView() {
                 </button>
               </div>
             </div>
+            {active.externalChanged && (
+              <div className="editor-conflict">
+                <span>⚠ El archivo cambió en disco (afuera del editor) y tenés cambios sin guardar.</span>
+                <button onClick={() => reload(active.path)}>Recargar desde disco</button>
+              </div>
+            )}
             <div className="editor-body">
               {active.error ? (
                 <div className="editor-error">No se puede abrir: {active.error}</div>

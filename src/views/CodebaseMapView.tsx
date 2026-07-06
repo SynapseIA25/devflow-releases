@@ -7,7 +7,7 @@ import "@xyflow/react/dist/style.css";
 import { RefreshCw, Loader2, Network } from "lucide-react";
 import { buildCodebaseGraph, type CodebaseGraph } from "../lib/codebaseMap";
 import { useProjectStore } from "../store/projectStore";
-import { useEditorStore } from "../store/editorStore";
+import { useUiStore } from "../store/uiStore";
 import { isTauri } from "../lib/tauriApi";
 
 // Paleta por carpeta (los nodos de una misma carpeta comparten color de borde).
@@ -64,7 +64,7 @@ function toFlow(graph: CodebaseGraph): { nodes: Node[]; edges: Edge[] } {
 
 export function CodebaseMapView() {
   const projectPath = useProjectStore((s) => s.projectPath);
-  const openFile = useEditorStore((s) => s.openFile);
+  const openInEditor = useUiStore((s) => s.openInEditor);
   const [graph, setGraph] = useState<CodebaseGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,9 +96,9 @@ export function CodebaseMapView() {
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: Node) => {
       const path = (node.data as { path?: string }).path;
-      if (path) void openFile(path); // abre el archivo como pestaña del editor
+      if (path) openInEditor(path); // abre el archivo en el editor y navega a la vista Código
     },
-    [openFile]
+    [openInEditor]
   );
 
   return (

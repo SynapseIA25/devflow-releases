@@ -1432,6 +1432,19 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .trg-del:hover { color: var(--red); background: rgba(248,81,73,0.1); }
 .trg-add { margin: 14px 16px 16px; }
 
+/* Archivos generados por un workflow — abrir en el editor (Fase E). */
+.wf-written {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 10px; background: var(--bg-panel); border-top: 1px solid var(--border);
+}
+.wf-written-label { font-size: 11px; color: var(--text-3); }
+.wf-written-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  color: var(--accent-2); font-size: 11px; cursor: pointer; transition: background 0.12s;
+}
+.wf-written-chip:hover { background: var(--bg-hover); }
+
 /* Chip del archivo activo del editor en la barra de contexto del chat (sin botón de quitar). */
 .ctx-chip--editor { border-color: var(--accent); color: var(--accent-2); }
 
@@ -1512,6 +1525,17 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .editor-tb-btn:hover { background: var(--bg-hover); color: var(--text); }
 .editor-tb-save:not(:disabled) { border-color: var(--accent); color: var(--accent-2); }
 .editor-tb-btn:disabled { opacity: 0.5; cursor: default; }
+
+.editor-conflict {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 12px; background: rgba(251,191,36,0.12); border-bottom: 1px solid rgba(251,191,36,0.35);
+  font-size: 11px; color: var(--yellow); flex-shrink: 0;
+}
+.editor-conflict button {
+  flex-shrink: 0; padding: 3px 10px; border: 1px solid var(--yellow); border-radius: 6px;
+  background: transparent; color: var(--yellow); font-size: 11px; cursor: pointer;
+}
+.editor-conflict button:hover { background: rgba(251,191,36,0.15); }
 
 .editor-body { flex: 1; overflow: hidden; min-height: 0; }
 .code-editor-host { height: 100%; width: 100%; overflow: hidden; }

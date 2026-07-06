@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Play, Square, Plus, Trash2, Clock } from "lucide-react";
+import { Play, Square, Plus, Trash2, Clock, FileCode } from "lucide-react";
 import { Canvas } from "../components/Canvas";
 import { Sidebar } from "../components/Sidebar";
 import { NodeInspector } from "../components/workflow/NodeInspector";
 import { TriggersModal } from "../components/workflow/TriggersModal";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
 import { useWorkflowStore } from "../store/workflowStore";
+import { useUiStore } from "../store/uiStore";
 import { useMetricsStore } from "../store/metricsStore";
 import { runWorkflow } from "../lib/workflowEngine";
 
@@ -16,7 +17,9 @@ export function WorkflowView() {
   ]);
   const [running, setRunning] = useState(false);
   const [showTriggers, setShowTriggers] = useState(false);
+  const [writtenFiles, setWrittenFiles] = useState<string[]>([]);
   const cancelRef = useRef(false);
+  const openInEditor = useUiStore((s) => s.openInEditor);
 
   const order = useWorkflowStore((s) => s.order);
   const activeId = useWorkflowStore((s) => s.activeId);
@@ -43,6 +46,7 @@ export function WorkflowView() {
     if (!w) return;
     cancelRef.current = false;
     setRunning(true);
+    setWrittenFiles([]);
     st.resetStatuses();
     log("info", `▶ Ejecutando "${w.name}" (${w.nodes.length} nodos)…`);
     const startedAt = performance.now();
@@ -56,6 +60,7 @@ export function WorkflowView() {
           const f = useWorkflowStore.getState().workflows[flowId];
           return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
         },
+        onFileWritten: (path) => setWrittenFiles((prev) => (prev.includes(path) ? prev : [...prev, path])),
       });
     } catch (e) {
       log("error", `Error inesperado: ${e instanceof Error ? e.message : String(e)}`);
@@ -136,6 +141,21 @@ export function WorkflowView() {
             </span>
           </div>
           <Canvas onLog={addLog} />
+          {writtenFiles.length > 0 && (
+            <div className="wf-written">
+              <span className="wf-written-label">Archivos generados:</span>
+              {writtenFiles.map((p) => (
+                <button
+                  key={p}
+                  className="wf-written-chip"
+                  onClick={() => openInEditor(p)}
+                  title={`Abrir ${p} en el editor`}
+                >
+                  <FileCode size={11} /> {p.split(/[\\/]/).pop()}
+                </button>
+              ))}
+            </div>
+          )}
           <OutputPanel logs={logs} onClear={() => setLogs([])} />
         </div>
         <NodeInspector />

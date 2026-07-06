@@ -12,6 +12,8 @@ import { DEFAULT_PROVIDERS } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
+import { useWorkflowStore } from "../store/workflowStore";
+import { runWorkflow } from "../lib/workflowEngine";
 import { TerminalPane } from "../components/TerminalPane";
 
 type SpeechRecognitionLike = {
@@ -462,11 +464,49 @@ export function ChatView() {
     return provider?.acp ? runAcp(text, provider.id, provider.acp) : runMockAI(text);
   };
 
+  // Comando /run [nombre]: ejecuta un workflow desde el chat (sin nombre → el flujo activo; con
+  // nombre → el primero que lo contenga) y vuelca sus logs como un bloque del chat.
+  const runWorkflowFromChat = async (arg: string) => {
+    const st = useWorkflowStore.getState();
+    const flows = st.order.map((fid) => st.workflows[fid]);
+    const query = arg.trim().toLowerCase();
+    const w = query ? flows.find((f) => f.name.toLowerCase().includes(query)) : st.workflows[st.activeId];
+    if (!w) {
+      addBlock({ type: "ai", agentId: activeAgentId, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
+      return;
+    }
+    setLoading(true);
+    const lines: string[] = [];
+    try {
+      await runWorkflow(w.nodes, w.edges, {
+        onLog: (lvl, msg) => lines.push(`${lvl === "error" ? "✖" : lvl === "success" ? "✓" : lvl === "warn" ? "!" : "·"} ${msg}`),
+        setNodeStatus: (id, status) => {
+          if (useWorkflowStore.getState().activeId === w.id) useWorkflowStore.getState().setNodeStatus(id, status);
+        },
+        isCancelled: () => false,
+        resolveFlow: (fid) => {
+          const f = useWorkflowStore.getState().workflows[fid];
+          return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
+        },
+      });
+    } catch (e) {
+      lines.push(`✖ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+    addBlock({ type: "ai", agentId: activeAgentId, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
+  };
+
   const handleSend = () => {
     const t = input.trim();
     if (!t || loading) return;
     setInput("");
     addBlock({ type: "user", content: t });
+    // Comando de chat: /run [nombre de flujo] dispara un workflow en vez de hablar con el agente.
+    if (t === "/run" || t.startsWith("/run ")) {
+      void runWorkflowFromChat(t.slice(4));
+      return;
+    }
     runAI(t);
   };
 
@@ -623,7 +663,7 @@ export function ChatView() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Pedile algo al agente... (Enter para enviar)"
+                placeholder="Pedile algo al agente… (o /run [flujo] para ejecutar un workflow)"
                 rows={2}
                 disabled={loading}
               />

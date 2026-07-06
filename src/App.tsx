@@ -4,6 +4,7 @@ import "./App.css";
 import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
+import { EditorWatcher } from "./components/EditorWatcher";
 import { FloatingWindow } from "./components/FloatingWindow";
 import { CodeFlowPanel } from "./components/panel/CodeFlowPanel";
 import { ChatView } from "./views/ChatView";
@@ -14,6 +15,7 @@ import { AgentsView } from "./views/AgentsView";
 import { McpView } from "./views/McpView";
 import { SettingsView } from "./views/SettingsView";
 import { GitBranch, Activity } from "lucide-react";
+import { useUiStore } from "./store/uiStore";
 
 // El chat NO es una vista más: es un panel único (ChatView) montado UNA sola vez y siempre presente
 // en el árbol, para preservar sus sesiones ACP y sus PTYs al cambiar de vista. Se reposiciona por
@@ -33,7 +35,8 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
 const SHOW_RIGHT_PANEL: ViewId[] = ["agents"];
 
 export default function App() {
-  const [view, setView]                 = useState<ViewId>("chat");
+  const view                            = useUiStore((s) => s.view);
+  const setView                         = useUiStore((s) => s.setView);
   const [chatDock, setChatDock]         = useState(false);
   const [dockWidth, setDockWidth]       = useState(420);
   const [showCodeFlow, setShowCodeFlow] = useState(false);
@@ -58,8 +61,9 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Scheduler global de triggers (no renderiza UI; corre mientras la app está abierta). */}
+      {/* Scheduler global de triggers + watcher del editor (no renderizan UI). */}
       <TriggerRunner />
+      <EditorWatcher />
       <NavBar
         active={view}
         onChange={setView}

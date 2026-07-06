@@ -11,6 +11,9 @@ export type EditorTab = {
   savedContent: string;
   loading: boolean;
   error: string | null;
+  // El archivo cambió en disco (ej. lo escribió el agente) mientras la pestaña tenía cambios sin
+  // guardar → no se auto-recarga (no pisar tus ediciones); se muestra un aviso para recargar a mano.
+  externalChanged?: boolean;
 };
 
 function nameOf(path: string): string {
@@ -27,6 +30,7 @@ type EditorStore = {
   save: (path: string) => Promise<void>;
   reload: (path: string) => Promise<void>;
   load: (path: string) => Promise<void>;
+  markExternalChanged: (path: string) => void;
 };
 
 export const useEditorStore = create<EditorStore>()(
@@ -42,7 +46,7 @@ export const useEditorStore = create<EditorStore>()(
           const content = await readTextFile(path);
           set((s) => ({
             tabs: s.tabs.map((t) =>
-              t.path === path ? { ...t, content, savedContent: content, loading: false, error: null } : t
+              t.path === path ? { ...t, content, savedContent: content, loading: false, error: null, externalChanged: false } : t
             ),
           }));
         } catch (e) {
@@ -104,6 +108,11 @@ export const useEditorStore = create<EditorStore>()(
         }));
         await get().load(path);
       },
+
+      markExternalChanged: (path) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.path === path ? { ...t, externalChanged: true } : t)),
+        })),
     }),
     {
       name: "devflow-editor",
