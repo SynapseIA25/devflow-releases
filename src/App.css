@@ -1767,3 +1767,47 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .proj-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 100%; min-height: 260px; color: var(--text-3); text-align: center; }
 .proj-placeholder-icon { font-size: 34px; }
 .proj-placeholder-sub { font-size: 11.5px; color: var(--text-3); }
+
+/* Tanda B — Estructura (embed del File Explorer) */
+.proj-estructura { height: 100%; display: flex; }
+.proj-estructura .file-explorer { flex: 1; height: 100%; }
+
+/* Tanda B — Documentación (lista de .md + ver/editar con markdown) */
+.proj-docs { height: 100%; display: flex; }
+.proj-docs-list { flex: 0 0 240px; border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+.proj-docs-list-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 11px; color: var(--text-3); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.proj-docs-none { padding: 10px; }
+.proj-docs-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px; border: none; background: none; color: var(--text-2); font-size: 12px; text-align: left; cursor: pointer; }
+.proj-docs-item:hover { background: var(--bg-card); color: var(--text-1); }
+.proj-docs-item.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent-2); }
+.proj-docs-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-docs-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.proj-docs-empty { padding: 40px; color: var(--text-3); font-size: 13px; }
+.proj-docs-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.proj-docs-name { font-size: 12px; color: var(--text-1); font-family: 'Cascadia Code','Consolas',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-docs-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.proj-docs-actions .proj-btn { padding: 5px 10px; align-self: auto; }
+.proj-docs-body { flex: 1; overflow-y: auto; min-height: 0; }
+.proj-docs-editor { display: block; width: 100%; height: 100%; box-sizing: border-box; resize: none; border: none; outline: none; background: var(--bg); color: var(--text-1); font-family: 'Cascadia Code','Consolas',monospace; font-size: 13px; line-height: 1.6; padding: 16px 20px; }
+
+/* Render markdown de la documentación (reusa el look de .doc-ai + tablas) */
+.proj-md { padding: 18px 24px; max-width: 860px; color: var(--text); font-size: 14px; line-height: 1.7; }
+.proj-md h1, .proj-md h2 { font-size: 18px; font-weight: 700; color: var(--text); margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border-2); }
+.proj-md h1:first-child, .proj-md h2:first-child { margin-top: 0; }
+.proj-md h3 { font-size: 15px; font-weight: 700; color: var(--text); margin: 16px 0 8px; }
+.proj-md h4 { font-size: 13.5px; font-weight: 700; color: var(--text-2); margin: 14px 0 6px; }
+.proj-md p { margin: 0 0 12px; }
+.proj-md ul, .proj-md ol { padding-left: 22px; margin: 8px 0; }
+.proj-md li { margin: 4px 0; }
+.proj-md pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 12px 0; font-family: 'Cascadia Code','Consolas',monospace; font-size: 12.5px; }
+.proj-md code { font-family: 'Cascadia Code','Consolas',monospace; font-size: 12.5px; }
+.proj-md :not(pre) > code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.proj-md blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text-2); margin: 10px 0; font-style: italic; }
+.proj-md strong { color: var(--text); font-weight: 600; }
+.proj-md a { color: var(--accent-2); text-decoration: none; }
+.proj-md a:hover { text-decoration: underline; }
+.proj-md img { max-width: 100%; }
+.proj-md hr { border: none; border-top: 1px solid var(--border-2); margin: 18px 0; }
+.proj-md table { border-collapse: collapse; margin: 12px 0; display: block; overflow-x: auto; }
+.proj-md th, .proj-md td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12.5px; text-align: left; }
+.proj-md th { background: var(--bg-card); color: var(--text); font-weight: 600; }

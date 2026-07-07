@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   FolderKanban, FolderPlus, Trash2, Pencil, Check, RefreshCw,
   GitBranch, Server, Bot, Workflow as WorkflowIcon, Plus,
   FolderInput, FilePlus2, GitFork, ChevronDown, Loader,
+  FileText, Eye, Save,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useUiStore } from "../store/uiStore";
+import { FileExplorer } from "../components/panel/FileExplorer";
 import { pickFolder, runShellCommand, createDir, writeTextFile, readDir, readTextFile, isTauri } from "../lib/tauriApi";
 
 // Vista de Administración de Proyectos = "Project Hub" (Frente 4 + pilar 2 del roadmap). El Proyecto
@@ -297,9 +301,9 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
     case "overview":
       return <OverviewTab projectId={projectId} />;
     case "estructura":
-      return <Placeholder tanda="Tanda B — árbol de archivos del proyecto (reusa el File Explorer)." />;
+      return <EstructuraTab />;
     case "docs":
-      return <Placeholder tanda="Tanda B — ver/editar los .md del proyecto con render markdown." />;
+      return <DocsTab projectId={projectId} />;
     case "contexto":
       return <Placeholder tanda="Tanda C — items de contexto por proyecto que se inyectan al agente." />;
     case "agentes":
@@ -328,6 +332,155 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
 
 function Placeholder({ tanda }: { tanda: string }) {
   return <div className="proj-placeholder"><span className="proj-placeholder-icon">🚧</span><div>En construcción<br /><span className="proj-placeholder-sub">{tanda}</span></div></div>;
+}
+
+// ── Estructura: árbol de archivos del proyecto (reusa el File Explorer) ──
+// El File Explorer ya sigue a projectPath (= proyecto activo), así que muestra el árbol correcto.
+// Clic en un archivo lo abre como pestaña editable del editor (integración IDE, igual que el mapa).
+function EstructuraTab() {
+  const openInEditor = useUiStore((s) => s.openInEditor);
+  return (
+    <div className="proj-estructura">
+      <FileExplorer onOpenFile={openInEditor} />
+    </div>
+  );
+}
+
+// Recorrido BFS del proyecto juntando archivos .md (read_dir ya omite node_modules/target/.git/dist/etc.).
+async function collectMarkdownFiles(root: string, limit: number): Promise<string[]> {
+  const out: string[] = [];
+  const queue: string[] = [root];
+  while (queue.length > 0 && out.length < limit) {
+    const dir = queue.shift()!;
+    let entries;
+    try { entries = await readDir(dir); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDir) queue.push(e.path);
+      else if (e.name.toLowerCase().endsWith(".md")) {
+        out.push(e.path);
+        if (out.length >= limit) break;
+      }
+    }
+  }
+  return out;
+}
+
+// ── Documentación: ver/editar los .md del proyecto con render markdown ──
+function DocsTab({ projectId }: { projectId: string }) {
+  const project = useProjectStore((s) => s.projects[projectId]);
+  const path = project?.path;
+
+  const [files, setFiles] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [selected, setSelected] = useState("");
+  const [content, setContent] = useState("");
+  const [saved, setSaved] = useState("");
+  const [mode, setMode] = useState<"view" | "edit">("view");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const scan = useCallback(async () => {
+    if (!path || !isTauri()) { setFiles([]); return; }
+    setScanning(true); setScanError(null);
+    try {
+      setFiles(await collectMarkdownFiles(path, 200));
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScanning(false);
+    }
+  }, [path]);
+
+  useEffect(() => { void scan(); }, [scan]);
+
+  const rel = (p: string) => (path && p.startsWith(path) ? p.slice(path.length).replace(/^[\\/]+/, "") : p);
+
+  const open = async (p: string) => {
+    setSelected(p); setMode("view"); setLoading(true); setFileError(null);
+    try {
+      const text = await readTextFile(p);
+      setContent(text); setSaved(text);
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async () => {
+    if (!selected) return;
+    setSaving(true); setFileError(null);
+    try {
+      await writeTextFile(selected, content);
+      setSaved(content);
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dirty = content !== saved;
+
+  if (!isTauri()) {
+    return <div className="proj-placeholder"><span className="proj-placeholder-icon">🖥️</span><div>La documentación requiere la app desktop.</div></div>;
+  }
+
+  return (
+    <div className="proj-docs">
+      <div className="proj-docs-list">
+        <div className="proj-docs-list-head">
+          <span>{scanning ? "escaneando…" : `${files.length} doc(s)`}</span>
+          <button className="proj-icon" onClick={() => void scan()} disabled={scanning} title="Reescanear">
+            <RefreshCw size={12} className={scanning ? "spin" : ""} />
+          </button>
+        </div>
+        {scanError && <div className="proj-modal-error">{scanError}</div>}
+        {!scanning && files.length === 0 && <div className="proj-hint proj-docs-none">No hay archivos .md en el proyecto.</div>}
+        {files.map((f) => (
+          <button key={f} className={`proj-docs-item${selected === f ? " active" : ""}`} onClick={() => void open(f)} title={f}>
+            <FileText size={12} /><span className="proj-docs-item-name">{rel(f)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="proj-docs-main">
+        {!selected ? (
+          <div className="proj-docs-empty">Elegí un documento de la izquierda para ver o editar.</div>
+        ) : (
+          <>
+            <div className="proj-docs-toolbar">
+              <span className="proj-docs-name">{rel(selected)}{dirty ? " ●" : ""}</span>
+              <div className="proj-docs-actions">
+                <button className={`proj-btn${mode === "view" ? " proj-btn--primary" : ""}`} onClick={() => setMode("view")}><Eye size={13} /> Ver</button>
+                <button className={`proj-btn${mode === "edit" ? " proj-btn--primary" : ""}`} onClick={() => setMode("edit")}><Pencil size={13} /> Editar</button>
+                {mode === "edit" && (
+                  <>
+                    <button className="proj-btn proj-btn--primary" onClick={() => void save()} disabled={!dirty || saving}>
+                      {saving ? <Loader size={13} className="spin" /> : <Save size={13} />} Guardar
+                    </button>
+                    <button className="proj-btn" onClick={() => setContent(saved)} disabled={!dirty}>Descartar</button>
+                  </>
+                )}
+              </div>
+            </div>
+            {fileError && <div className="proj-modal-error">{fileError}</div>}
+            <div className="proj-docs-body">
+              {loading ? (
+                <span className="proj-hint"><Loader size={12} className="spin" /> Cargando…</span>
+              ) : mode === "view" ? (
+                <div className="proj-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown></div>
+              ) : (
+                <textarea className="proj-docs-editor" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="Documento vacío…" />
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Overview (stack detectado + contadores) ──
