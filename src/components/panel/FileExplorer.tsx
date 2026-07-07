@@ -5,7 +5,6 @@ import {
   BookmarkPlus, BookmarkCheck,
 } from "lucide-react";
 import { readDir, readTextFile, createDir, writeTextFile, pickFolder, isTauri, type FsEntry } from "../../lib/tauriApi";
-import { useContextStore } from "../../store/contextStore";
 import { useProjectStore } from "../../store/projectStore";
 
 const EXT_COLORS: Record<string, string> = {
@@ -91,9 +90,9 @@ function TreeNode({ entry, depth, selected, onSelectFile }: TreeNodeProps) {
   const [creating, setCreating] = useState<"file" | "dir" | null>(null);
   const busyRef = useRef(false);
   const isSelected = selected === entry.path;
-  const contextItems = useContextStore((s) => s.items);
-  const addItem = useContextStore((s) => s.addItem);
-  const removeItem = useContextStore((s) => s.removeItem);
+  const contextItems = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
+  const addItem = useProjectStore((s) => s.addContextItem);
+  const removeItem = useProjectStore((s) => s.removeContextItem);
   const inContext = contextItems.some((i) => i.path === entry.path);
 
   const ensureChildrenLoaded = useCallback(async (): Promise<FsEntry[]> => {
@@ -232,7 +231,7 @@ export function FileExplorer({ onOpenFile }: FileExplorerProps = {}) {
   const [preview, setPreview] = useState("");
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const addItem = useContextStore((s) => s.addItem);
+  const addItem = useProjectStore((s) => s.addContextItem);
 
   const load = useCallback((path: string) => {
     if (!isTauri()) {

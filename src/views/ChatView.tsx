@@ -3,7 +3,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
-import { useContextStore } from "../store/contextStore";
 import { useEditorStore } from "../store/editorStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useMetricsStore } from "../store/metricsStore";
@@ -238,8 +237,8 @@ export function ChatView() {
   );
   const ws = workspaces.find((w) => w.id === activeWs)!;
   const steps = ws?.steps ?? [];
-  const contextItems = useContextStore((s) => s.items);
-  const removeContextItem = useContextStore((s) => s.removeItem);
+  const contextItems = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
+  const removeContextItem = useProjectStore((s) => s.removeContextItem);
   // Archivo activo del editor de código — se inyecta como contexto del agente (ver buildPromptWithContext).
   const editorActivePath = useEditorStore((s) => s.activePath);
   const projectPath = useProjectStore((s) => s.projectPath);

@@ -3,7 +3,7 @@ import {
   FolderKanban, FolderPlus, Trash2, Pencil, Check, RefreshCw,
   GitBranch, Server, Bot, Workflow as WorkflowIcon, Plus,
   FolderInput, FilePlus2, GitFork, ChevronDown, Loader,
-  FileText, Eye, Save,
+  FileText, Eye, Save, Folder, X, Paperclip,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,6 +12,7 @@ import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useUiStore } from "../store/uiStore";
 import { FileExplorer } from "../components/panel/FileExplorer";
+import { AgentDetail, NewAgentForm } from "./AgentsView";
 import { pickFolder, runShellCommand, createDir, writeTextFile, readDir, readTextFile, isTauri } from "../lib/tauriApi";
 
 // Vista de Administración de Proyectos = "Project Hub" (Frente 4 + pilar 2 del roadmap). El Proyecto
@@ -305,9 +306,9 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
     case "docs":
       return <DocsTab projectId={projectId} />;
     case "contexto":
-      return <Placeholder tanda="Tanda C — items de contexto por proyecto que se inyectan al agente." />;
+      return <ContextoTab projectId={projectId} />;
     case "agentes":
-      return <AgentsAssocSection projectId={projectId} />;
+      return <AgentesTab projectId={projectId} />;
     case "flujos":
       return <WorkflowsAssocSection projectId={projectId} />;
     case "servicios":
@@ -328,10 +329,6 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
         </div>
       );
   }
-}
-
-function Placeholder({ tanda }: { tanda: string }) {
-  return <div className="proj-placeholder"><span className="proj-placeholder-icon">🚧</span><div>En construcción<br /><span className="proj-placeholder-sub">{tanda}</span></div></div>;
 }
 
 // ── Estructura: árbol de archivos del proyecto (reusa el File Explorer) ──
@@ -574,40 +571,110 @@ function Counter({ icon, label, value }: { icon: ReactNode; label: string; value
   );
 }
 
-// ── Secciones reusadas (asociación de agentes / workflows / servicios) ──
-function AgentsAssocSection({ projectId }: { projectId: string }) {
+// ── Contexto: archivos/carpetas de contexto del proyecto (Tanda C, scopeados por proyecto) ──
+// La lista se alimenta desde el File Explorer (botón bookmark) o la tab Estructura; acá se ve/gestiona.
+// ChatView antepone estos archivos al prompt del agente (buildPromptWithContext).
+function ContextoTab({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.projects[projectId]);
-  const updateProject = useProjectStore((s) => s.updateProject);
-  const agents = useAgentsStore((s) => s.agents);
+  const removeContextItem = useProjectStore((s) => s.removeContextItem);
+  const clearContext = useProjectStore((s) => s.clearContext);
   if (!project) return null;
+  const items = project.contextItems;
+  const baseNameOf = (p: string) => p.split(/[\\/]/).pop() || p;
+
   return (
     <div className="proj-config">
       <section className="proj-section">
-        <div className="proj-section-title"><Bot size={14} /> Agentes expertos</div>
+        <div className="proj-section-title"><Paperclip size={14} /> Archivos en contexto ({items.length})</div>
         <div className="proj-section-body">
-          <p className="proj-hint">Agentes asociados a este proyecto. Los globales (MiMo, Hermes, Claude Code) están siempre disponibles en el chat. El CRUD completo de expertos llega en la Tanda C.</p>
-          {agents.map((a) => {
-            const checked = project.agentIds.includes(a.id);
-            const isGlobal = isDefaultAgent(a.id);
-            return (
-              <label key={a.id} className="proj-check-row">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={isGlobal}
-                  onChange={(e) => {
-                    const next = e.target.checked ? [...project.agentIds, a.id] : project.agentIds.filter((x) => x !== a.id);
-                    updateProject(projectId, { agentIds: next });
-                  }}
-                />
-                <span className="proj-check-icon" style={{ color: a.color }}>{a.icon}</span>
-                <span className="proj-check-name">{a.name}</span>
-                {isGlobal && <span className="proj-badge">global</span>}
-              </label>
-            );
-          })}
+          <p className="proj-hint">
+            Archivos y carpetas que el agente recibe con cada mensaje en este proyecto. Agregalos desde la
+            tab <strong>Estructura</strong> (o el explorador del chat) con el botón de marcador. El contexto es
+            por proyecto: al cambiar de proyecto el chat ve solo el suyo.
+          </p>
+          {items.length === 0 ? (
+            <div className="proj-env-empty">Sin archivos en contexto.</div>
+          ) : (
+            <div className="proj-ctx-list">
+              {items.map((item) => (
+                <div key={item.path} className="proj-ctx-item">
+                  {item.isDir ? <Folder size={13} color="#fbbf24" /> : <FileText size={13} color="#8b949e" />}
+                  <span className="proj-ctx-name">{baseNameOf(item.path)}</span>
+                  <span className="proj-ctx-path" title={item.path}>{item.path}</span>
+                  <button className="proj-icon proj-icon--del" title="Quitar del contexto" onClick={() => removeContextItem(item.path)}>
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {items.length > 0 && (
+            <button className="proj-btn" onClick={clearContext}><Trash2 size={13} /> Vaciar contexto</button>
+          )}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ── Agentes: CRUD completo de expertos (reusa el editor de AgentsView) + asociación al proyecto ──
+function AgentesTab({ projectId }: { projectId: string }) {
+  const project = useProjectStore((s) => s.projects[projectId]);
+  const updateProject = useProjectStore((s) => s.updateProject);
+  const agents = useAgentsStore((s) => s.agents);
+  const [selected, setSelected] = useState<string>(agents[0]?.id ?? "");
+  const [creating, setCreating] = useState(false);
+  if (!project) return null;
+
+  const selectedAgent = agents.find((a) => a.id === selected) ?? agents[0];
+  const toggleAssoc = (id: string, checked: boolean) => {
+    const next = checked ? [...project.agentIds, id] : project.agentIds.filter((x) => x !== id);
+    updateProject(projectId, { agentIds: next });
+  };
+
+  return (
+    <div className="proj-agents">
+      <div className="proj-agents-list">
+        <div className="proj-agents-list-head">
+          <span>Agentes ({agents.length})</span>
+          <button className="proj-icon" title="Nuevo agente custom" onClick={() => setCreating(true)}><Plus size={13} /></button>
+        </div>
+        {agents.map((a) => {
+          const isGlobal = isDefaultAgent(a.id);
+          // Los globales están siempre disponibles en el chat (checkbox marcado y bloqueado); los custom
+          // se asocian/desasocian del proyecto.
+          const checked = isGlobal || project.agentIds.includes(a.id);
+          return (
+            <div
+              key={a.id}
+              className={`proj-agent-row${!creating && selected === a.id ? " active" : ""}`}
+              onClick={() => { setCreating(false); setSelected(a.id); }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={isGlobal}
+                title={isGlobal ? "Agente global (siempre disponible en el chat)" : "Asociar al proyecto"}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => toggleAssoc(a.id, e.target.checked)}
+              />
+              <span className="proj-agent-icon" style={{ color: a.color }}>{a.icon}</span>
+              <span className="proj-agent-name">{a.name}</span>
+              {isGlobal && <span className="proj-badge">global</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="proj-agents-detail">
+        {creating ? (
+          <NewAgentForm
+            onClose={() => setCreating(false)}
+            onCreated={(id) => { updateProject(projectId, { agentIds: [...project.agentIds, id] }); setSelected(id); }}
+          />
+        ) : (
+          selectedAgent && <AgentDetail agent={selectedAgent} />
+        )}
+      </div>
     </div>
   );
 }

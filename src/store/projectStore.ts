@@ -21,6 +21,13 @@ export type Service = {
   exitCode?: number;
 };
 
+// ── Items de contexto (Tanda C: scopeados por proyecto) ──
+// Antes vivían en un contextStore GLOBAL (no persistido). Ahora cada proyecto tiene sus propios
+// archivos/carpetas de contexto: se agregan desde el File Explorer (botón bookmark) o la tab Contexto
+// del hub, y ChatView los antepone al prompt del agente (buildPromptWithContext). Al cambiar de
+// proyecto activo, el chat ve solo los del proyecto actual.
+export type ContextItem = { path: string; isDir: boolean };
+
 // ── Proyecto ──
 // El contenedor natural de todo lo que es "por proyecto": su carpeta raíz, ambiente (env vars que se
 // inyectan a servicios y terminales), integración git, tracking de issues, y las asociaciones a
@@ -35,6 +42,7 @@ export type Project = {
   workflowIds: string[]; // workflows scopeados al proyecto (vacío = ninguno asociado explícito)
   agentIds: string[]; // agentes expertos scopeados al proyecto (los globales mimo/hermes se ven siempre)
   services: Service[]; // servicios del proyecto (scope duro, Frente 3)
+  contextItems: ContextItem[]; // archivos/carpetas de contexto del proyecto (Tanda C)
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -65,6 +73,7 @@ function makeProject(path: string, name?: string): Project {
     workflowIds: [],
     agentIds: [],
     services: [],
+    contextItems: [],
   };
 }
 
@@ -96,6 +105,11 @@ type ProjectStore = {
   updateService: (id: string, patch: Partial<Pick<Service, "name" | "command" | "cwd">>) => void;
   removeService: (id: string) => void;
   setServiceStatus: (id: string, status: ServiceStatus, exitCode?: number) => void;
+
+  // ── Items de contexto del proyecto activo (scope duro, Tanda C) ──
+  addContextItem: (item: ContextItem) => void;
+  removeContextItem: (path: string) => void;
+  clearContext: () => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -188,6 +202,18 @@ export const useProjectStore = create<ProjectStore>()(
 
       setServiceStatus: (id, status, exitCode) =>
         set((s) => patchActive(s, (p) => ({ services: p.services.map((x) => (x.id === id ? { ...x, status, exitCode } : x)) }))),
+
+      addContextItem: (item) =>
+        set((s) =>
+          patchActive(s, (p) =>
+            p.contextItems.some((i) => i.path === item.path) ? {} : { contextItems: [...p.contextItems, item] }
+          )
+        ),
+
+      removeContextItem: (path) =>
+        set((s) => patchActive(s, (p) => ({ contextItems: p.contextItems.filter((i) => i.path !== path) }))),
+
+      clearContext: () => set((s) => patchActive(s, () => ({ contextItems: [] }))),
     }),
     {
       name: "devflow-project",
@@ -213,11 +239,19 @@ export const useProjectStore = create<ProjectStore>()(
         }
         return persisted as PersistedState;
       },
-      // Recalcula el campo derivado projectPath a partir del proyecto activo al hidratar.
+      // Recalcula el campo derivado projectPath a partir del proyecto activo al hidratar, y normaliza
+      // los proyectos persistidos con versiones viejas del tipo (contextItems se agregó en la Tanda C:
+      // los proyectos guardados antes no lo tienen → default []).
       merge: (persisted, current) => {
         const p = persisted as PersistedState | undefined;
         if (!p || !p.projects || !p.projects[p.activeId]) return current;
-        return { ...current, ...p, projectPath: p.projects[p.activeId].path };
+        const projects = Object.fromEntries(
+          Object.entries(p.projects).map(([id, proj]) => [
+            id,
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [] },
+          ])
+        );
+        return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };
       },
     }
   )

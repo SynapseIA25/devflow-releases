@@ -48,7 +48,7 @@ function AgentCard({ agent, selected, active, onSelect }: { agent: AgentConfig; 
   );
 }
 
-function AgentDetail({ agent }: { agent: AgentConfig }) {
+export function AgentDetail({ agent }: { agent: AgentConfig }) {
   const backend = agent.executionBackend ? BACKEND_INFO[agent.executionBackend] : null;
   const updateAgent = useAgentsStore((s) => s.updateAgent);
   const removeAgent = useAgentsStore((s) => s.removeAgent);
@@ -166,7 +166,7 @@ function AgentDetail({ agent }: { agent: AgentConfig }) {
   );
 }
 
-function NewAgentForm({ onClose }: { onClose: () => void }) {
+export function NewAgentForm({ onClose, onCreated }: { onClose: () => void; onCreated?: (id: string) => void }) {
   const addAgent = useAgentsStore((s) => s.addAgent);
   const providers = useSettingsStore((s) => s.providers);
   const [name, setName] = useState("");
@@ -176,7 +176,8 @@ function NewAgentForm({ onClose }: { onClose: () => void }) {
 
   const save = () => {
     if (!name.trim()) return;
-    addAgent({ name, description, providerId, systemPrompt });
+    const id = addAgent({ name, description, providerId, systemPrompt });
+    onCreated?.(id);
     onClose();
   };
 

@@ -1811,3 +1811,21 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .proj-md table { border-collapse: collapse; margin: 12px 0; display: block; overflow-x: auto; }
 .proj-md th, .proj-md td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12.5px; text-align: left; }
 .proj-md th { background: var(--bg-card); color: var(--text); font-weight: 600; }
+
+/* Tanda C — Contexto (lista de archivos/carpetas del proyecto) */
+.proj-ctx-list { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 10px; }
+.proj-ctx-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); }
+.proj-ctx-name { font-size: 12.5px; color: var(--text-1); flex-shrink: 0; }
+.proj-ctx-path { font-size: 10.5px; color: var(--text-3); font-family: 'Cascadia Code','Consolas',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.proj-ctx-item .proj-icon--del { margin-left: auto; }
+
+/* Tanda C — Agentes (lista con asociación + editor CRUD reusado de AgentsView) */
+.proj-agents { display: flex; height: 100%; }
+.proj-agents-list { flex: 0 0 240px; border-right: 1px solid var(--border); overflow-y: auto; }
+.proj-agents-list-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; font-size: 11px; color: var(--text-3); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.proj-agent-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border-2); }
+.proj-agent-row:hover { background: var(--bg-card); }
+.proj-agent-row.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.proj-agent-icon { font-size: 14px; flex-shrink: 0; }
+.proj-agent-name { flex: 1; font-size: 12.5px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-agents-detail { flex: 1; overflow-y: auto; min-width: 0; }

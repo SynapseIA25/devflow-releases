@@ -1,5 +1,4 @@
 import { FolderOpen, FileText, Folder, Info, BookOpen, Paperclip, X } from "lucide-react";
-import { useContextStore } from "../../store/contextStore";
 import { useProjectStore } from "../../store/projectStore";
 
 type ContextPanelProps = {
@@ -16,8 +15,8 @@ const DEFAULT: Required<ContextPanelProps> = {
 
 export function ContextPanel(props: ContextPanelProps) {
   const d = { ...DEFAULT, ...props };
-  const items = useContextStore((s) => s.items);
-  const removeItem = useContextStore((s) => s.removeItem);
+  const items = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
+  const removeItem = useProjectStore((s) => s.removeContextItem);
   const projectPath = useProjectStore((s) => s.projectPath);
 
   return (
