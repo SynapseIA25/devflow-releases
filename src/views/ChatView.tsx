@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Plus, X, Send, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode } from "lucide-react";
+import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useContextStore } from "../store/contextStore";
 import { useEditorStore } from "../store/editorStore";
-import { useAgentsStore } from "../store/agentsStore";
+import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
 import { DEFAULT_PROVIDERS } from "../lib/providers";
@@ -200,9 +200,12 @@ export function ChatView() {
   const updateWsSteps = useWorkspaceStore((s) => s.updateSteps);
   const upsertToolBlock = useWorkspaceStore((s) => s.upsertToolBlock);
   const setSession = useWorkspaceStore((s) => s.setSession);
+  const setRunning = useWorkspaceStore((s) => s.setRunning);
+  const enqueue = useWorkspaceStore((s) => s.enqueue);
+  const shiftQueue = useWorkspaceStore((s) => s.shiftQueue);
+  const removeFromQueue = useWorkspaceStore((s) => s.removeFromQueue);
   const [termHeight, setTermHeight] = useState(180);
   const [input, setInput]           = useState("");
-  const [loading, setLoading]       = useState(false);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<acpClient.PermissionRequest | null>(null);
   const [recording, setRecording] = useState(false);
@@ -214,12 +217,25 @@ export function ChatView() {
   const resizing   = useRef(false);
   const startY     = useRef(0);
   const startH     = useRef(0);
-  const currentTurnRef = useRef<{ wsId: string; aiBlockId: string; outChars: number } | null>(null);
+  // Turnos ACP en vuelo, keyed por `${provider}:${sessionId}`. Antes era un único ref global
+  // (solo un turno a la vez en TODA la app); ahora es un Map → varios workspaces pueden streamear
+  // en paralelo (cada uno con su sesión distinta). El handler de session/update busca acá por sesión.
+  const activeTurnsRef = useRef(new Map<string, { wsId: string; aiBlockId: string; outChars: number }>());
+  // Señal de cancelación POR workspace (antes era un bool global que un ws pisaba a otro). El /run
+  // desde el chat la consulta para cortar entre nodos; cada turno la resetea al arrancar.
+  const cancelledRef = useRef(new Map<string, boolean>());
 
   const { activeAgentId, setActiveAgent } = useChatStore();
   const agents = useAgentsStore((s) => s.agents);
   const recordChat = useMetricsStore((s) => s.recordChat);
   const activeAgent = agents.find((a) => a.id === activeAgentId);
+  // Scope duro por proyecto: el selector muestra los agentes globales (MiMo/Hermes, defaults) + los
+  // expertos asociados al proyecto activo (+ el activo actual, para que nunca desaparezca la selección).
+  const projectAgentIds = useProjectStore((s) => s.projects[s.activeId]?.agentIds ?? []);
+  const visibleAgents = useMemo(
+    () => agents.filter((a) => isDefaultAgent(a.id) || projectAgentIds.includes(a.id) || a.id === activeAgentId),
+    [agents, projectAgentIds, activeAgentId]
+  );
   const ws = workspaces.find((w) => w.id === activeWs)!;
   const steps = ws?.steps ?? [];
   const contextItems = useContextStore((s) => s.items);
@@ -227,8 +243,9 @@ export function ChatView() {
   // Archivo activo del editor de código — se inyecta como contexto del agente (ver buildPromptWithContext).
   const editorActivePath = useEditorStore((s) => s.activePath);
   const projectPath = useProjectStore((s) => s.projectPath);
+  const projectEnv = useProjectStore((s) => s.projects[s.activeId]?.env ?? {});
 
-  useEffect(() => { docEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [ws?.blocks, loading]);
+  useEffect(() => { docEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [ws?.blocks, ws?.running]);
 
   /* drag to resize terminal */
   const onResizeDown = useCallback((e: React.MouseEvent) => {
@@ -244,10 +261,6 @@ export function ChatView() {
     window.addEventListener("mouseup", onUp);
     e.preventDefault();
   }, [termHeight]);
-
-  const addBlock = useCallback((block: Omit<DocBlockData, "id" | "ts">) => {
-    addBlockToWs(activeWs, block);
-  }, [activeWs, addBlockToWs]);
 
   // Crea (en el primer chunk) o concatena texto (en los siguientes) a un bloque de streaming
   // ("ai" para la respuesta final, "thought" para el razonamiento del agente).
@@ -267,8 +280,8 @@ export function ChatView() {
 
   // Suscripción única a las notificaciones session/update de cualquier agente ACP (mimo, hermes, ...).
   useEffect(() => {
-    const unsub = acpClient.onUpdate((_provider, _sessionId, update) => {
-      const turn = currentTurnRef.current;
+    const unsub = acpClient.onUpdate((provider, sessionId, update) => {
+      const turn = activeTurnsRef.current.get(`${provider}:${sessionId}`);
       if (!turn) return;
       const kind = update.sessionUpdate;
       if (kind === "agent_message_chunk") {
@@ -338,29 +351,30 @@ export function ChatView() {
 
   const newWorkspace = () => storeNewWorkspace(activeAgentId);
 
-  const runMockAI = async (text: string) => {
-    const wsId = activeWs;
+  const runMockAI = async (wsId: string, text: string) => {
     const taskSteps: Step[] = [
       { id: "1", label: "Analizando solicitud", status: "pending" },
       { id: "2", label: "Leyendo contexto",     status: "pending" },
       { id: "3", label: "Generando respuesta",  status: "pending" },
     ];
     updateWsSteps(wsId, () => taskSteps);
-    setLoading(true);
+    try {
+      for (let i = 0; i < taskSteps.length; i++) {
+        if (cancelledRef.current.get(wsId)) return;
+        await new Promise((r) => setTimeout(r, 500));
+        updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "running" } : s));
+        await new Promise((r) => setTimeout(r, 600));
+        updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "done" } : idx === i+1 ? { ...s, status: "running" } : s));
+      }
 
-    for (let i = 0; i < taskSteps.length; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "running" } : s));
-      await new Promise((r) => setTimeout(r, 600));
-      updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "done" } : idx === i+1 ? { ...s, status: "running" } : s));
+      await new Promise((r) => setTimeout(r, 300));
+      addBlockToWs(wsId, {
+        type: "ai", agentId: activeAgentId,
+        content: `## Respuesta: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}\n\nRecibí tu solicitud. Una vez que configures un proveedor en **⚙️ Settings**, procesaré la tarea y mostraré:\n\n### Plan de ejecución\n1. Leer archivos relevantes del proyecto\n2. Analizar estructura y dependencias\n3. Generar los cambios propuestos\n4. Ejecutar tests y validar\n\n### Archivos que se modificarían\n\`\`\`\nsrc/views/ChatView.tsx\nsrc/App.css\n\`\`\`\n\n> Configurá tu proveedor de IA en Settings para activar la ejecución real.`,
+      });
+    } finally {
+      finishTurn(wsId);
     }
-
-    await new Promise((r) => setTimeout(r, 300));
-    addBlock({
-      type: "ai", agentId: activeAgentId,
-      content: `## Respuesta: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}\n\nRecibí tu solicitud. Una vez que configures un proveedor en **⚙️ Settings**, procesaré la tarea y mostraré:\n\n### Plan de ejecución\n1. Leer archivos relevantes del proyecto\n2. Analizar estructura y dependencias\n3. Generar los cambios propuestos\n4. Ejecutar tests y validar\n\n### Archivos que se modificarían\n\`\`\`\nsrc/views/ChatView.tsx\nsrc/App.css\n\`\`\`\n\n> Configurá tu proveedor de IA en Settings para activar la ejecución real.`,
-    });
-    setLoading(false);
   };
 
   // Los archivos agregados al contexto (panel "Contexto" / explorador) no quedan implícitos
@@ -415,27 +429,30 @@ export function ChatView() {
     return `${parts.join("\n\n")}\n\n${text}`;
   };
 
-  const runAcp = async (text: string, provider: string, spawn: acpClient.AcpSpawnConfig) => {
-    const wsId = activeWs;
+  const runAcp = async (wsId: string, text: string, provider: string, spawn: acpClient.AcpSpawnConfig) => {
     const aiBlockId = makeId();
-    currentTurnRef.current = { wsId, aiBlockId, outChars: 0 };
     updateWsSteps(wsId, () => []);
     for (const key of thoughtBlockIdsRef.current.keys()) {
       if (key.startsWith(`${wsId}:`)) thoughtBlockIdsRef.current.delete(key);
     }
-    setLoading(true);
     const startedAt = performance.now();
     let inChars = text.length;
+    let turnKey: string | null = null;
     try {
-      const ws = workspaces.find((w) => w.id === wsId);
-      // Si el workspace ya tenía sesión pero de OTRO provider (ej. cambiaste de agente a
-      // mitad de conversación), esa session id no existe en el proceso nuevo — hay que abrir una.
-      let sid = ws?.sessionProvider === provider ? ws?.sessionId : undefined;
+      // Leemos el workspace fresco del store (no del closure): con turnos concurrentes el closure
+      // puede estar desactualizado. Si el ws ya tenía sesión pero de OTRO provider (cambiaste de
+      // agente a mitad de conversación), esa session id no existe en el proceso nuevo — abrimos una.
+      const wsNow = useWorkspaceStore.getState().workspaces.find((w) => w.id === wsId);
+      let sid = wsNow?.sessionProvider === provider ? wsNow?.sessionId : undefined;
       const isNewSession = !sid;
       if (!sid) {
         sid = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath);
         setSession(wsId, sid, provider);
       }
+      // Registramos el turno keyed por sesión: el handler de session/update lo encuentra por acá,
+      // y cancel() puede destrabarlo selectivamente sin tocar turnos de otros workspaces.
+      turnKey = `${provider}:${sid}`;
+      activeTurnsRef.current.set(turnKey, { wsId, aiBlockId, outChars: 0 });
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
       // El system prompt del agente se inyecta una sola vez, al abrir la sesión ACP: una sesión es
       // una conversación continua del lado del agente, así que alcanza con mandarlo en el primer turno.
@@ -444,38 +461,44 @@ export function ChatView() {
         fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
       }
       inChars = fullPrompt.length;
+      // Si detuvieron el turno mientras se creaba la sesión, no arranquemos el prompt.
+      if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
       await acpClient.prompt(provider, sid, fullPrompt);
     } catch (e) {
-      appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      // __turn_cancelled__ = el usuario detuvo el turno (acpClient.cancel); no es un error real.
+      if (msg !== "__turn_cancelled__") {
+        appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${msg}`);
+      }
     } finally {
       recordChat({
         provider,
         latencyMs: performance.now() - startedAt,
         inChars,
-        outChars: currentTurnRef.current?.outChars ?? 0,
+        outChars: turnKey ? (activeTurnsRef.current.get(turnKey)?.outChars ?? 0) : 0,
       });
-      currentTurnRef.current = null;
-      setLoading(false);
+      if (turnKey) activeTurnsRef.current.delete(turnKey);
+      finishTurn(wsId);
     }
   };
 
-  const runAI = (text: string) => {
+  const runAI = (wsId: string, text: string) => {
     const provider = DEFAULT_PROVIDERS.find((p) => p.id === activeAgent?.providerId);
-    return provider?.acp ? runAcp(text, provider.id, provider.acp) : runMockAI(text);
+    return provider?.acp ? runAcp(wsId, text, provider.id, provider.acp) : runMockAI(wsId, text);
   };
 
   // Comando /run [nombre]: ejecuta un workflow desde el chat (sin nombre → el flujo activo; con
   // nombre → el primero que lo contenga) y vuelca sus logs como un bloque del chat.
-  const runWorkflowFromChat = async (arg: string) => {
+  const runWorkflowFromChat = async (wsId: string, arg: string) => {
     const st = useWorkflowStore.getState();
     const flows = st.order.map((fid) => st.workflows[fid]);
     const query = arg.trim().toLowerCase();
     const w = query ? flows.find((f) => f.name.toLowerCase().includes(query)) : st.workflows[st.activeId];
     if (!w) {
-      addBlock({ type: "ai", agentId: activeAgentId, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
+      addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
+      finishTurn(wsId);
       return;
     }
-    setLoading(true);
     const lines: string[] = [];
     try {
       await runWorkflow(w.nodes, w.edges, {
@@ -483,7 +506,7 @@ export function ChatView() {
         setNodeStatus: (id, status) => {
           if (useWorkflowStore.getState().activeId === w.id) useWorkflowStore.getState().setNodeStatus(id, status);
         },
-        isCancelled: () => false,
+        isCancelled: () => cancelledRef.current.get(wsId) ?? false,
         resolveFlow: (fid) => {
           const f = useWorkflowStore.getState().workflows[fid];
           return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
@@ -492,22 +515,63 @@ export function ChatView() {
     } catch (e) {
       lines.push(`✖ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setLoading(false);
+      addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
+      finishTurn(wsId);
     }
-    addBlock({ type: "ai", agentId: activeAgentId, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
+  };
+
+  // Cierra un turno: re-habilita el input del workspace y, si hay mensajes encolados, arranca el
+  // siguiente automáticamente. Único lugar que baja `running` → todos los runners lo llaman en su finally.
+  const finishTurn = (wsId: string) => {
+    setRunning(wsId, false);
+    const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === wsId);
+    const next = w?.queue?.[0];
+    if (next !== undefined) {
+      shiftQueue(wsId);
+      startMessage(wsId, next);
+    }
+  };
+
+  // Arranca un mensaje del usuario en un workspace: pinta el bloque, marca el turno como corriendo,
+  // resetea la señal de cancelación y despacha al runner correcto (workflow /run o agente).
+  const startMessage = (wsId: string, text: string) => {
+    addBlockToWs(wsId, { type: "user", content: text });
+    setRunning(wsId, true);
+    cancelledRef.current.set(wsId, false);
+    if (text === "/run" || text.startsWith("/run ")) {
+      void runWorkflowFromChat(wsId, text.slice(4));
+    } else {
+      void runAI(wsId, text);
+    }
+  };
+
+  // Detener el turno en curso del workspace activo: avisa al agente ACP (session/cancel, selectivo por
+  // sesión) y marca la señal de cancelación. No baja `running` directamente: el runner cae a su finally
+  // → finishTurn (re-habilita el input y sigue con la cola). Para el mock/workflow (sin pending ACP que
+  // rechazar) la señal cancelledRef corta el loop y su finally también llama finishTurn.
+  const stopTurn = () => {
+    const wsId = activeWs;
+    const w = workspaces.find((x) => x.id === wsId);
+    if (w?.sessionProvider && w?.sessionId) {
+      acpClient.cancel(w.sessionProvider, w.sessionId);
+      activeTurnsRef.current.delete(`${w.sessionProvider}:${w.sessionId}`);
+    }
+    cancelledRef.current.set(wsId, true);
+    updateWsSteps(wsId, (prev) => prev.map((s) => (s.status === "running" || s.status === "pending") ? { ...s, status: "failed" } : s));
+    addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: "_⏹ Turno detenido por el usuario._" });
   };
 
   const handleSend = () => {
     const t = input.trim();
-    if (!t || loading) return;
+    if (!t) return;
     setInput("");
-    addBlock({ type: "user", content: t });
-    // Comando de chat: /run [nombre de flujo] dispara un workflow en vez de hablar con el agente.
-    if (t === "/run" || t.startsWith("/run ")) {
-      void runWorkflowFromChat(t.slice(4));
+    // Si ya hay un turno en curso en este workspace, encolamos: el chat sigue usable y el mensaje
+    // se manda solo cuando termina el turno actual (cola transitoria por-workspace).
+    if (ws?.running) {
+      enqueue(activeWs, t);
       return;
     }
-    runAI(t);
+    startMessage(activeWs, t);
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -574,7 +638,7 @@ export function ChatView() {
             <ChevronDown size={11} />
             {showAgentMenu && (
               <div className="agent-dropdown ws-dropdown">
-                {agents.map((a) => (
+                {visibleAgents.map((a) => (
                   <div key={a.id} className={`agent-option${a.id === activeAgentId ? " active" : ""}`}
                     onClick={(e) => { e.stopPropagation(); setActiveAgent(a.id); setShowAgentMenu(false); }}>
                     <span style={{ color: a.color, fontSize: 15 }}>{a.icon}</span>
@@ -605,7 +669,7 @@ export function ChatView() {
           {docBlocks.map((b) => (
             <DocBlock key={b.id} block={b} />
           ))}
-          {loading && steps.length > 0 && (
+          {ws?.running && steps.length > 0 && (
             <div className="doc-ai doc-ai-loading">
               <span className="typing-indicator"><span /><span /><span /></span>
             </div>
@@ -625,7 +689,7 @@ export function ChatView() {
         <div className="term-pane" style={{ height: termHeight }}>
           <div className="term-output">
             {workspaces.map((w) => (
-              <TerminalPane key={w.id} workspaceId={w.id} cwd={projectPath} active={w.id === activeWs} />
+              <TerminalPane key={w.id} workspaceId={w.id} cwd={projectPath} env={projectEnv} active={w.id === activeWs} />
             ))}
           </div>
 
@@ -638,6 +702,18 @@ export function ChatView() {
 
         {/* Unified input */}
         <div className="hterm-input-area">
+          {(ws?.queue?.length ?? 0) > 0 && (
+            <div className="queue-chip-row">
+              <span className="queue-chip-label">En cola:</span>
+              {ws!.queue!.map((q, i) => (
+                <div key={i} className="queue-chip" title={q}>
+                  <span className="queue-chip-idx">{i + 1}</span>
+                  <span className="queue-chip-text">{q}</span>
+                  <button onClick={() => removeFromQueue(activeWs, i)} title="Quitar de la cola"><X size={9} /></button>
+                </div>
+              ))}
+            </div>
+          )}
           {(editorActivePath || contextItems.length > 0) && (
             <div className="ctx-chip-row">
               {editorActivePath && (
@@ -663,9 +739,10 @@ export function ChatView() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Pedile algo al agente… (o /run [flujo] para ejecutar un workflow)"
+                placeholder={ws?.running
+                  ? "Escribí para encolar el próximo mensaje… (Enter encola)"
+                  : "Pedile algo al agente… (o /run [flujo] para ejecutar un workflow)"}
                 rows={2}
-                disabled={loading}
               />
               <button
                 className={`hterm-mic-btn${recording ? " recording" : ""}`}
@@ -674,14 +751,28 @@ export function ChatView() {
               >
                 <Mic size={13} />
               </button>
-              <button className="hterm-send-btn" onClick={handleSend} disabled={!input.trim() || loading}>
+              {/* Input nunca deshabilitado: durante un turno se puede seguir escribiendo (encola).
+                  Stop aparece cuando hay un turno en curso; Send siempre (encola si corre). */}
+              {ws?.running && (
+                <button className="hterm-stop-btn" onClick={stopTurn} title="Detener turno">
+                  <Square size={12} />
+                </button>
+              )}
+              <button
+                className="hterm-send-btn"
+                onClick={handleSend}
+                disabled={!input.trim()}
+                title={ws?.running ? "Encolar mensaje" : "Enviar"}
+              >
                 <Send size={13} />
               </button>
             </div>
             <div className="hterm-input-hint">
               {voiceError
                 ? <span className="hterm-voice-error">{voiceError}</span>
-                : <>IA · Enter envía{recording ? " · escuchando..." : ""}</>}
+                : ws?.running
+                  ? <>Generando… · ⏹ para detener · Enter encola{(ws?.queue?.length ?? 0) > 0 ? ` · ${ws!.queue!.length} en cola` : ""}</>
+                  : <>IA · Enter envía{recording ? " · escuchando..." : ""}</>}
             </div>
           </div>
         </div>

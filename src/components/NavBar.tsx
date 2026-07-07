@@ -1,15 +1,17 @@
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban } from "lucide-react";
 
-export type ViewId = "chat" | "workflow" | "editor" | "map" | "agents" | "mcp" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "agents" | "mcp" | "services" | "settings";
 
 const NAV_ITEMS: { id: ViewId; icon: typeof MessageSquare; label: string }[] = [
-  { id: "chat",     icon: MessageSquare, label: "Chat" },
-  { id: "workflow", icon: GitBranch,     label: "Workflows" },
-  { id: "editor",   icon: FileCode,      label: "Código" },
-  { id: "map",      icon: Network,       label: "Mapa" },
-  { id: "agents",   icon: Bot,           label: "Agents" },
-  { id: "mcp",      icon: Server,        label: "MCP" },
-  { id: "settings", icon: Settings,      label: "Settings" },
+  { id: "chat",     icon: MessageSquare,  label: "Chat" },
+  { id: "workflow", icon: GitBranch,      label: "Workflows" },
+  { id: "editor",   icon: FileCode,       label: "Código" },
+  { id: "map",      icon: Network,        label: "Mapa" },
+  { id: "projects", icon: FolderKanban,   label: "Proyectos" },
+  { id: "services", icon: TerminalSquare, label: "Servicios" },
+  { id: "agents",   icon: Bot,            label: "Agents" },
+  { id: "mcp",      icon: Server,         label: "MCP" },
+  { id: "settings", icon: Settings,       label: "Settings" },
 ];
 
 type Props = {

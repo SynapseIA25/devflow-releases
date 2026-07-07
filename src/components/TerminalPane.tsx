@@ -7,13 +7,14 @@ import { ptySpawn, ptyWrite, ptyResize, ptyKill, isTauri } from "../lib/tauriApi
 type TerminalPaneProps = {
   workspaceId: string;
   cwd: string;
+  env?: Record<string, string>; // ambiente del proyecto (Frente 4), inyectado a la terminal
   active: boolean;
 };
 
 // Una sesión PTY por workspace, montada UNA sola vez y nunca destruida mientras la pestaña
 // exista (display:none cuando no está activa) — así cambiar de tab no mata el proceso ni
 // pierde el scrollback. xterm.js ya acumula el buffer en background aunque el panel esté oculto.
-export function TerminalPane({ workspaceId, cwd, active }: TerminalPaneProps) {
+export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -62,7 +63,8 @@ export function TerminalPane({ workspaceId, cwd, active }: TerminalPaneProps) {
         spawnedRef.current = true;
         fitAddon.fit();
         try {
-          await ptySpawn(workspaceId, cwd, term.rows, term.cols);
+          // env se captura al spawnear (cwd cambia junto al proyecto → el efecto re-spawnea con el env fresco).
+          await ptySpawn(workspaceId, cwd, term.rows, term.cols, undefined, env);
         } catch (e) {
           term.write(`\r\n\x1b[31mError al iniciar terminal: ${e instanceof Error ? e.message : String(e)}\x1b[0m\r\n`);
         }

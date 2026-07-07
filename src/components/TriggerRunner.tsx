@@ -88,7 +88,10 @@ export function TriggerRunner() {
       unWebhook = await listen<{ token: string; body: string }>("webhook-fired", (e) => {
         const t = useTriggersStore.getState().triggers.find((x) => x.id === e.payload.token);
         if (t && t.enabled && t.type === "webhook" && !runningRef.current.has(t.id)) {
-          void fire(t, runningRef.current, typeof e.payload.body === "string" ? e.payload.body : "");
+          // El body es entrada externa no confiable: solo se pasa como {{input}} si el trigger lo
+          // habilitó explícitamente (allowExternalInput). Si no, corre el flujo sin ese input.
+          const input = t.allowExternalInput && typeof e.payload.body === "string" ? e.payload.body : "";
+          void fire(t, runningRef.current, input);
         }
       });
       unFile = await listen<string>("file-changed", (e) => {

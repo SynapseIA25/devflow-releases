@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { CheckCircle, AlertCircle, Eye, EyeOff, ShieldAlert } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
 import { ProviderConfig } from "../lib/providers";
 
@@ -79,6 +79,44 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
   );
 }
 
+function SecuritySection() {
+  const autoApprove = useSettingsStore((s) => s.autoApprovePermissions);
+  const setAutoApprove = useSettingsStore((s) => s.setAutoApprovePermissions);
+  const permissionLog = useSettingsStore((s) => s.permissionLog);
+
+  return (
+    <div className="settings-security">
+      <h3 className="settings-section-title"><ShieldAlert size={14} /> Seguridad · Permisos del agente</h3>
+      <div className="security-row">
+        <label className={`security-toggle${autoApprove ? " on" : ""}`} onClick={() => setAutoApprove(!autoApprove)}>
+          <span className="security-toggle-dot" />
+        </label>
+        <div className="security-row-text">
+          <div className="security-row-title">Auto-aprobar permisos en workflows</div>
+          <div className="security-row-desc">
+            {autoApprove
+              ? "⚠️ Activo: cuando un workflow corre sin interfaz para aprobar, el agente aprueba solo sus acciones (escribir archivos, ejecutar shell). Cómodo pero riesgoso."
+              : "Seguro (recomendado): sin interfaz para aprobar, las solicitudes de permiso se deniegan. En el chat siempre se te pregunta con un modal."}
+          </div>
+        </div>
+      </div>
+      {permissionLog.length > 0 && (
+        <div className="security-log">
+          <div className="security-log-title">Decisiones automáticas recientes</div>
+          {permissionLog.slice(0, 8).map((e, i) => (
+            <div key={i} className={`security-log-row security-log-row--${e.decision}`}>
+              <span className="security-log-decision">{e.decision === "auto-allow" ? "✔ aprobado" : "✖ denegado"}</span>
+              <span className="security-log-tool">{e.tool}</span>
+              <span className="security-log-provider">{e.provider}</span>
+              <span className="security-log-time">{new Date(e.ts).toLocaleTimeString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView() {
   const providers = useSettingsStore((s) => s.providers);
   const selectedProviderId = useSettingsStore((s) => s.selectedProviderId);
@@ -103,6 +141,7 @@ export function SettingsView() {
           </div>
         )}
       </div>
+      <SecuritySection />
       <div className="providers-grid">
         {providers.map((p) => (
           <ProviderCard key={p.id} provider={p} />

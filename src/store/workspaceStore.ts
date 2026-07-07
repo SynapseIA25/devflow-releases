@@ -36,6 +36,10 @@ export type Workspace = {
   sessionId?: string;
   sessionProvider?: string;
   steps: Step[];
+  // Transitorios (no se persisten): estado de ejecución por-workspace. Reemplazan a los singletons
+  // globales que antes vivían en ChatView (loading/turnCancelledRef) y que rompían el multi-workspace.
+  running?: boolean;   // hay un turno en curso en este workspace
+  queue?: string[];    // mensajes del usuario encolados mientras el turno corre (cola transitoria)
 };
 
 const makeId = () => Math.random().toString(36).slice(2);
@@ -85,6 +89,10 @@ type WorkspaceStore = {
   updateSteps: (wsId: string, updater: (prev: Step[]) => Step[]) => void;
   upsertToolBlock: (wsId: string, toolCallId: string, patch: ToolBlockPatch) => void;
   setSession: (wsId: string, sessionId: string, sessionProvider: string) => void;
+  setRunning: (wsId: string, running: boolean) => void;
+  enqueue: (wsId: string, text: string) => void;
+  shiftQueue: (wsId: string) => void;
+  removeFromQueue: (wsId: string, index: number) => void;
 };
 
 export const useWorkspaceStore = create<WorkspaceStore>()(
@@ -175,6 +183,26 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         set((s) => ({
           workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, sessionId, sessionProvider } : w)),
         })),
+
+      setRunning: (wsId, running) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, running } : w)),
+        })),
+
+      enqueue: (wsId, text) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, queue: [...(w.queue ?? []), text] } : w)),
+        })),
+
+      shiftQueue: (wsId) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, queue: (w.queue ?? []).slice(1) } : w)),
+        })),
+
+      removeFromQueue: (wsId, index) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, queue: (w.queue ?? []).filter((_, i) => i !== index) } : w)),
+        })),
     }),
     {
       name: "devflow-chat-history",
@@ -184,7 +212,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       // (mismo camino que ya existe para "cambiaste de agente a mitad de conversación").
       partialize: (state) => ({
         activeWs: state.activeWs,
-        workspaces: state.workspaces.map((w) => ({ ...w, sessionId: undefined, sessionProvider: undefined })),
+        // running/queue son transitorios: al reiniciar la app no hay ningún turno en curso ni
+        // sesión ACP viva, así que se resetean (no se persisten) igual que sessionId/sessionProvider.
+        workspaces: state.workspaces.map((w) => ({ ...w, sessionId: undefined, sessionProvider: undefined, running: false, queue: [] })),
       }),
     }
   )

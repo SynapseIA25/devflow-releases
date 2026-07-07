@@ -100,9 +100,19 @@ export async function mcpCallTool(
   return invoke<string>("mcp_call_tool", { command, envVars, tool, arguments: args });
 }
 
-export async function ptySpawn(id: string, cwd: string, rows: number, cols: number): Promise<void> {
+// command: si se pasa, el PTY corre ese comando (server/proceso de un Servicio) y termina al terminar
+// el comando; si se omite, abre un shell interactivo (terminal por-workspace del chat).
+// env: variables de ambiente del proyecto (Frente 4) que se inyectan al proceso.
+export async function ptySpawn(
+  id: string,
+  cwd: string,
+  rows: number,
+  cols: number,
+  command?: string,
+  env?: Record<string, string>
+): Promise<void> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
-  return invoke<void>("pty_spawn", { id, cwd, rows, cols });
+  return invoke<void>("pty_spawn", { id, cwd, rows, cols, command: command ?? null, env: env ?? null });
 }
 
 export async function ptyWrite(id: string, data: string): Promise<void> {

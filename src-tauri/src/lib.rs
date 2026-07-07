@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use portable_pty::{native_pty_system, Child as PtyChild, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct McpProcesses(pub Mutex<HashMap<String, Child>>);
@@ -282,6 +282,10 @@ fn extract_mcp_text(result: &serde_json::Value) -> String {
     out
 }
 
+// Versión del protocolo MCP que anunciamos en el handshake. Fija por ahora; si en el futuro algún
+// server exige negociar otra, habría que leer la que devuelve su `initialize` y reintentar con esa.
+const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
+
 // Cliente MCP one-shot para el nodo "mcp" de los workflows: spawnea el server, hace el handshake
 // JSON-RPC (initialize → notifications/initialized → tools/call) y devuelve el texto del resultado.
 // No mantiene el server vivo entre llamadas (cold start por ejecución) — simple y determinista para
@@ -371,7 +375,7 @@ fn mcp_call_tool(
     let mut run = || -> Result<String, String> {
         send_msg(&mut stdin, &serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": { "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "DevFlow", "version": "0.1" } }
+            "params": { "protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": { "name": "DevFlow", "version": "0.1" } }
         }))?;
         let init = recv_id(&rx, 1)?;
         if let Some(err) = init.get("error") {
@@ -585,7 +589,9 @@ fn windows_bash_path() -> Option<&'static str> {
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn PtyChild + Send + Sync>,
+    // Killer clonado del child (el child real vive en el hilo waiter, bloqueado en wait()). Permite
+    // matar el proceso desde pty_kill sin quitárselo al waiter.
+    killer: Box<dyn ChildKiller + Send + Sync>,
 }
 pub struct PtySessions(pub Mutex<HashMap<String, PtySession>>);
 
@@ -593,28 +599,53 @@ pub struct PtySessions(pub Mutex<HashMap<String, PtySession>>);
 // de cmd.exe: a diferencia de los shims .cmd de npm que resuelve acp_start, bash.exe es un
 // binario nativo win32 invocable directo dentro del ConPTY). Fallback a powershell.exe si no
 // está instalado Git Bash — más capaz que cmd.exe puro y Win11 siempre lo trae.
-fn build_shell_command(cwd: &str) -> CommandBuilder {
+//
+// `command`: si es Some, el pty corre ESE comando (shell -lc "<command>") y termina cuando el
+// comando termina (usado por el panel de Servicios para correr servers de larga duración de forma
+// aislada). Si es None, abre un shell interactivo (el terminal por-workspace del chat).
+fn build_shell_command(cwd: &str, command: Option<&str>, env: Option<&HashMap<String, String>>) -> CommandBuilder {
     let mut cmd = if cfg!(target_os = "windows") {
         match windows_bash_path() {
-            Some(bash) => CommandBuilder::new(bash),
-            None => CommandBuilder::new("powershell.exe"),
+            Some(bash) => {
+                let mut c = CommandBuilder::new(bash);
+                if let Some(run) = command {
+                    c.args(["-lc", run]);
+                }
+                c
+            }
+            None => {
+                let mut c = CommandBuilder::new("powershell.exe");
+                if let Some(run) = command {
+                    c.args(["-NoProfile", "-Command", run]);
+                }
+                c
+            }
         }
     } else {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        CommandBuilder::new(shell)
+        let mut c = CommandBuilder::new(shell);
+        if let Some(run) = command {
+            c.args(["-lc", run]);
+        }
+        c
     };
     cmd.cwd(cwd);
+    // Ambiente del proyecto (Frente 4): se inyecta a servicios y terminales del proyecto activo.
+    if let Some(vars) = env {
+        for (k, v) in vars {
+            cmd.env(k, v);
+        }
+    }
     cmd
 }
 
-// El hilo lector nunca toca el Mutex<PtySessions> mientras está bloqueado en read() —
-// el reader clonado es un descriptor independiente del estado compartido, así que no hay
-// riesgo de deadlock con pty_write/pty_resize (que sí lockean, pero brevemente y sin
-// depender de que este hilo libere nada). El único lock que toma ocurre DESPUÉS de salir
-// del loop (EOF/error), para reportar el exit code real y limpiar el HashMap.
+// El hilo lector solo emite la salida (pty-output). Nunca toca el Mutex<PtySessions> mientras
+// está bloqueado en read() — el reader clonado es un descriptor independiente, así que no hay
+// deadlock con pty_write/pty_resize. La detección de salida del proceso NO va acá: en Windows el
+// EOF del reader del ConPTY no llega de forma fiable cuando el hijo termina (con el master vivo);
+// eso lo maneja el hilo waiter (child.wait()) que arma pty_spawn.
 fn spawn_pty_reader(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>) {
     let event_out = format!("pty-output:{}", id);
-    let event_exit = format!("pty-exit:{}", id);
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
         loop {
@@ -628,13 +659,6 @@ fn spawn_pty_reader(app: AppHandle, id: String, mut reader: Box<dyn Read + Send>
                 Err(_) => break,
             }
         }
-        if let Ok(mut sessions) = app.state::<PtySessions>().0.lock() {
-            if let Some(session) = sessions.get_mut(&id) {
-                let code = session.child.try_wait().ok().flatten().map(|s| s.exit_code());
-                let _ = app.emit(&event_exit, code);
-            }
-            sessions.remove(&id);
-        }
     });
 }
 
@@ -645,6 +669,8 @@ fn pty_spawn(
     cwd: String,
     rows: u16,
     cols: u16,
+    command: Option<String>,
+    env: Option<HashMap<String, String>>,
     state: State<PtySessions>,
 ) -> Result<(), String> {
     let mut sessions = state.0.lock().map_err(|e| e.to_string())?;
@@ -657,13 +683,14 @@ fn pty_spawn(
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|e| format!("No se pudo abrir PTY: {e}"))?;
 
-    let cmd = build_shell_command(&cwd);
-    let child = pair
+    let cmd = build_shell_command(&cwd, command.as_deref(), env.as_ref());
+    let mut child = pair
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("No se pudo iniciar el shell: {e}"))?;
     drop(pair.slave);
 
+    let killer = child.clone_killer();
     let reader = pair
         .master
         .try_clone_reader()
@@ -673,10 +700,22 @@ fn pty_spawn(
         .take_writer()
         .map_err(|e| format!("No se pudo obtener el writer del PTY: {e}"))?;
 
-    sessions.insert(id.clone(), PtySession { master: pair.master, writer, child });
+    sessions.insert(id.clone(), PtySession { master: pair.master, writer, killer });
     drop(sessions);
 
-    spawn_pty_reader(app, id, reader);
+    spawn_pty_reader(app.clone(), id.clone(), reader);
+
+    // Hilo waiter: bloquea en child.wait() y detecta la salida del proceso de forma confiable
+    // (el EOF del reader del ConPTY no es fiable en Windows). Al terminar, emite pty-exit con el
+    // exit code real y limpia la sesión (droppear el master hace que el reader corte por EOF).
+    let app_wait = app;
+    std::thread::spawn(move || {
+        let code = child.wait().ok().map(|s| s.exit_code());
+        let _ = app_wait.emit(&format!("pty-exit:{}", id), code);
+        if let Ok(mut sessions) = app_wait.state::<PtySessions>().0.lock() {
+            sessions.remove(&id);
+        }
+    });
     Ok(())
 }
 
@@ -702,7 +741,9 @@ fn pty_resize(id: String, rows: u16, cols: u16, state: State<PtySessions>) -> Re
 fn pty_kill(id: String, state: State<PtySessions>) -> Result<(), String> {
     let mut sessions = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut session) = sessions.remove(&id) {
-        let _ = session.child.kill();
+        // Mata vía el killer clonado; el hilo waiter (con el child real) verá terminar wait()
+        // y emitirá pty-exit + limpieza. No emitimos pty-exit acá para no duplicarlo.
+        let _ = session.killer.kill();
     }
     Ok(())
 }

@@ -25,7 +25,7 @@ export function TriggersModal({ workflowId, workflowName, onClose }: {
 
         <div className="trg-note">
           Los triggers disparan este flujo automáticamente <strong>mientras DevFlow esté abierto</strong>.
-          (Webhooks y disparo por cambio de archivo llegan pronto.)
+          El webhook escucha en <code>127.0.0.1</code> (solo local) con un token no adivinable.
         </div>
 
         <div className="trg-list">
@@ -80,15 +80,26 @@ export function TriggersModal({ workflowId, workflowName, onClose }: {
                   </div>
                 )}
                 {t.type === "webhook" && (
-                  <div className="trg-config">
+                  <div className="trg-config trg-config--webhook">
                     <Webhook size={12} />
                     <input
                       className="trg-input trg-input--url"
                       readOnly
                       value={`http://127.0.0.1:${WEBHOOK_PORT}/hook/${t.id}`}
                       onFocus={(e) => e.target.select()}
-                      title="POST acá (el body va como {{input}}). Activá el trigger para levantar el servidor."
+                      title="POST acá. Activá el trigger para levantar el servidor."
                     />
+                    <label
+                      className="trg-ext-input"
+                      title="Pasar el body de la request como {{input}} al flujo. El body es entrada externa no confiable (puede terminar en shell o new Function). Dejalo apagado salvo que confíes en quien llama el webhook."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!t.allowExternalInput}
+                        onChange={(e) => updateTrigger(t.id, { allowExternalInput: e.target.checked })}
+                      />
+                      <span>usar body como input</span>
+                    </label>
                   </div>
                 )}
                 {t.type === "file" && (

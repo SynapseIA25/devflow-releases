@@ -4,6 +4,7 @@
 // propio listener de eventos. Rust solo pipea líneas crudas — toda la lógica de framing,
 // correlación de ids y protocolo vive acá.
 import { acpStart, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
+import { useSettingsStore } from "../store/settingsStore";
 
 export type AcpSpawnConfig = { command: string; args: string[] };
 
@@ -20,7 +21,10 @@ export type PermissionRequest = {
 };
 type PermissionListener = (req: PermissionRequest) => void;
 
-type PendingRequest = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+// sessionId: qué sesión originó la request (solo lo llevan las requests largas como session/prompt).
+// Permite que cancel() rechace SOLO los pending de la sesión que se detiene, sin matar prompts en
+// vuelo de otros workspaces que comparten el mismo proceso agente (mimo/hermes = un proceso por provider).
+type PendingRequest = { resolve: (v: unknown) => void; reject: (e: Error) => void; sessionId?: string };
 
 type ProviderState = {
   started: boolean;
@@ -72,11 +76,11 @@ function send(provider: string, payload: Record<string, unknown>) {
   return acpSend(provider, JSON.stringify(payload));
 }
 
-function sendRequest<T = unknown>(provider: string, method: string, params?: unknown): Promise<T> {
+function sendRequest<T = unknown>(provider: string, method: string, params?: unknown, sessionId?: string): Promise<T> {
   const s = stateFor(provider);
   const id = s.nextId++;
   return new Promise<T>((resolve, reject) => {
-    s.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+    s.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, sessionId });
     send(provider, { jsonrpc: "2.0", id, method, params }).catch((e) => {
       s.pending.delete(id);
       reject(e);
@@ -111,10 +115,20 @@ async function handleClientRequest(provider: string, id: number, method: string,
         return;
       }
       if (permissionListeners.size === 0) {
-        // sin UI montada para aprobar (ej. uso headless): fail-safe a la primera opción "allow*"
-        // para no dejar al agente colgado esperando una respuesta que nunca llega.
-        const allowOption = options.find((o) => o.kind?.startsWith("allow")) ?? options[0];
-        respond(provider, id, { outcome: { outcome: "selected", optionId: allowOption.optionId } });
+        // Sin UI montada para aprobar (ej. workflow headless). Antes se auto-aprobaba en silencio la
+        // primera opción "allow*" → un agente en un workflow aprobaba TODOS sus permisos solo. Ahora
+        // la postura por defecto es DENEGAR (cancelled): más seguro. El usuario puede habilitar el
+        // auto-approve explícitamente en Settings (autoApprovePermissions). Toda decisión se loguea.
+        const { autoApprovePermissions, logPermission } = useSettingsStore.getState();
+        const toolName = (params?.toolCall?.title as string) ?? (params?.toolCall?.kind as string) ?? "acción";
+        if (autoApprovePermissions) {
+          const allowOption = options.find((o) => o.kind?.startsWith("allow")) ?? options[0];
+          logPermission({ provider, tool: toolName, decision: "auto-allow" });
+          respond(provider, id, { outcome: { outcome: "selected", optionId: allowOption.optionId } });
+        } else {
+          logPermission({ provider, tool: toolName, decision: "auto-deny" });
+          respond(provider, id, { outcome: { outcome: "cancelled" } });
+        }
         return;
       }
       const req: PermissionRequest = { provider, id, sessionId: params?.sessionId, toolCall: params?.toolCall, options };
@@ -209,7 +223,7 @@ export async function prompt(provider: string, sessionId: string, text: string):
   return sendRequest(provider, "session/prompt", {
     sessionId,
     prompt: [{ type: "text", text }],
-  });
+  }, sessionId);
 }
 
 export function onUpdate(cb: UpdateListener): () => void {
@@ -228,4 +242,22 @@ export function resolvePermission(provider: string, id: number, optionId: string
 
 export function cancelPermission(provider: string, id: number) {
   respond(provider, id, { outcome: { outcome: "cancelled" } });
+}
+
+// Detener el turno en curso de una sesión. Manda la notificación ACP `session/cancel` (best-effort:
+// el agente debería abortar y cerrar el turno) y, además, destraba localmente cualquier request que
+// estemos esperando —típicamente `session/prompt`—. Esto último es clave: si el agente quedó colgado
+// (ej. ejecutando un proceso de larga duración que no termina), nunca va a responder al cancel, así
+// que no podemos depender de su respuesta para re-habilitar el chat. `__turn_cancelled__` es un
+// sentinel que el llamador (runAcp) reconoce para no mostrarlo como error.
+export function cancel(provider: string, sessionId: string): void {
+  const s = stateFor(provider);
+  send(provider, { jsonrpc: "2.0", method: "session/cancel", params: { sessionId } }).catch(() => {});
+  // Solo destrabamos los pending de ESTA sesión: cancelar un turno no debe matar prompts en vuelo
+  // de otros workspaces que corren sobre el mismo proceso agente (misma provider, sesión distinta).
+  for (const [id, p] of s.pending) {
+    if (p.sessionId !== sessionId) continue;
+    s.pending.delete(id);
+    p.reject(new Error("__turn_cancelled__"));
+  }
 }
