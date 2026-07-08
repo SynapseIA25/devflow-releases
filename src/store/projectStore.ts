@@ -44,6 +44,22 @@ export type DebtItem = {
   createdAt: number;
 };
 
+// ── Ambientes de prueba (worktree efímero) ──
+// Cada ambiente es un git worktree con su propia rama (env/<name>), creado desde la rama base del
+// proyecto. El agente/terminal trabajan AISLADOS ahí sin tocar el árbol real; al terminar se revisa
+// el diff y se promueve (merge a la base) o se descarta (worktree remove + branch -D). El worktree
+// vive en un sibling `.devflow-envs/` fuera del árbol del proyecto (no lo scanea el file explorer).
+// Scope duro por proyecto (igual que servicios/contexto/deuda).
+export type TestEnv = {
+  id: string;
+  name: string;
+  branch: string; // rama del worktree, ej. "env/exp1"
+  path: string; // carpeta del worktree (posix)
+  baseBranch: string; // rama base desde la que se creó
+  agentId?: string; // agente experto asignado (opcional)
+  createdAt: number;
+};
+
 // ── Proyecto ──
 // El contenedor natural de todo lo que es "por proyecto": su carpeta raíz, ambiente (env vars que se
 // inyectan a servicios y terminales), integración git, tracking de issues, y las asociaciones a
@@ -60,6 +76,7 @@ export type Project = {
   services: Service[]; // servicios del proyecto (scope duro, Frente 3)
   contextItems: ContextItem[]; // archivos/carpetas de contexto del proyecto (Tanda C)
   debt: DebtItem[]; // tablero de deuda técnica del proyecto (Tanda D)
+  environments: TestEnv[]; // ambientes de prueba (worktrees efímeros)
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -72,6 +89,7 @@ type PersistedState = {
 const makeProjectId = () => `proj_${Math.random().toString(36).slice(2, 9)}`;
 const makeServiceId = () => `svc_${Math.random().toString(36).slice(2, 9)}`;
 const makeDebtId = () => `debt_${Math.random().toString(36).slice(2, 9)}`;
+const makeEnvId = () => `env_${Math.random().toString(36).slice(2, 9)}`;
 
 // basename de una ruta Windows o POSIX (para nombrar un proyecto nuevo por su carpeta).
 export function baseName(path: string): string {
@@ -93,6 +111,7 @@ function makeProject(path: string, name?: string): Project {
     services: [],
     contextItems: [],
     debt: [],
+    environments: [],
   };
 }
 
@@ -135,6 +154,11 @@ type ProjectStore = {
   addDebtBulk: (titles: string[], severity: DebtSeverity) => void; // ej. hallazgos de /code-review, uno por línea
   updateDebt: (id: string, patch: Partial<Pick<DebtItem, "title" | "note" | "severity" | "status" | "agentId">>) => void;
   removeDebt: (id: string) => void;
+
+  // ── Ambientes de prueba del proyecto activo (scope duro) ──
+  addEnvironment: (env: Omit<TestEnv, "id" | "createdAt">) => string;
+  updateEnvironment: (id: string, patch: Partial<Pick<TestEnv, "agentId">>) => void;
+  removeEnvironment: (id: string) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -264,6 +288,18 @@ export const useProjectStore = create<ProjectStore>()(
 
       removeDebt: (id) =>
         set((s) => patchActive(s, (p) => ({ debt: p.debt.filter((d) => d.id !== id) }))),
+
+      addEnvironment: (env) => {
+        const id = makeEnvId();
+        set((s) => patchActive(s, (p) => ({ environments: [{ ...env, id, createdAt: Date.now() }, ...p.environments] })));
+        return id;
+      },
+
+      updateEnvironment: (id, patch) =>
+        set((s) => patchActive(s, (p) => ({ environments: p.environments.map((e) => (e.id === id ? { ...e, ...patch } : e)) }))),
+
+      removeEnvironment: (id) =>
+        set((s) => patchActive(s, (p) => ({ environments: p.environments.filter((e) => e.id !== id) }))),
     }),
     {
       name: "devflow-project",
@@ -298,7 +334,7 @@ export const useProjectStore = create<ProjectStore>()(
         const projects = Object.fromEntries(
           Object.entries(p.projects).map(([id, proj]) => [
             id,
-            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [] },
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [] },
           ])
         );
         return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };

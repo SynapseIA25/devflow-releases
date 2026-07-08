@@ -15,6 +15,7 @@ import { AgentsView } from "./views/AgentsView";
 import { McpView } from "./views/McpView";
 import { ServicesView } from "./views/ServicesView";
 import { ProjectsView } from "./views/ProjectsView";
+import { EnvironmentsView } from "./views/EnvironmentsView";
 import { SettingsView } from "./views/SettingsView";
 import { GitBranch, Activity } from "lucide-react";
 import { useUiStore } from "./store/uiStore";
@@ -28,6 +29,7 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   editor:   <EditorView />,
   map:      <CodebaseMapView />,
   projects: <ProjectsView />,
+  environments: <EnvironmentsView />,
   services: <ServicesView />,
   agents:   <AgentsView />,
   mcp:      <McpView />,

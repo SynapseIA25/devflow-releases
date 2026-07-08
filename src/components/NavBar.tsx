@@ -1,6 +1,6 @@
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes } from "lucide-react";
 
-export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "agents" | "mcp" | "services" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "agents" | "mcp" | "services" | "settings";
 
 const NAV_ITEMS: { id: ViewId; icon: typeof MessageSquare; label: string }[] = [
   { id: "chat",     icon: MessageSquare,  label: "Chat" },
@@ -8,6 +8,7 @@ const NAV_ITEMS: { id: ViewId; icon: typeof MessageSquare; label: string }[] = [
   { id: "editor",   icon: FileCode,       label: "Código" },
   { id: "map",      icon: Network,        label: "Mapa" },
   { id: "projects", icon: FolderKanban,   label: "Proyectos" },
+  { id: "environments", icon: Boxes,      label: "Ambientes" },
   { id: "services", icon: TerminalSquare, label: "Servicios" },
   { id: "agents",   icon: Bot,            label: "Agents" },
   { id: "mcp",      icon: Server,         label: "MCP" },
