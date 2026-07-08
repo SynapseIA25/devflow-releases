@@ -7,6 +7,7 @@ import { isExpertAgent, type AgentConfig } from "../lib/providers";
 import { suggestExperts } from "../lib/expertRouter";
 import { autoDelegate, type DelegateStep } from "../lib/teamDelegate";
 import { createWorktree } from "../lib/environments";
+import * as acpClient from "../lib/acpClient";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useProjectStore } from "../store/projectStore";
@@ -43,6 +44,15 @@ export function TeamView() {
     setRunning(true); setSteps([]); setEnvName(null); cancelRef.current = false;
     let cwd = useProjectStore.getState().projectPath;
     try {
+      // Reiniciamos el/los proceso(s) ACP de los agentes ANTES de cada corrida: abrir muchas sesiones
+      // seguidas puede wedgear el proceso mimo compartido (un turno colgado lo deja sin responder).
+      // Arrancar fresco lo evita. Invalida sesiones abiertas de ese provider → resetSessions las limpia.
+      const providers = [...new Set([lead, ...experts].map((a) => a.providerId))];
+      setSteps([{ kind: "stage", label: "Reiniciando el agente para arrancar fresco…" }]);
+      for (const p of providers) {
+        await acpClient.restart(p);
+        useWorkspaceStore.getState().resetSessions(p);
+      }
       if (isolate) {
         // Ambiente efímero: los expertos escriben AISLADOS en el worktree, no en el proyecto real.
         const name = `equipo-${new Date().toTimeString().slice(0, 8).replace(/:/g, "")}`;

@@ -3,7 +3,7 @@
 // cada provider tiene su propio child process, su propio espacio de ids JSON-RPC y su
 // propio listener de eventos. Rust solo pipea líneas crudas — toda la lógica de framing,
 // correlación de ids y protocolo vive acá.
-import { acpStart, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
+import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 
 export type AcpSpawnConfig = { command: string; args: string[] };
@@ -260,4 +260,31 @@ export function cancel(provider: string, sessionId: string): void {
     s.pending.delete(id);
     p.reject(new Error("__turn_cancelled__"));
   }
+}
+
+// Reinicia el proceso agente de un provider desde cero: mata el proceso hijo (acp_stop) y resetea el
+// estado del cliente (started/initPromise/nextId/pending) para que el próximo newSession spawnee un
+// proceso FRESCO y re-haga el handshake initialize. Se usa antes de cada corrida de auto-delegación:
+// abrir muchas sesiones seguidas puede "wedgear" el proceso mimo compartido (un turno colgado deja al
+// proceso sin responder los siguientes) — arrancar fresco lo evita. IMPORTANTE: invalida las sesiones
+// abiertas de ese provider (sus sessionId dejan de existir en el proceso nuevo); el llamador debe
+// limpiar esos sessionId (ej. workspaceStore.resetSessions) para que se recreen solos.
+export async function restart(provider: string): Promise<void> {
+  const s = stateFor(provider);
+  // Destrabamos cualquier request en vuelo (no van a responder — el proceso se va a matar).
+  for (const [id, p] of s.pending) {
+    s.pending.delete(id);
+    p.reject(new Error("__acp_restarted__"));
+  }
+  try {
+    await acpStop(provider);
+  } catch {
+    // best-effort: aunque falle el stop, reseteamos el estado para forzar un start nuevo
+  }
+  s.started = false;
+  s.initPromise = null;
+  s.nextId = 1;
+  s.pending.clear();
+  // listenerAttached se mantiene: el `listen(acp-message:<provider>)` del frontend sobrevive al
+  // reinicio del proceso (Rust re-emite en el mismo canal), y re-attachar duplicaría el handler.
 }

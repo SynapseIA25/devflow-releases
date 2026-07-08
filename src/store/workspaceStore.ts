@@ -93,6 +93,9 @@ type WorkspaceStore = {
   // Desata los workspaces de un ambiente que se promovió/descartó: su worktree ya no existe, así que
   // vuelven a rootear en projectPath y se descarta su sesión ACP (el próximo prompt abre una nueva).
   unbindEnv: (envId: string) => void;
+  // Descarta el sessionId de los workspaces de un provider cuyo proceso ACP se reinició (sus sesiones
+  // ya no existen en el proceso nuevo). El próximo prompt en cada uno abre una sesión fresca.
+  resetSessions: (provider: string) => void;
   addBlock: (wsId: string, block: Omit<DocBlockData, "id" | "ts">) => string;
   appendTextChunk: (wsId: string, blockId: string, delta: string, type: "ai" | "thought", agentId?: string) => void;
   updateSteps: (wsId: string, updater: (prev: Step[]) => Step[]) => void;
@@ -143,6 +146,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             w.envId === envId
               ? { ...w, cwd: undefined, envId: undefined, envName: undefined, sessionId: undefined, sessionProvider: undefined }
               : w
+          ),
+        })),
+
+      resetSessions: (provider) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) =>
+            w.sessionProvider === provider ? { ...w, sessionId: undefined, sessionProvider: undefined } : w
           ),
         })),
 
