@@ -271,8 +271,10 @@ export function ChatView() {
   }, []);
   const contextItems = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
   const removeContextItem = useProjectStore((s) => s.removeContextItem);
-  // Archivo activo del editor de código — se inyecta como contexto del agente (ver buildPromptWithContext).
-  const editorActivePath = useEditorStore((s) => s.activePath);
+  // Archivo activo del editor de código DEL PROYECTO ACTIVO — se inyecta como contexto del agente (ver
+  // buildPromptWithContext). El editor está scopeado por proyecto, así que este chip solo muestra un
+  // archivo del proyecto activo (nunca uno de otro proyecto abierto en otra pestaña del editor).
+  const editorActivePath = useEditorStore((s) => s.activePathByProject[activeProjectId] ?? null);
   const projectPath = useProjectStore((s) => s.projectPath);
   const projectEnv = useProjectStore((s) => s.projects[s.activeId]?.env ?? {});
 
@@ -438,12 +440,14 @@ export function ChatView() {
       return c === r || c.startsWith(r + "\\") || c.startsWith(r + "/");
     };
 
-    // Archivo activo del editor de código: el agente "ve" lo que estás editando ahora mismo, incluidos
-    // los cambios SIN guardar (usamos el buffer del editor, no el disco). Mismo dedup por sesión que los
-    // adjuntos: solo se re-manda si su contenido cambió desde el último turno. Solo se inyecta si el
-    // archivo pertenece al proyecto de este workspace (si no, es de otro proyecto: no es contexto de este).
+    // Archivo activo del editor de código DEL PROYECTO de este workspace: el agente "ve" lo que estás
+    // editando ahora mismo, incluidos los cambios SIN guardar (usamos el buffer del editor, no el disco).
+    // Mismo dedup por sesión que los adjuntos: solo se re-manda si su contenido cambió desde el último
+    // turno. El editor está scopeado por proyecto (activePathByProject), y además chequeamos isInsideProject
+    // como red de seguridad para nunca filtrar un archivo de otro proyecto al prompt.
     const ed = useEditorStore.getState();
-    const activeTab = ed.tabs.find((t) => t.path === ed.activePath);
+    const activePathForWs = ed.activePathByProject[wsForCtx?.projectId ?? ""] ?? null;
+    const activeTab = ed.tabs.find((t) => t.path === activePathForWs);
     const editorPath = activeTab && !activeTab.loading && !activeTab.error && isInsideProject(activeTab.path) ? activeTab.path : null;
     if (activeTab && editorPath) {
       const key = `@editor:${editorPath}`;

@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import { FileCode, X, Save, RotateCw } from "lucide-react";
 import { useEditorStore } from "../store/editorStore";
+import { useProjectStore } from "../store/projectStore";
 import { CodeEditor } from "../components/editor/CodeEditor";
 import { FileExplorer } from "../components/panel/FileExplorer";
 
@@ -7,8 +9,12 @@ import { FileExplorer } from "../components/panel/FileExplorer";
 // izquierda + barra de pestañas + editor CodeMirror. Al clickear un archivo en el explorador se
 // abre como pestaña editable (no el preview de solo lectura del panel derecho del chat).
 export function EditorView() {
-  const tabs = useEditorStore((s) => s.tabs);
-  const activePath = useEditorStore((s) => s.activePath);
+  const activeProjectId = useProjectStore((s) => s.activeId);
+  const allTabs = useEditorStore((s) => s.tabs);
+  // Solo las pestañas del proyecto activo (scope por proyecto): al cambiar de proyecto se muestran
+  // sus propios archivos abiertos, no los del anterior.
+  const tabs = useMemo(() => allTabs.filter((t) => t.projectId === activeProjectId), [allTabs, activeProjectId]);
+  const activePath = useEditorStore((s) => s.activePathByProject[activeProjectId] ?? null);
   const openFile = useEditorStore((s) => s.openFile);
   const closeTab = useEditorStore((s) => s.closeTab);
   const setActive = useEditorStore((s) => s.setActive);

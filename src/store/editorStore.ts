@@ -1,12 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { readTextFile, writeTextFile } from "../lib/tauriApi";
+import { useProjectStore } from "./projectStore";
 
 // Una pestaña del editor de código. `content` es el buffer editable en vivo; `savedContent` es
 // lo último que hay en disco — la pestaña está "sucia" (cambios sin guardar) cuando difieren.
 export type EditorTab = {
   path: string;
   name: string;
+  // Proyecto al que pertenece la pestaña (scope por proyecto): el editor solo muestra las del
+  // proyecto activo. Se infiere del path (qué raíz de proyecto lo contiene) al abrir.
+  projectId: string;
   content: string;
   savedContent: string;
   loading: boolean;
@@ -20,9 +24,29 @@ function nameOf(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+const normPath = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
+
+// Proyecto (id) al que pertenece un archivo: el que tiene la raíz más larga que lo contiene. "" si
+// ninguno lo contiene (archivo fuera de todos los proyectos registrados).
+function projectIdForPath(path: string): string {
+  const projects = useProjectStore.getState().projects;
+  const c = normPath(path);
+  let best = "";
+  let bestLen = -1;
+  for (const [id, p] of Object.entries(projects)) {
+    const r = normPath(p.path);
+    if ((c === r || c.startsWith(r + "\\") || c.startsWith(r + "/")) && r.length > bestLen) {
+      best = id;
+      bestLen = r.length;
+    }
+  }
+  return best;
+}
+
 type EditorStore = {
   tabs: EditorTab[];
-  activePath: string | null;
+  // Pestaña activa POR proyecto (el editor muestra la del proyecto activo).
+  activePathByProject: Record<string, string | null>;
   openFile: (path: string) => Promise<void>;
   closeTab: (path: string) => void;
   setActive: (path: string) => void;
@@ -37,7 +61,7 @@ export const useEditorStore = create<EditorStore>()(
   persist(
     (set, get) => ({
       tabs: [],
-      activePath: null,
+      activePathByProject: {},
 
       // Lee el contenido real (completo, sin cap de líneas) del archivo hacia su pestaña.
       // Usado tanto al abrir como al recargar desde disco.
@@ -60,28 +84,38 @@ export const useEditorStore = create<EditorStore>()(
       openFile: async (path) => {
         const existing = get().tabs.find((t) => t.path === path);
         if (existing) {
-          set({ activePath: path });
+          set((s) => ({ activePathByProject: { ...s.activePathByProject, [existing.projectId]: path } }));
           return;
         }
+        const projectId = projectIdForPath(path) || useProjectStore.getState().activeId;
         set((s) => ({
-          tabs: [...s.tabs, { path, name: nameOf(path), content: "", savedContent: "", loading: true, error: null }],
-          activePath: path,
+          tabs: [...s.tabs, { path, name: nameOf(path), projectId, content: "", savedContent: "", loading: true, error: null }],
+          activePathByProject: { ...s.activePathByProject, [projectId]: path },
         }));
         await get().load(path);
       },
 
       closeTab: (path) =>
         set((s) => {
+          const closing = s.tabs.find((t) => t.path === path);
           const idx = s.tabs.findIndex((t) => t.path === path);
           const tabs = s.tabs.filter((t) => t.path !== path);
-          let activePath = s.activePath;
-          if (s.activePath === path) {
-            activePath = tabs.length ? tabs[Math.min(idx, tabs.length - 1)].path : null;
+          const activePathByProject = { ...s.activePathByProject };
+          if (closing && s.activePathByProject[closing.projectId] === path) {
+            // Caemos a un hermano DEL MISMO proyecto (no a cualquiera), o null si no queda ninguno.
+            const siblings = tabs.filter((t) => t.projectId === closing.projectId);
+            const fallback = siblings[Math.min(idx, siblings.length - 1)] ?? siblings[siblings.length - 1] ?? null;
+            activePathByProject[closing.projectId] = fallback ? fallback.path : null;
           }
-          return { tabs, activePath };
+          return { tabs, activePathByProject };
         }),
 
-      setActive: (path) => set({ activePath: path }),
+      setActive: (path) =>
+        set((s) => {
+          const tab = s.tabs.find((t) => t.path === path);
+          if (!tab) return {};
+          return { activePathByProject: { ...s.activePathByProject, [tab.projectId]: path } };
+        }),
 
       setContent: (path, content) =>
         set((s) => ({
@@ -116,20 +150,36 @@ export const useEditorStore = create<EditorStore>()(
     }),
     {
       name: "devflow-editor",
-      // Solo persistimos qué archivos estaban abiertos (path/name) y cuál era el activo — NO el
-      // contenido ni el estado sucio: al reabrir la app cada pestaña recarga su contenido real de
-      // disco (mismo criterio que VS Code para archivos guardados). Las ediciones sin guardar se
-      // pierden al cerrar la app — limitación conocida del v1.
+      version: 1,
+      // v0 tenía tabs sin projectId y un solo activePath global. Migramos infiriendo el proyecto de
+      // cada pestaña por su path, y colgando el activePath viejo del proyecto que le corresponde.
+      migrate: (persisted: any, version) => {
+        if (version < 1 && persisted && Array.isArray(persisted.tabs)) {
+          const tabs = persisted.tabs.map((t: any) => ({ ...t, projectId: projectIdForPath(t.path) }));
+          const activePathByProject: Record<string, string | null> = {};
+          if (persisted.activePath) {
+            const owner = projectIdForPath(persisted.activePath);
+            activePathByProject[owner] = persisted.activePath;
+          }
+          return { tabs, activePathByProject };
+        }
+        return persisted;
+      },
+      // Solo persistimos qué archivos estaban abiertos (path/name/projectId) y cuál era el activo por
+      // proyecto — NO el contenido ni el estado sucio: al reabrir la app cada pestaña recarga su
+      // contenido real de disco (mismo criterio que VS Code para archivos guardados). Las ediciones
+      // sin guardar se pierden al cerrar la app — limitación conocida del v1.
       partialize: (s) => ({
         tabs: s.tabs.map((t) => ({
           path: t.path,
           name: t.name,
+          projectId: t.projectId,
           content: "",
           savedContent: "",
           loading: false,
           error: null,
         })),
-        activePath: s.activePath,
+        activePathByProject: s.activePathByProject,
       }),
       // Tras rehidratar, traer de disco el contenido real de cada pestaña persistida.
       onRehydrateStorage: () => (state) => {
