@@ -188,16 +188,21 @@ function DelegateResults({ steps, running }: { steps: DelegateStep[]; running: b
         </div>
       )}
 
-      {starts.map((st, i) => {
-        // Pareamos por posición (no por nombre): expert-done se emite en el mismo orden que expert-start,
-        // así no se rompe si el líder asigna dos sub-tareas al mismo experto.
-        const result = done[i];
+      {starts.map((st) => {
+        // Pareamos por `index` (no por orden de llegada): en paralelo los expert-done llegan en cualquier
+        // orden, pero cada uno trae el índice de su expert-start → se paean sin ambigüedad aunque el líder
+        // asigne dos sub-tareas al mismo experto.
+        const result = done.find((d) => d.index === st.index);
         return (
-          <div key={i} className="team-expert-block">
+          <div key={st.index} className="team-expert-block">
             <div className="team-expert-head">
               <span style={{ color: st.color }}>{st.icon}</span>
               <span className="team-expert-name">{st.name}</span>
-              {!result && running ? <Loader size={11} className="spin" /> : <span className="team-expert-ok">✓</span>}
+              {!result && running
+                ? <Loader size={11} className="spin" />
+                : result?.timedOut
+                  ? <span className="team-expert-timeout" title="Sin respuesta a tiempo">⏱</span>
+                  : <span className="team-expert-ok">✓</span>}
             </div>
             {result && <div className="team-expert-body proj-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{result.text}</ReactMarkdown></div>}
           </div>
