@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
-import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine } from "lucide-react";
+import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare } from "lucide-react";
 import { useProjectStore, baseName, type TestEnv } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
+import { useChatStore } from "../store/chatStore";
+import { useUiStore } from "../store/uiStore";
 import { TerminalPane } from "../components/TerminalPane";
 import { runShellCommand, createDir, ptyKill, isTauri } from "../lib/tauriApi";
 
@@ -38,6 +41,22 @@ export function EnvironmentsView() {
   const [diff, setDiff] = useState<{ envId: string; text: string } | null>(null);
 
   const selectedEnv = environments.find((e) => e.id === selected) ?? null;
+
+  // Abre una pestaña de chat ATADA al ambiente: la sesión ACP y la terminal del workspace se rootean
+  // en el worktree, así el agente trabaja aislado ahí. Si el ambiente tiene un agente asignado, lo deja
+  // activo. Reusa un workspace ya abierto para el mismo ambiente en vez de duplicarlo.
+  const openInChat = (env: TestEnv) => {
+    const wsStore = useWorkspaceStore.getState();
+    const existing = wsStore.workspaces.find((w) => w.envId === env.id);
+    if (existing) {
+      wsStore.setActiveWs(existing.id);
+    } else {
+      const agentId = env.agentId ?? useChatStore.getState().activeAgentId;
+      wsStore.newWorkspace(agentId, { title: env.name, cwd: env.path, envId: env.id, envName: env.name });
+    }
+    if (env.agentId) useChatStore.getState().setActiveAgent(env.agentId);
+    useUiStore.getState().setView("chat");
+  };
 
   const create = async () => {
     const name = newName.trim();
@@ -97,6 +116,7 @@ export function EnvironmentsView() {
       }
       // merge ok → descartar el worktree y la rama
       await discardWorktree(env);
+      useWorkspaceStore.getState().unbindEnv(env.id);
       removeEnvironment(env.id);
       if (selected === env.id) { setSelected(null); setDiff(null); }
     } catch (e) {
@@ -107,11 +127,15 @@ export function EnvironmentsView() {
   };
 
   const discardWorktree = async (env: TestEnv) => {
-    // Matamos primero la terminal del ambiente: su shell tiene el worktree como cwd y, en Windows,
-    // un proceso con esa carpeta abierta impide que `git worktree remove` borre el directorio (queda
-    // vacío pero huérfano). Con el PTY muerto, la carpeta se libera y git la elimina del todo.
+    // Matamos las terminales que tienen el worktree como cwd antes de removerlo: la de la vista
+    // Ambientes (PTY id = env.id) Y las de los workspaces del chat atados a este ambiente (PTY id =
+    // workspace id). En Windows, un proceso con esa carpeta abierta impide que `git worktree remove`
+    // borre el directorio (queda vacío pero huérfano). Con los PTYs muertos, git la elimina del todo.
     await ptyKill(env.id).catch(() => {});
-    await new Promise((r) => setTimeout(r, 350));
+    for (const w of useWorkspaceStore.getState().workspaces.filter((w) => w.envId === env.id)) {
+      await ptyKill(w.id).catch(() => {});
+    }
+    await new Promise((r) => setTimeout(r, 400));
     await git(`git worktree remove --force "${env.path}"`, projectPath);
     await git(`git branch -D "${env.branch}"`, projectPath);
   };
@@ -121,6 +145,7 @@ export function EnvironmentsView() {
     setBusy("discard"); setError(null);
     try {
       await discardWorktree(env);
+      useWorkspaceStore.getState().unbindEnv(env.id);
       removeEnvironment(env.id);
       if (selected === env.id) { setSelected(null); setDiff(null); }
     } catch (e) {
@@ -189,6 +214,9 @@ export function EnvironmentsView() {
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <div className="env-actions">
+                <button className="env-btn env-btn--chat" onClick={() => openInChat(selectedEnv)} disabled={busy !== null}>
+                  <MessageSquare size={12} /> Abrir en chat
+                </button>
                 <button className="env-btn" onClick={() => void loadDiff(selectedEnv)} disabled={busy !== null}>
                   {busy === "diff" ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} Ver diff
                 </button>

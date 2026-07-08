@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode } from "lucide-react";
+import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode, GitBranch } from "lucide-react";
 import { useChatStore } from "../store/chatStore";
 import { useEditorStore } from "../store/editorStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
@@ -445,7 +445,10 @@ export function ChatView() {
       let sid = wsNow?.sessionProvider === provider ? wsNow?.sessionId : undefined;
       const isNewSession = !sid;
       if (!sid) {
-        sid = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath);
+        // Si el workspace está atado a un ambiente, la sesión ACP se abre en el worktree (cwd override)
+        // → el agente lee/escribe/ejecuta AISLADO ahí, sin tocar el proyecto real.
+        const sessionCwd = wsNow?.cwd ?? useProjectStore.getState().projectPath;
+        sid = await acpClient.newSession(provider, spawn, sessionCwd);
         setSession(wsId, sid, provider);
       }
       // Registramos el turno keyed por sesión: el handler de session/update lo encuentra por acá,
@@ -618,8 +621,9 @@ export function ChatView() {
         {/* Workspace tabs */}
         <div className="ws-tabs">
           {workspaces.map((w) => (
-            <div key={w.id} className={`ws-tab${w.id === activeWs ? " active" : ""}`} onClick={() => setActiveWs(w.id)}>
+            <div key={w.id} className={`ws-tab${w.id === activeWs ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Ambiente aislado: ${w.envName}` : undefined}>
               <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
+              {w.envName && <GitBranch size={10} className="ws-tab-env" />}
               <span className="ws-tab-title">{w.title}</span>
               {workspaces.length > 1 && (
                 <button className="ws-tab-close" onClick={(e) => { e.stopPropagation(); closeWorkspace(w.id); }}>
@@ -688,13 +692,13 @@ export function ChatView() {
         <div className="term-pane" style={{ height: termHeight }}>
           <div className="term-output">
             {workspaces.map((w) => (
-              <TerminalPane key={w.id} workspaceId={w.id} cwd={projectPath} env={projectEnv} active={w.id === activeWs} />
+              <TerminalPane key={w.id} workspaceId={w.id} cwd={w.cwd ?? projectPath} env={projectEnv} active={w.id === activeWs} />
             ))}
           </div>
 
           {/* Status bar */}
           <div className="term-statusbar">
-            <span className="term-path">{projectPath}</span>
+            <span className="term-path">{ws?.cwd ?? projectPath}{ws?.envName ? ` · ambiente: ${ws.envName}` : ""}</span>
             <span className="term-model">{activeAgent?.name ?? "MiMo"} · devflow v0.1</span>
           </div>
         </div>

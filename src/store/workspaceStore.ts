@@ -35,6 +35,12 @@ export type Workspace = {
   blocks: DocBlockData[];
   sessionId?: string;
   sessionProvider?: string;
+  // Binding opcional a un ambiente de prueba (worktree). Si cwd está seteado, la sesión ACP y la
+  // terminal de este workspace se rootean ahí (no en projectPath) → el agente trabaja AISLADO en el
+  // worktree del ambiente. envId/envName son informativos (badge de la pestaña).
+  cwd?: string;
+  envId?: string;
+  envName?: string;
   steps: Step[];
   // Transitorios (no se persisten): estado de ejecución por-workspace. Reemplazan a los singletons
   // globales que antes vivían en ChatView (loading/turnCancelledRef) y que rompían el multi-workspace.
@@ -82,8 +88,11 @@ type WorkspaceStore = {
   workspaces: Workspace[];
   activeWs: string;
   setActiveWs: (id: string) => void;
-  newWorkspace: (agentId: string) => string;
+  newWorkspace: (agentId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string }) => string;
   closeWorkspace: (id: string) => void;
+  // Desata los workspaces de un ambiente que se promovió/descartó: su worktree ya no existe, así que
+  // vuelven a rootear en projectPath y se descarta su sesión ACP (el próximo prompt abre una nueva).
+  unbindEnv: (envId: string) => void;
   addBlock: (wsId: string, block: Omit<DocBlockData, "id" | "ts">) => string;
   appendTextChunk: (wsId: string, blockId: string, delta: string, type: "ai" | "thought", agentId?: string) => void;
   updateSteps: (wsId: string, updater: (prev: Step[]) => Step[]) => void;
@@ -103,10 +112,19 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 
       setActiveWs: (id) => set({ activeWs: id }),
 
-      newWorkspace: (agentId) => {
+      newWorkspace: (agentId, opts) => {
         const id = makeId();
         set((s) => ({
-          workspaces: [...s.workspaces, { id, title: `Sesión ${s.workspaces.length + 1}`, agentId, blocks: [], steps: [] }],
+          workspaces: [...s.workspaces, {
+            id,
+            title: opts?.title ?? `Sesión ${s.workspaces.length + 1}`,
+            agentId,
+            blocks: [],
+            steps: [],
+            cwd: opts?.cwd,
+            envId: opts?.envId,
+            envName: opts?.envName,
+          }],
           activeWs: id,
         }));
         return id;
@@ -118,6 +136,15 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           const activeWs = s.activeWs === id ? (workspaces[0]?.id ?? "") : s.activeWs;
           return { workspaces, activeWs };
         }),
+
+      unbindEnv: (envId) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) =>
+            w.envId === envId
+              ? { ...w, cwd: undefined, envId: undefined, envName: undefined, sessionId: undefined, sessionProvider: undefined }
+              : w
+          ),
+        })),
 
       addBlock: (wsId, block) => {
         const id = makeId();

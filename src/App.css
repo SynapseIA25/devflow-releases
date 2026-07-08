@@ -1891,6 +1891,9 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .env-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .env-btn--promote:hover:not(:disabled) { color: #3fb950; border-color: #3fb950; }
 .env-btn--discard:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
+.env-btn--chat:hover:not(:disabled) { color: #7c3aed; border-color: #7c3aed; }
+/* Badge de ambiente aislado en la pestaña del chat */
+.ws-tab-env { color: #7c3aed; flex-shrink: 0; }
 
 .env-diff { border-bottom: 1px solid var(--border); max-height: 42%; display: flex; flex-direction: column; flex-shrink: 0; }
 .env-diff-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; font-size: 11px; color: var(--text-3); border-bottom: 1px solid var(--border-2); }
