@@ -231,21 +231,44 @@ export function ChatView() {
   // desde el chat la consulta para cortar entre nodos; cada turno la resetea al arrancar.
   const cancelledRef = useRef(new Map<string, boolean>());
 
+  // activeAgentId (chatStore) ya no es la fuente de verdad del turno: pasó a ser el DEFAULT global con el
+  // que se siembran las pestañas nuevas (tracks tu última elección). El turno usa ws.agentId (por-pestaña).
   const { activeAgentId, setActiveAgent } = useChatStore();
   const agents = useAgentsStore((s) => s.agents);
   const recordChat = useMetricsStore((s) => s.recordChat);
-  const activeAgent = agents.find((a) => a.id === activeAgentId);
-  // Scope duro por proyecto: el selector muestra los agentes globales base (MiMo/Hermes/Claude, defaults
-  // NO expertos) + los asociados al proyecto activo (+ el activo actual, para que nunca desaparezca la
-  // selección). Los expertos por área (pilar 1) NO se muestran acá por defecto: se usan desde la vista
-  // Equipo o asociándolos al proyecto — así el selector no se satura con los 9 expertos.
   const projectAgentIds = useProjectStore((s) => s.projects[s.activeId]?.agentIds ?? []);
-  const visibleAgents = useMemo(
-    () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === activeAgentId),
-    [agents, projectAgentIds, activeAgentId]
-  );
-  const ws = workspaces.find((w) => w.id === activeWs)!;
+  const activeProjectId = useProjectStore((s) => s.activeId);
+  const setWorkspaceAgent = useWorkspaceStore((s) => s.setWorkspaceAgent);
+
+  // Workspaces del PROYECTO ACTIVO (scope por proyecto). La pestaña activa efectiva es siempre una del
+  // proyecto: si activeWs quedó apuntando a otro proyecto (durante la transición de switch), caemos a la
+  // primera del proyecto. activateProject (efecto abajo) corrige activeWs al cambiar de proyecto.
+  const projectWorkspaces = useMemo(() => workspaces.filter((w) => w.projectId === activeProjectId), [workspaces, activeProjectId]);
+  const ws = projectWorkspaces.find((w) => w.id === activeWs) ?? projectWorkspaces[0];
+  const curWsId = ws?.id ?? "";
   const steps = ws?.steps ?? [];
+
+  // Agente del turno = el del workspace activo (por-pestaña, no global). Habilita MiMo en una pestaña y
+  // un experto en otra al mismo tiempo. El selector muestra los agentes globales base (MiMo/Hermes/Claude,
+  // defaults NO expertos) + los asociados al proyecto activo (+ el del ws activo, para que nunca desaparezca).
+  const activeAgent = agents.find((a) => a.id === ws?.agentId);
+  const visibleAgents = useMemo(
+    () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === ws?.agentId),
+    [agents, projectAgentIds, ws?.agentId]
+  );
+
+  // Al cambiar de proyecto activo: adoptar workspaces huérfanos, garantizar ≥1 pestaña, y activar la
+  // pestaña recordada del proyecto. Corre también en el primer montaje (migra los ws viejos sin projectId).
+  useEffect(() => {
+    useWorkspaceStore.getState().activateProject(activeProjectId, useChatStore.getState().activeAgentId || "mimo-coder");
+  }, [activeProjectId]);
+
+  // Resuelve el agente de un workspace por su id, leyendo estado FRESCO (turnos concurrentes de distintas
+  // pestañas pueden usar agentes distintos → no sirve el activeAgent del closure).
+  const agentForWs = useCallback((wsId: string) => {
+    const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === wsId);
+    return useAgentsStore.getState().agents.find((a) => a.id === w?.agentId);
+  }, []);
   const contextItems = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
   const removeContextItem = useProjectStore((s) => s.removeContextItem);
   // Archivo activo del editor de código — se inyecta como contexto del agente (ver buildPromptWithContext).
@@ -273,8 +296,9 @@ export function ChatView() {
   // Crea (en el primer chunk) o concatena texto (en los siguientes) a un bloque de streaming
   // ("ai" para la respuesta final, "thought" para el razonamiento del agente).
   const appendTextChunk = useCallback((wsId: string, blockId: string, delta: string, type: "ai" | "thought") => {
-    appendTextChunkToWs(wsId, blockId, delta, type, activeAgentId);
-  }, [activeAgentId, appendTextChunkToWs]);
+    const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === wsId);
+    appendTextChunkToWs(wsId, blockId, delta, type, w?.agentId);
+  }, [appendTextChunkToWs]);
   const appendAiChunk = useCallback((wsId: string, blockId: string, delta: string) => appendTextChunk(wsId, blockId, delta, "ai"), [appendTextChunk]);
 
   // session/update no manda un blockId propio para "agent_thought_chunk", pero sí messageId —
@@ -357,7 +381,8 @@ export function ChatView() {
     setPendingPermission(null);
   };
 
-  const newWorkspace = () => storeNewWorkspace(activeAgentId);
+  // Pestaña nueva en el proyecto activo, sembrada con el agente de la pestaña actual (o el default global).
+  const newWorkspace = () => storeNewWorkspace(ws?.agentId ?? activeAgentId, activeProjectId);
 
   const runMockAI = async (wsId: string, text: string) => {
     const taskSteps: Step[] = [
@@ -377,7 +402,7 @@ export function ChatView() {
 
       await new Promise((r) => setTimeout(r, 300));
       addBlockToWs(wsId, {
-        type: "ai", agentId: activeAgentId,
+        type: "ai", agentId: agentForWs(wsId)?.id,
         content: `## Respuesta: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}\n\nRecibí tu solicitud. Una vez que configures un proveedor en **⚙️ Settings**, procesaré la tarea y mostraré:\n\n### Plan de ejecución\n1. Leer archivos relevantes del proyecto\n2. Analizar estructura y dependencias\n3. Generar los cambios propuestos\n4. Ejecutar tests y validar\n\n### Archivos que se modificarían\n\`\`\`\nsrc/views/ChatView.tsx\nsrc/App.css\n\`\`\`\n\n> Configurá tu proveedor de IA en Settings para activar la ejecución real.`,
       });
     } finally {
@@ -467,7 +492,7 @@ export function ChatView() {
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
       // El system prompt del agente se inyecta una sola vez, al abrir la sesión ACP: una sesión es
       // una conversación continua del lado del agente, así que alcanza con mandarlo en el primer turno.
-      const systemPrompt = activeAgent?.systemPrompt?.trim();
+      const systemPrompt = agentForWs(wsId)?.systemPrompt?.trim();
       if (isNewSession && systemPrompt) {
         fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
       }
@@ -494,7 +519,7 @@ export function ChatView() {
   };
 
   const runAI = (wsId: string, text: string) => {
-    const provider = DEFAULT_PROVIDERS.find((p) => p.id === activeAgent?.providerId);
+    const provider = DEFAULT_PROVIDERS.find((p) => p.id === agentForWs(wsId)?.providerId);
     return provider?.acp ? runAcp(wsId, text, provider.id, provider.acp) : runMockAI(wsId, text);
   };
 
@@ -506,7 +531,7 @@ export function ChatView() {
     const query = arg.trim().toLowerCase();
     const w = query ? flows.find((f) => f.name.toLowerCase().includes(query)) : st.workflows[st.activeId];
     if (!w) {
-      addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
+      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
       finishTurn(wsId);
       return;
     }
@@ -526,7 +551,7 @@ export function ChatView() {
     } catch (e) {
       lines.push(`✖ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
+      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
       finishTurn(wsId);
     }
   };
@@ -561,28 +586,29 @@ export function ChatView() {
   // → finishTurn (re-habilita el input y sigue con la cola). Para el mock/workflow (sin pending ACP que
   // rechazar) la señal cancelledRef corta el loop y su finally también llama finishTurn.
   const stopTurn = () => {
-    const wsId = activeWs;
-    const w = workspaces.find((x) => x.id === wsId);
+    const wsId = curWsId;
+    if (!wsId) return;
+    const w = ws;
     if (w?.sessionProvider && w?.sessionId) {
       acpClient.cancel(w.sessionProvider, w.sessionId);
       activeTurnsRef.current.delete(`${w.sessionProvider}:${w.sessionId}`);
     }
     cancelledRef.current.set(wsId, true);
     updateWsSteps(wsId, (prev) => prev.map((s) => (s.status === "running" || s.status === "pending") ? { ...s, status: "failed" } : s));
-    addBlockToWs(wsId, { type: "ai", agentId: activeAgentId, content: "_⏹ Turno detenido por el usuario._" });
+    addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: "_⏹ Turno detenido por el usuario._" });
   };
 
   const handleSend = () => {
     const t = input.trim();
-    if (!t) return;
+    if (!t || !curWsId) return;
     setInput("");
     // Si ya hay un turno en curso en este workspace, encolamos: el chat sigue usable y el mensaje
     // se manda solo cuando termina el turno actual (cola transitoria por-workspace).
     if (ws?.running) {
-      enqueue(activeWs, t);
+      enqueue(curWsId, t);
       return;
     }
-    startMessage(activeWs, t);
+    startMessage(curWsId, t);
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -627,14 +653,14 @@ export function ChatView() {
     <div className="chat-view">
       {pendingPermission && <PermissionPrompt request={pendingPermission} onResolve={resolvePermission} />}
       <div className="hterm-main">
-        {/* Workspace tabs */}
+        {/* Workspace tabs — solo las del proyecto activo (scope por proyecto) */}
         <div className="ws-tabs">
-          {workspaces.map((w) => (
-            <div key={w.id} className={`ws-tab${w.id === activeWs ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Ambiente aislado: ${w.envName}` : undefined}>
+          {projectWorkspaces.map((w) => (
+            <div key={w.id} className={`ws-tab${w.id === curWsId ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Ambiente aislado: ${w.envName}` : undefined}>
               <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
               {w.envName && <GitBranch size={10} className="ws-tab-env" />}
               <span className="ws-tab-title">{w.title}</span>
-              {workspaces.length > 1 && (
+              {projectWorkspaces.length > 1 && (
                 <button className="ws-tab-close" onClick={(e) => { e.stopPropagation(); closeWorkspace(w.id); }}>
                   <X size={10} />
                 </button>
@@ -643,7 +669,7 @@ export function ChatView() {
           ))}
           <button className="ws-tab-add" onClick={newWorkspace}><Plus size={13} /></button>
 
-          {/* Agent selector */}
+          {/* Agent selector — cambia el agente de la PESTAÑA activa (por-workspace) y el default global */}
           <div className="ws-agent-selector" onClick={() => setShowAgentMenu((v) => !v)}>
             <span className="ws-agent-dot" style={{ background: activeAgent?.color ?? "#a78bfa" }} />
             <span className="ws-agent-name">{activeAgent?.name ?? "Agente"}</span>
@@ -651,8 +677,8 @@ export function ChatView() {
             {showAgentMenu && (
               <div className="agent-dropdown ws-dropdown">
                 {visibleAgents.map((a) => (
-                  <div key={a.id} className={`agent-option${a.id === activeAgentId ? " active" : ""}`}
-                    onClick={(e) => { e.stopPropagation(); setActiveAgent(a.id); setShowAgentMenu(false); }}>
+                  <div key={a.id} className={`agent-option${a.id === ws?.agentId ? " active" : ""}`}
+                    onClick={(e) => { e.stopPropagation(); if (curWsId) setWorkspaceAgent(curWsId, a.id); setActiveAgent(a.id); setShowAgentMenu(false); }}>
                     <span style={{ color: a.color, fontSize: 15 }}>{a.icon}</span>
                     <div>
                       <div className="agent-option-name">{a.name}</div>
@@ -700,8 +726,8 @@ export function ChatView() {
         {/* Terminal pane */}
         <div className="term-pane" style={{ height: termHeight }}>
           <div className="term-output">
-            {workspaces.map((w) => (
-              <TerminalPane key={w.id} workspaceId={w.id} cwd={w.cwd ?? projectPath} env={projectEnv} active={w.id === activeWs} />
+            {projectWorkspaces.map((w) => (
+              <TerminalPane key={w.id} workspaceId={w.id} cwd={w.cwd ?? projectPath} env={projectEnv} active={w.id === curWsId} />
             ))}
           </div>
 
@@ -721,7 +747,7 @@ export function ChatView() {
                 <div key={i} className="queue-chip" title={q}>
                   <span className="queue-chip-idx">{i + 1}</span>
                   <span className="queue-chip-text">{q}</span>
-                  <button onClick={() => removeFromQueue(activeWs, i)} title="Quitar de la cola"><X size={9} /></button>
+                  <button onClick={() => removeFromQueue(curWsId, i)} title="Quitar de la cola"><X size={9} /></button>
                 </div>
               ))}
             </div>

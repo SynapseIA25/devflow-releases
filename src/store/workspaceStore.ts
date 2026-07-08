@@ -30,8 +30,9 @@ export type DocBlockData = {
 
 export type Workspace = {
   id: string;
+  projectId: string; // proyecto al que pertenece (scope por proyecto): el chat filtra por el activo
   title: string;
-  agentId: string;
+  agentId: string; // agente de ESTE workspace (fuente de verdad del turno; puede diferir entre pestañas)
   blocks: DocBlockData[];
   sessionId?: string;
   sessionProvider?: string;
@@ -52,6 +53,7 @@ const makeId = () => Math.random().toString(36).slice(2);
 
 const INITIAL_WORKSPACE: Workspace = {
   id: "ws1",
+  projectId: "", // sentinela: se adopta al proyecto activo en el primer activateProject (ver merge)
   title: "MiMo-app",
   agentId: "mimo-coder",
   steps: [],
@@ -87,9 +89,18 @@ type ToolBlockPatch = {
 type WorkspaceStore = {
   workspaces: Workspace[];
   activeWs: string;
+  // Recuerda la pestaña activa por proyecto → al volver a un proyecto se restaura su última pestaña.
+  activeWsByProject: Record<string, string>;
   setActiveWs: (id: string) => void;
-  newWorkspace: (agentId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string }) => string;
+  newWorkspace: (agentId: string, projectId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string }) => string;
   closeWorkspace: (id: string) => void;
+  // Cambia el agente de UN workspace (el turno usa ws.agentId, no un global). Habilita tener MiMo en
+  // una pestaña y un experto en otra a la vez.
+  setWorkspaceAgent: (wsId: string, agentId: string) => void;
+  // Se llama al cambiar de proyecto activo: adopta workspaces huérfanos (sin projectId, de versiones
+  // viejas) al proyecto dado, garantiza que el proyecto tenga ≥1 workspace (crea uno si no), y setea
+  // activeWs a la pestaña recordada del proyecto (o la primera).
+  activateProject: (projectId: string, seedAgentId: string) => void;
   // Desata los workspaces de un ambiente que se promovió/descartó: su worktree ya no existe, así que
   // vuelven a rootear en projectPath y se descarta su sesión ACP (el próximo prompt abre una nueva).
   unbindEnv: (envId: string) => void;
@@ -112,15 +123,22 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
     (set) => ({
       workspaces: [INITIAL_WORKSPACE],
       activeWs: "ws1",
+      activeWsByProject: {},
 
-      setActiveWs: (id) => set({ activeWs: id }),
+      setActiveWs: (id) =>
+        set((s) => {
+          const w = s.workspaces.find((x) => x.id === id);
+          if (!w) return { activeWs: id };
+          return { activeWs: id, activeWsByProject: { ...s.activeWsByProject, [w.projectId]: id } };
+        }),
 
-      newWorkspace: (agentId, opts) => {
+      newWorkspace: (agentId, projectId, opts) => {
         const id = makeId();
         set((s) => ({
           workspaces: [...s.workspaces, {
             id,
-            title: opts?.title ?? `Sesión ${s.workspaces.length + 1}`,
+            projectId,
+            title: opts?.title ?? `Sesión ${s.workspaces.filter((w) => w.projectId === projectId).length + 1}`,
             agentId,
             blocks: [],
             steps: [],
@@ -129,15 +147,42 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             envName: opts?.envName,
           }],
           activeWs: id,
+          activeWsByProject: { ...s.activeWsByProject, [projectId]: id },
         }));
         return id;
       },
 
       closeWorkspace: (id) =>
         set((s) => {
+          const closing = s.workspaces.find((w) => w.id === id);
           const workspaces = s.workspaces.filter((w) => w.id !== id);
-          const activeWs = s.activeWs === id ? (workspaces[0]?.id ?? "") : s.activeWs;
-          return { workspaces, activeWs };
+          if (s.activeWs !== id || !closing) return { workspaces };
+          // Al cerrar la pestaña activa, caemos a un hermano DEL MISMO proyecto (no a cualquiera).
+          const sibling = workspaces.find((w) => w.projectId === closing.projectId);
+          const activeWs = sibling?.id ?? workspaces[0]?.id ?? "";
+          return { workspaces, activeWs, activeWsByProject: { ...s.activeWsByProject, [closing.projectId]: sibling?.id ?? "" } };
+        }),
+
+      setWorkspaceAgent: (wsId, agentId) =>
+        set((s) => ({ workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, agentId } : w)) })),
+
+      activateProject: (projectId, seedAgentId) =>
+        set((s) => {
+          // 1. Adoptar huérfanos (workspaces sin projectId, persistidos antes del scope por proyecto).
+          let workspaces = s.workspaces.some((w) => !w.projectId)
+            ? s.workspaces.map((w) => (w.projectId ? w : { ...w, projectId }))
+            : s.workspaces;
+          // 2. Garantizar ≥1 workspace para el proyecto.
+          let projWs = workspaces.filter((w) => w.projectId === projectId);
+          if (projWs.length === 0) {
+            const nw: Workspace = { id: makeId(), projectId, title: "Sesión 1", agentId: seedAgentId, blocks: [], steps: [] };
+            workspaces = [...workspaces, nw];
+            projWs = [nw];
+          }
+          // 3. activeWs → la recordada del proyecto (si sigue perteneciéndole) o la primera.
+          const remembered = s.activeWsByProject[projectId];
+          const pick = projWs.find((w) => w.id === remembered)?.id ?? projWs[0].id;
+          return { workspaces, activeWs: pick, activeWsByProject: { ...s.activeWsByProject, [projectId]: pick } };
         }),
 
       unbindEnv: (envId) =>
@@ -249,6 +294,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       // (mismo camino que ya existe para "cambiaste de agente a mitad de conversación").
       partialize: (state) => ({
         activeWs: state.activeWs,
+        activeWsByProject: state.activeWsByProject,
         // running/queue son transitorios: al reiniciar la app no hay ningún turno en curso ni
         // sesión ACP viva, así que se resetean (no se persisten) igual que sessionId/sessionProvider.
         workspaces: state.workspaces.map((w) => ({ ...w, sessionId: undefined, sessionProvider: undefined, running: false, queue: [] })),

@@ -34,7 +34,7 @@ export function TeamView() {
 
   const openInChat = (agent: AgentConfig, withTask: boolean) => {
     useChatStore.getState().setActiveAgent(agent.id);
-    useWorkspaceStore.getState().newWorkspace(agent.id, { title: agent.name });
+    useWorkspaceStore.getState().newWorkspace(agent.id, useProjectStore.getState().activeId, { title: agent.name });
     if (withTask && task.trim()) useUiStore.getState().setPendingPrompt(task.trim());
     useUiStore.getState().setView("chat");
   };

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare } from "lucide-react";
+import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare, ShieldAlert, FileWarning } from "lucide-react";
 import { useProjectStore, type TestEnv } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
@@ -33,8 +33,13 @@ export function EnvironmentsView() {
   const [busy, setBusy] = useState<string | null>(null); // acción en curso sobre el env seleccionado
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<{ envId: string; text: string } | null>(null);
+  // Conflictos de merge al promover: si el merge falla por conflictos, listamos los archivos afectados
+  // para resolverlos en el editor o abortar el merge (en vez de solo avisar). El ambiente NO se descarta.
+  const [conflict, setConflict] = useState<{ envId: string; files: string[] } | null>(null);
 
   const selectedEnv = environments.find((e) => e.id === selected) ?? null;
+  // Une la raíz del proyecto con una ruta relativa que devuelve git (forward-slashes, que Tauri acepta en Windows).
+  const projectFile = (rel: string) => `${projectPath.replace(/[\\/]+$/, "")}/${rel}`;
 
   // Abre una pestaña de chat ATADA al ambiente: la sesión ACP y la terminal del workspace se rootean
   // en el worktree, así el agente trabaja aislado ahí. Si el ambiente tiene un agente asignado, lo deja
@@ -46,7 +51,7 @@ export function EnvironmentsView() {
       wsStore.setActiveWs(existing.id);
     } else {
       const agentId = env.agentId ?? useChatStore.getState().activeAgentId;
-      wsStore.newWorkspace(agentId, { title: env.name, cwd: env.path, envId: env.id, envName: env.name });
+      wsStore.newWorkspace(agentId, activeId, { title: env.name, cwd: env.path, envId: env.id, envName: env.name });
     }
     if (env.agentId) useChatStore.getState().setActiveAgent(env.agentId);
     useUiStore.getState().setView("chat");
@@ -84,14 +89,21 @@ export function EnvironmentsView() {
 
   const promote = async (env: TestEnv) => {
     if (!confirm(`¿Promover el ambiente "${env.name}"?\nSe commitean sus cambios y se hace merge de ${env.branch} a ${env.baseBranch}, y luego se descarta el ambiente.`)) return;
-    setBusy("promote"); setError(null);
+    setBusy("promote"); setError(null); setConflict(null);
     try {
       await git("git add -A", env.path);
       // Si no hay cambios, el commit falla con exit≠0 — no es error fatal, seguimos al merge.
       await git(`git commit -m "devflow: cambios del ambiente ${env.name}"`, env.path);
       const m = await git(`git merge --no-ff "${env.branch}" -m "devflow: promover ambiente ${env.name}"`, projectPath);
       if (m.exitCode !== 0) {
-        setError(`El merge a ${env.baseBranch} falló (¿conflictos o working tree sucio?). El ambiente NO se descartó.\n${m.output.slice(-500)}`);
+        // ¿Falló por conflictos? Listamos los archivos en conflicto (diff-filter=U) para resolverlos.
+        const u = await git("git diff --name-only --diff-filter=U", projectPath);
+        const files = u.output.split("\n").map((s) => s.trim()).filter(Boolean);
+        if (files.length > 0) {
+          setConflict({ envId: env.id, files });
+        } else {
+          setError(`El merge a ${env.baseBranch} falló (working tree sucio o base desactualizada). El ambiente NO se descartó.\n${m.output.slice(-500)}`);
+        }
         return;
       }
       // merge ok → descartar el worktree y la rama
@@ -99,6 +111,20 @@ export function EnvironmentsView() {
       useWorkspaceStore.getState().unbindEnv(env.id);
       removeEnvironment(env.id);
       if (selected === env.id) { setSelected(null); setDiff(null); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Aborta un merge con conflictos (git merge --abort) → la base vuelve a su estado previo y el ambiente
+  // queda intacto para seguir trabajando.
+  const abortMerge = async () => {
+    setBusy("promote"); setError(null);
+    try {
+      await git("git merge --abort", projectPath);
+      setConflict(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -216,6 +242,28 @@ export function EnvironmentsView() {
                   <button onClick={() => setDiff(null)} title="Cerrar diff"><X size={12} /></button>
                 </div>
                 {diff.text.trim() ? <DiffBody text={diff.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> Sin cambios respecto de la base.</div>}
+              </div>
+            )}
+
+            {conflict && conflict.envId === selectedEnv.id && (
+              <div className="env-conflict">
+                <div className="env-conflict-head"><ShieldAlert size={14} color="#d29922" /> Conflictos de merge — {conflict.files.length} archivo(s)</div>
+                <p className="env-conflict-hint">
+                  El merge de <code>{selectedEnv.branch}</code> a <code>{selectedEnv.baseBranch}</code> tiene conflictos. Resolvelos en el editor
+                  (buscá los marcadores <code>{"<<<<<<<"}</code>) y volvé a <strong>Promover</strong>, o <strong>abortá el merge</strong> para dejar la base como estaba.
+                </p>
+                <ul className="env-conflict-list">
+                  {conflict.files.map((f) => (
+                    <li key={f}>
+                      <FileWarning size={12} color="#d29922" />
+                      <code className="env-conflict-file">{f}</code>
+                      <button className="env-btn" onClick={() => useUiStore.getState().openInEditor(projectFile(f))}>Abrir en editor</button>
+                    </li>
+                  ))}
+                </ul>
+                <button className="env-btn env-btn--discard" onClick={() => void abortMerge()} disabled={busy !== null}>
+                  {busy === "promote" ? <Loader size={12} className="spin" /> : <X size={12} />} Abortar merge
+                </button>
               </div>
             )}
 
