@@ -481,7 +481,12 @@ export function ChatView() {
       if (!sid) {
         // Si el workspace está atado a un ambiente, la sesión ACP se abre en el worktree (cwd override)
         // → el agente lee/escribe/ejecuta AISLADO ahí, sin tocar el proyecto real.
-        const sessionCwd = wsNow?.cwd ?? useProjectStore.getState().projectPath;
+        // Si no, el cwd sale del proyecto AL QUE PERTENECE el workspace (projectId), NO del proyecto
+        // global activo: como la sesión se crea una sola vez (lazy) y nunca se re-rootea, tomar el
+        // projectPath global la dejaba pinneada al proyecto equivocado de forma permanente si el global
+        // estaba desincronizado en ese instante (bug: chat de un proyecto describiendo otro).
+        const pstate = useProjectStore.getState();
+        const sessionCwd = wsNow?.cwd ?? pstate.projects[wsNow?.projectId ?? ""]?.path ?? pstate.projectPath;
         sid = await acpClient.newSession(provider, spawn, sessionCwd);
         setSession(wsId, sid, provider);
       }
