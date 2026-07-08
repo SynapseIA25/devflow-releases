@@ -28,6 +28,22 @@ export type Service = {
 // proyecto activo, el chat ve solo los del proyecto actual.
 export type ContextItem = { path: string; isDir: boolean };
 
+// ── Deuda técnica (Tanda D: tablero por proyecto) ──
+// Registro de deuda técnica del proyecto: se puede cargar a mano o pegando los hallazgos de un
+// /code-review (uno por línea). Cada item tiene severidad y estado, y opcionalmente se asigna a un
+// agente experto para resolverlo. Scope duro por proyecto (igual que servicios/contexto).
+export type DebtSeverity = "low" | "medium" | "high";
+export type DebtStatus = "open" | "resolved";
+export type DebtItem = {
+  id: string;
+  title: string;
+  note?: string;
+  severity: DebtSeverity;
+  status: DebtStatus;
+  agentId?: string; // experto asignado para resolverlo (opcional)
+  createdAt: number;
+};
+
 // ── Proyecto ──
 // El contenedor natural de todo lo que es "por proyecto": su carpeta raíz, ambiente (env vars que se
 // inyectan a servicios y terminales), integración git, tracking de issues, y las asociaciones a
@@ -43,6 +59,7 @@ export type Project = {
   agentIds: string[]; // agentes expertos scopeados al proyecto (los globales mimo/hermes se ven siempre)
   services: Service[]; // servicios del proyecto (scope duro, Frente 3)
   contextItems: ContextItem[]; // archivos/carpetas de contexto del proyecto (Tanda C)
+  debt: DebtItem[]; // tablero de deuda técnica del proyecto (Tanda D)
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -54,6 +71,7 @@ type PersistedState = {
 
 const makeProjectId = () => `proj_${Math.random().toString(36).slice(2, 9)}`;
 const makeServiceId = () => `svc_${Math.random().toString(36).slice(2, 9)}`;
+const makeDebtId = () => `debt_${Math.random().toString(36).slice(2, 9)}`;
 
 // basename de una ruta Windows o POSIX (para nombrar un proyecto nuevo por su carpeta).
 export function baseName(path: string): string {
@@ -74,6 +92,7 @@ function makeProject(path: string, name?: string): Project {
     agentIds: [],
     services: [],
     contextItems: [],
+    debt: [],
   };
 }
 
@@ -110,6 +129,12 @@ type ProjectStore = {
   addContextItem: (item: ContextItem) => void;
   removeContextItem: (path: string) => void;
   clearContext: () => void;
+
+  // ── Deuda técnica del proyecto activo (scope duro, Tanda D) ──
+  addDebt: (title: string, severity: DebtSeverity, note?: string) => void;
+  addDebtBulk: (titles: string[], severity: DebtSeverity) => void; // ej. hallazgos de /code-review, uno por línea
+  updateDebt: (id: string, patch: Partial<Pick<DebtItem, "title" | "note" | "severity" | "status" | "agentId">>) => void;
+  removeDebt: (id: string) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -214,6 +239,31 @@ export const useProjectStore = create<ProjectStore>()(
         set((s) => patchActive(s, (p) => ({ contextItems: p.contextItems.filter((i) => i.path !== path) }))),
 
       clearContext: () => set((s) => patchActive(s, () => ({ contextItems: [] }))),
+
+      addDebt: (title, severity, note) =>
+        set((s) =>
+          patchActive(s, (p) => ({
+            debt: [{ id: makeDebtId(), title: title.trim(), note, severity, status: "open", createdAt: Date.now() }, ...p.debt],
+          }))
+        ),
+
+      addDebtBulk: (titles, severity) =>
+        set((s) =>
+          patchActive(s, (p) => {
+            const now = Date.now();
+            const items: DebtItem[] = titles
+              .map((t) => t.trim())
+              .filter(Boolean)
+              .map((title, i) => ({ id: makeDebtId(), title, severity, status: "open" as DebtStatus, createdAt: now - i }));
+            return { debt: [...items, ...p.debt] };
+          })
+        ),
+
+      updateDebt: (id, patch) =>
+        set((s) => patchActive(s, (p) => ({ debt: p.debt.map((d) => (d.id === id ? { ...d, ...patch } : d)) }))),
+
+      removeDebt: (id) =>
+        set((s) => patchActive(s, (p) => ({ debt: p.debt.filter((d) => d.id !== id) }))),
     }),
     {
       name: "devflow-project",
@@ -248,7 +298,7 @@ export const useProjectStore = create<ProjectStore>()(
         const projects = Object.fromEntries(
           Object.entries(p.projects).map(([id, proj]) => [
             id,
-            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [] },
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [] },
           ])
         );
         return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };

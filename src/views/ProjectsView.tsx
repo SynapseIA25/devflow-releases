@@ -3,15 +3,16 @@ import {
   FolderKanban, FolderPlus, Trash2, Pencil, Check, RefreshCw,
   GitBranch, Server, Bot, Workflow as WorkflowIcon, Plus,
   FolderInput, FilePlus2, GitFork, ChevronDown, Loader,
-  FileText, Eye, Save, Folder, X, Paperclip,
+  FileText, Eye, Save, Folder, X, Paperclip, AlertTriangle, Circle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useProjectStore } from "../store/projectStore";
+import { useProjectStore, type DebtItem, type DebtSeverity } from "../store/projectStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useUiStore } from "../store/uiStore";
 import { FileExplorer } from "../components/panel/FileExplorer";
+import { ServicesView } from "./ServicesView";
 import { AgentDetail, NewAgentForm } from "./AgentsView";
 import { pickFolder, runShellCommand, createDir, writeTextFile, readDir, readTextFile, isTauri } from "../lib/tauriApi";
 
@@ -294,7 +295,6 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const renameProject = useProjectStore((s) => s.renameProject);
   const order = useProjectStore((s) => s.order);
-  const setView = useUiStore((s) => s.setView);
 
   if (!project) return null;
 
@@ -310,9 +310,9 @@ function ProjectTab({ projectId, tab }: { projectId: string; tab: TabId; onDelet
     case "agentes":
       return <AgentesTab projectId={projectId} />;
     case "flujos":
-      return <WorkflowsAssocSection projectId={projectId} />;
+      return <FlujosTab projectId={projectId} />;
     case "servicios":
-      return <ServicesSummarySection project={project} setView={setView} />;
+      return <div className="proj-services-embed"><ServicesView /></div>;
     case "ajustes":
       return (
         <div className="proj-config">
@@ -555,8 +555,149 @@ function OverviewTab({ projectId }: { projectId: string }) {
         <Counter icon={<Server size={16} />} label="Servicios" value={project.services.length} />
         <Counter icon={<Bot size={16} />} label="Agentes" value={project.agentIds.length} />
         <Counter icon={<WorkflowIcon size={16} />} label="Flujos" value={project.workflowIds.length} />
+        <Counter icon={<AlertTriangle size={16} />} label="Deuda abierta" value={project.debt.filter((d) => d.status === "open").length} />
         <Counter icon={<FilePlus2 size={16} />} label="Docs (.md)" value={docsCount ?? "—"} />
       </div>
+
+      <DebtSection projectId={projectId} />
+    </div>
+  );
+}
+
+// ── Tablero de deuda técnica (Tanda D) ──
+// Registro por proyecto: alta manual (título + severidad) o en lote pegando hallazgos de un /code-review
+// (uno por línea). Cada item se resuelve (toggle), se asigna a un agente experto, o se borra.
+const SEV_META: Record<DebtSeverity, { label: string; color: string }> = {
+  high: { label: "Alta", color: "#f85149" },
+  medium: { label: "Media", color: "#d29922" },
+  low: { label: "Baja", color: "#3fb950" },
+};
+
+function DebtSection({ projectId }: { projectId: string }) {
+  const project = useProjectStore((s) => s.projects[projectId]);
+  const addDebt = useProjectStore((s) => s.addDebt);
+  const addDebtBulk = useProjectStore((s) => s.addDebtBulk);
+  const updateDebt = useProjectStore((s) => s.updateDebt);
+  const removeDebt = useProjectStore((s) => s.removeDebt);
+  const agents = useAgentsStore((s) => s.agents);
+
+  const [title, setTitle] = useState("");
+  const [sev, setSev] = useState<DebtSeverity>("medium");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [showResolved, setShowResolved] = useState(false);
+
+  if (!project) return null;
+  const debt = project.debt;
+  const open = debt.filter((d) => d.status === "open");
+  const resolved = debt.filter((d) => d.status === "resolved");
+  const shown = showResolved ? debt : open;
+
+  const add = () => {
+    if (!title.trim()) return;
+    addDebt(title, sev);
+    setTitle("");
+  };
+  const importBulk = () => {
+    const lines = bulkText.split("\n");
+    if (lines.some((l) => l.trim())) addDebtBulk(lines, sev);
+    setBulkText(""); setBulkOpen(false);
+  };
+
+  return (
+    <section className="proj-section">
+      <div className="proj-section-title">
+        <AlertTriangle size={14} /> Deuda técnica ({open.length} abierta{open.length === 1 ? "" : "s"})
+      </div>
+      <div className="proj-section-body">
+        <p className="proj-hint">
+          Registro de deuda del proyecto. Cargá items a mano o pegá los hallazgos de un <code>/code-review</code>
+          (uno por línea) con “Importar”. Asignalos a un agente experto para resolverlos.
+        </p>
+
+        <div className="proj-debt-add">
+          <input
+            className="proj-debt-input"
+            placeholder="Nueva deuda (ej. Falta test de auth)…"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+          />
+          <select className="proj-select" value={sev} onChange={(e) => setSev(e.target.value as DebtSeverity)}>
+            <option value="high">Alta</option>
+            <option value="medium">Media</option>
+            <option value="low">Baja</option>
+          </select>
+          <button className="proj-icon proj-icon--add" title="Agregar" onClick={add} disabled={!title.trim()}><Plus size={13} /></button>
+          <button className="proj-btn" onClick={() => setBulkOpen((v) => !v)}>Importar…</button>
+        </div>
+
+        {bulkOpen && (
+          <div className="proj-debt-bulk">
+            <textarea
+              className="proj-debt-bulk-input"
+              placeholder={"Pegá hallazgos de /code-review, uno por línea…"}
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              rows={5}
+            />
+            <div className="proj-debt-bulk-actions">
+              <button className="proj-btn proj-btn--primary" onClick={importBulk} disabled={!bulkText.trim()}>Importar como “{SEV_META[sev].label}”</button>
+              <button className="proj-btn" onClick={() => { setBulkOpen(false); setBulkText(""); }}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {debt.length === 0 ? (
+          <div className="proj-env-empty">Sin deuda registrada. 🎉</div>
+        ) : (
+          <>
+            <div className="proj-debt-list">
+              {shown.map((d) => (
+                <DebtRow key={d.id} item={d} agents={agents} updateDebt={updateDebt} removeDebt={removeDebt} />
+              ))}
+            </div>
+            {resolved.length > 0 && (
+              <button className="proj-debt-toggle" onClick={() => setShowResolved((v) => !v)}>
+                {showResolved ? "Ocultar resueltas" : `Ver ${resolved.length} resuelta(s)`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DebtRow({ item, agents, updateDebt, removeDebt }: {
+  item: DebtItem;
+  agents: ReturnType<typeof useAgentsStore.getState>["agents"];
+  updateDebt: ReturnType<typeof useProjectStore.getState>["updateDebt"];
+  removeDebt: ReturnType<typeof useProjectStore.getState>["removeDebt"];
+}) {
+  const sev = SEV_META[item.severity];
+  const resolved = item.status === "resolved";
+  return (
+    <div className={`proj-debt-item${resolved ? " resolved" : ""}`}>
+      <button
+        className="proj-debt-check"
+        title={resolved ? "Reabrir" : "Marcar resuelta"}
+        onClick={() => updateDebt(item.id, { status: resolved ? "open" : "resolved" })}
+      >
+        {resolved ? <Check size={13} color="#3fb950" /> : <Circle size={13} />}
+      </button>
+      <span className="proj-debt-sev" style={{ background: `${sev.color}22`, color: sev.color }}>{sev.label}</span>
+      <span className="proj-debt-title">{item.title}</span>
+      <select
+        className="proj-debt-assign"
+        value={item.agentId ?? ""}
+        title="Asignar a un agente experto"
+        onChange={(e) => updateDebt(item.id, { agentId: e.target.value || undefined })}
+      >
+        <option value="">Sin asignar</option>
+        {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      <button className="proj-icon proj-icon--del" title="Quitar" onClick={() => removeDebt(item.id)}><X size={12} /></button>
     </div>
   );
 }
@@ -679,52 +820,58 @@ function AgentesTab({ projectId }: { projectId: string }) {
   );
 }
 
-function WorkflowsAssocSection({ projectId }: { projectId: string }) {
+// ── Flujos: asociar + crear + editar workflows del proyecto (Tanda D) ──
+// Reusa el workflowStore (múltiples flujos nombrados) y navega a la vista Workflows para editarlos en
+// el canvas de React Flow. La asociación (project.workflowIds) determina qué flujos son "del proyecto".
+function FlujosTab({ projectId }: { projectId: string }) {
   const project = useProjectStore((s) => s.projects[projectId]);
   const updateProject = useProjectStore((s) => s.updateProject);
   const workflows = useWorkflowStore((s) => s.workflows);
   const workflowOrder = useWorkflowStore((s) => s.order);
+  const createWorkflow = useWorkflowStore((s) => s.createWorkflow);
+  const setActiveWorkflow = useWorkflowStore((s) => s.setActiveWorkflow);
+  const setView = useUiStore((s) => s.setView);
   if (!project) return null;
+
+  const editFlow = (id: string) => { setActiveWorkflow(id); setView("workflow"); };
+  const newFlow = () => {
+    const id = createWorkflow(`Flujo de ${project.name}`);
+    updateProject(projectId, { workflowIds: [...project.workflowIds, id] });
+    setView("workflow"); // createWorkflow ya lo deja activo
+  };
+
   return (
     <div className="proj-config">
       <section className="proj-section">
         <div className="proj-section-title"><WorkflowIcon size={14} /> Workflows</div>
         <div className="proj-section-body">
-          <p className="proj-hint">Flujos asociados a este proyecto. Crear/editar desde el hub llega en la Tanda D.</p>
+          <p className="proj-hint">
+            Flujos asociados a este proyecto (checkbox). Editalos en el canvas con ✎ o creá uno nuevo ya
+            asociado. Los flujos se ejecutan desde la vista Workflows o con <code>/run</code> en el chat.
+          </p>
           {workflowOrder.map((id) => {
             const w = workflows[id];
             if (!w) return null;
             const checked = project.workflowIds.includes(id);
             return (
-              <label key={id} className="proj-check-row">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => {
-                    const next = e.target.checked ? [...project.workflowIds, id] : project.workflowIds.filter((x) => x !== id);
-                    updateProject(projectId, { workflowIds: next });
-                  }}
-                />
-                <span className="proj-check-name">{w.name}</span>
-              </label>
+              <div key={id} className="proj-flow-row">
+                <label className="proj-flow-assoc">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = e.target.checked ? [...project.workflowIds, id] : project.workflowIds.filter((x) => x !== id);
+                      updateProject(projectId, { workflowIds: next });
+                    }}
+                  />
+                  <span className="proj-check-name">{w.name}</span>
+                  <span className="proj-flow-count">{w.nodes.length} nodo(s)</span>
+                </label>
+                <button className="proj-icon" title="Editar en el canvas" onClick={() => editFlow(id)}><Pencil size={12} /></button>
+              </div>
             );
           })}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ServicesSummarySection({ project, setView }: { project: NonNullable<ReturnType<typeof useProjectStore.getState>["projects"][string]>; setView: (v: "services") => void }) {
-  return (
-    <div className="proj-config">
-      <section className="proj-section">
-        <div className="proj-section-title"><Server size={14} /> Servicios</div>
-        <div className="proj-section-body">
-          <p className="proj-hint">
-            {project.services.length === 0 ? "Sin servicios en este proyecto." : `${project.services.length} servicio(s) definido(s).`}
-          </p>
-          <button className="proj-btn" onClick={() => setView("services")}>Abrir panel de Servicios →</button>
+          <button className="proj-btn" onClick={newFlow}><Plus size={13} /> Nuevo flujo</button>
         </div>
       </section>
     </div>

@@ -1829,3 +1829,28 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .proj-agent-icon { font-size: 14px; flex-shrink: 0; }
 .proj-agent-name { flex: 1; font-size: 12.5px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-agents-detail { flex: 1; overflow-y: auto; min-width: 0; }
+
+/* Tanda D — Flujos (asociación + editar/crear) */
+.proj-flow-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.proj-flow-assoc { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; min-width: 0; }
+.proj-flow-count { font-size: 10.5px; color: var(--text-3); margin-left: auto; }
+
+/* Tanda D — Servicios embebido en el hub (la vista ocupa todo el alto de la tab) */
+.proj-services-embed { height: 100%; }
+.proj-services-embed .services-view { height: 100%; }
+
+/* Tanda D — Tablero de deuda técnica */
+.proj-debt-add { display: flex; align-items: center; gap: 6px; margin: 6px 0 10px; }
+.proj-debt-input { flex: 1; background: var(--bg-2, #0d1117); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; color: var(--text-1); }
+.proj-debt-bulk { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.proj-debt-bulk-input { width: 100%; box-sizing: border-box; background: var(--bg-2, #0d1117); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; color: var(--text-1); font-family: 'Cascadia Code','Consolas',monospace; resize: vertical; }
+.proj-debt-bulk-actions { display: flex; gap: 8px; }
+.proj-debt-list { display: flex; flex-direction: column; gap: 4px; }
+.proj-debt-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); }
+.proj-debt-item.resolved { opacity: 0.55; }
+.proj-debt-item.resolved .proj-debt-title { text-decoration: line-through; }
+.proj-debt-check { display: flex; align-items: center; background: none; border: none; cursor: pointer; color: var(--text-3); padding: 0; }
+.proj-debt-sev { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; flex-shrink: 0; }
+.proj-debt-title { flex: 1; font-size: 12.5px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-debt-assign { background: var(--bg-2, #0d1117); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 11px; color: var(--text-2); max-width: 130px; }
+.proj-debt-toggle { align-self: flex-start; margin-top: 8px; background: none; border: none; color: var(--accent-2); font-size: 11.5px; cursor: pointer; padding: 0; }
