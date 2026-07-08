@@ -7,10 +7,11 @@ import { useEditorStore } from "../store/editorStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
-import { DEFAULT_PROVIDERS } from "../lib/providers";
+import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
+import { useUiStore } from "../store/uiStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
 import { TerminalPane } from "../components/TerminalPane";
@@ -205,6 +206,12 @@ export function ChatView() {
   const removeFromQueue = useWorkspaceStore((s) => s.removeFromQueue);
   const [termHeight, setTermHeight] = useState(180);
   const [input, setInput]           = useState("");
+  // Tarea precargada desde la vista Equipo ("abrir en chat"): se vuelca en el input una vez y se limpia.
+  const pendingPrompt = useUiStore((s) => s.pendingPrompt);
+  const setPendingPrompt = useUiStore((s) => s.setPendingPrompt);
+  useEffect(() => {
+    if (pendingPrompt) { setInput(pendingPrompt); setPendingPrompt(undefined); }
+  }, [pendingPrompt, setPendingPrompt]);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<acpClient.PermissionRequest | null>(null);
   const [recording, setRecording] = useState(false);
@@ -228,11 +235,13 @@ export function ChatView() {
   const agents = useAgentsStore((s) => s.agents);
   const recordChat = useMetricsStore((s) => s.recordChat);
   const activeAgent = agents.find((a) => a.id === activeAgentId);
-  // Scope duro por proyecto: el selector muestra los agentes globales (MiMo/Hermes, defaults) + los
-  // expertos asociados al proyecto activo (+ el activo actual, para que nunca desaparezca la selección).
+  // Scope duro por proyecto: el selector muestra los agentes globales base (MiMo/Hermes/Claude, defaults
+  // NO expertos) + los asociados al proyecto activo (+ el activo actual, para que nunca desaparezca la
+  // selección). Los expertos por área (pilar 1) NO se muestran acá por defecto: se usan desde la vista
+  // Equipo o asociándolos al proyecto — así el selector no se satura con los 9 expertos.
   const projectAgentIds = useProjectStore((s) => s.projects[s.activeId]?.agentIds ?? []);
   const visibleAgents = useMemo(
-    () => agents.filter((a) => isDefaultAgent(a.id) || projectAgentIds.includes(a.id) || a.id === activeAgentId),
+    () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === activeAgentId),
     [agents, projectAgentIds, activeAgentId]
   );
   const ws = workspaces.find((w) => w.id === activeWs)!;

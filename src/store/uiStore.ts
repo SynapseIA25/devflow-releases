@@ -10,6 +10,10 @@ type UiStore = {
   setView: (v: ViewId) => void;
   // Abre un archivo como pestaña del editor Y navega a la vista Código.
   openInEditor: (path: string) => void;
+  // Texto a precargar en el input del chat (ej. la tarea al "abrir en chat" desde Equipo). ChatView lo
+  // consume una vez y lo limpia.
+  pendingPrompt?: string;
+  setPendingPrompt: (t?: string) => void;
 };
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -19,4 +23,5 @@ export const useUiStore = create<UiStore>((set) => ({
     void useEditorStore.getState().openFile(path);
     set({ view: "editor" });
   },
+  setPendingPrompt: (pendingPrompt) => set({ pendingPrompt }),
 }));
