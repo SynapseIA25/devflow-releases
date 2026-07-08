@@ -425,12 +425,26 @@ export function ChatView() {
     }
     const parts: string[] = [];
 
+    // Raíz del proyecto AL QUE PERTENECE este workspace (o su ambiente/worktree), para no filtrar
+    // contexto de otro proyecto: el editor es global (puede tener abiertos archivos de otro proyecto)
+    // y si inyectáramos ese archivo como "el usuario lo está editando ahora", el agente investigaría
+    // el proyecto equivocado (bug: parado en un proyecto, describía el del archivo abierto del editor).
+    const wsForCtx = useWorkspaceStore.getState().workspaces.find((w) => w.id === wsId);
+    const pstateCtx = useProjectStore.getState();
+    const projectRoot = wsForCtx?.cwd ?? pstateCtx.projects[wsForCtx?.projectId ?? ""]?.path ?? pstateCtx.projectPath;
+    const normPath = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
+    const isInsideProject = (p: string) => {
+      const c = normPath(p), r = normPath(projectRoot);
+      return c === r || c.startsWith(r + "\\") || c.startsWith(r + "/");
+    };
+
     // Archivo activo del editor de código: el agente "ve" lo que estás editando ahora mismo, incluidos
     // los cambios SIN guardar (usamos el buffer del editor, no el disco). Mismo dedup por sesión que los
-    // adjuntos: solo se re-manda si su contenido cambió desde el último turno.
+    // adjuntos: solo se re-manda si su contenido cambió desde el último turno. Solo se inyecta si el
+    // archivo pertenece al proyecto de este workspace (si no, es de otro proyecto: no es contexto de este).
     const ed = useEditorStore.getState();
     const activeTab = ed.tabs.find((t) => t.path === ed.activePath);
-    const editorPath = activeTab && !activeTab.loading && !activeTab.error ? activeTab.path : null;
+    const editorPath = activeTab && !activeTab.loading && !activeTab.error && isInsideProject(activeTab.path) ? activeTab.path : null;
     if (activeTab && editorPath) {
       const key = `@editor:${editorPath}`;
       const block = `Archivo abierto en el editor (el usuario lo está editando ahora): ${editorPath}\n\`\`\`\n${activeTab.content}\n\`\`\``;
