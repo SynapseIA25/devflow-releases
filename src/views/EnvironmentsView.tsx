@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare } from "lucide-react";
-import { useProjectStore, baseName, type TestEnv } from "../store/projectStore";
+import { useProjectStore, type TestEnv } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useChatStore } from "../store/chatStore";
 import { useUiStore } from "../store/uiStore";
 import { TerminalPane } from "../components/TerminalPane";
-import { runShellCommand, createDir, ptyKill, isTauri } from "../lib/tauriApi";
+import { runShellCommand, ptyKill, isTauri } from "../lib/tauriApi";
+import { createWorktree } from "../lib/environments";
 
 // Vista de Ambientes de prueba. Cada ambiente es un git worktree efímero con su rama propia
 // (env/<name>), creado desde la rama base del proyecto activo. El agente/terminal trabajan AISLADOS
@@ -14,13 +15,6 @@ import { runShellCommand, createDir, ptyKill, isTauri } from "../lib/tauriApi";
 // Todo git se hace con runShellCommand (Git Bash), mismo patrón que git init/clone del hub — sin Rust.
 
 const git = (cmd: string, cwd: string) => runShellCommand(cmd, cwd);
-const toPosix = (p: string) => p.replace(/\\/g, "/");
-const safeName = (s: string) => s.trim().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "env";
-function parentDir(p: string): string {
-  const t = p.replace(/[\\/]+$/, "");
-  const i = Math.max(t.lastIndexOf("\\"), t.lastIndexOf("/"));
-  return i >= 0 ? t.slice(0, i) : t;
-}
 
 export function EnvironmentsView() {
   const activeId = useProjectStore((s) => s.activeId);
@@ -63,22 +57,8 @@ export function EnvironmentsView() {
     if (!name || !isTauri()) return;
     setCreating(true); setError(null);
     try {
-      const base = await git("git rev-parse --abbrev-ref HEAD", projectPath);
-      if (base.exitCode !== 0) {
-        setError("El proyecto no es un repositorio git (o no tiene commits). Los ambientes usan git worktree.");
-        return;
-      }
-      const baseBranch = base.output.trim();
-      const branch = `env/${safeName(name)}`;
-      const envsRoot = `${toPosix(parentDir(projectPath))}/.devflow-envs`;
-      const wtPath = `${envsRoot}/${safeName(baseName(projectPath))}__${safeName(name)}`;
-      try { await createDir(envsRoot); } catch { /* ya existe */ }
-      const res = await git(`git worktree add "${wtPath}" -b "${branch}"`, projectPath);
-      if (res.exitCode !== 0) {
-        setError(`No se pudo crear el ambiente:\n${res.output.slice(-500)}`);
-        return;
-      }
-      const id = addEnvironment({ name, branch, path: wtPath, baseBranch });
+      const wt = await createWorktree(projectPath, name);
+      const id = addEnvironment(wt);
       setSelected(id);
       setNewName("");
     } catch (e) {

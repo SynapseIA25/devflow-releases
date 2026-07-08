@@ -1,13 +1,15 @@
 import { useMemo, useRef, useState } from "react";
-import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network } from "lucide-react";
+import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network, Boxes } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAgentsStore } from "../store/agentsStore";
 import { isExpertAgent, type AgentConfig } from "../lib/providers";
 import { suggestExperts } from "../lib/expertRouter";
 import { autoDelegate, type DelegateStep } from "../lib/teamDelegate";
+import { createWorktree } from "../lib/environments";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 
 // Vista Equipo (pilar 1): agentes expertos por área. Dos modos:
@@ -25,6 +27,8 @@ export function TeamView() {
 
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<DelegateStep[]>([]);
+  const [isolate, setIsolate] = useState(true); // aislar en un ambiente (worktree) por defecto — más seguro
+  const [envName, setEnvName] = useState<string | null>(null); // ambiente creado para esta corrida
   const cancelRef = useRef(false);
 
   const openInChat = (agent: AgentConfig, withTask: boolean) => {
@@ -36,9 +40,19 @@ export function TeamView() {
 
   const runDelegate = async () => {
     if (!task.trim() || running || !lead) return;
-    setRunning(true); setSteps([]); cancelRef.current = false;
+    setRunning(true); setSteps([]); setEnvName(null); cancelRef.current = false;
+    let cwd = useProjectStore.getState().projectPath;
     try {
-      await autoDelegate(task, experts, lead, (step) => setSteps((prev) => [...prev, step]), () => cancelRef.current);
+      if (isolate) {
+        // Ambiente efímero: los expertos escriben AISLADOS en el worktree, no en el proyecto real.
+        const name = `equipo-${new Date().toTimeString().slice(0, 8).replace(/:/g, "")}`;
+        setSteps([{ kind: "stage", label: `Creando ambiente aislado “${name}” (worktree)…` }]);
+        const wt = await createWorktree(cwd, name);
+        useProjectStore.getState().addEnvironment(wt);
+        cwd = wt.path;
+        setEnvName(wt.name);
+      }
+      await autoDelegate(task, experts, lead, cwd, (step) => setSteps((prev) => [...prev, step]), () => cancelRef.current);
     } catch (e) {
       setSteps((prev) => [...prev, { kind: "error", message: e instanceof Error ? e.message : String(e) }]);
     } finally {
@@ -95,14 +109,28 @@ export function TeamView() {
 
         {mode === "delegate" && (
           <div className="team-delegate">
+            <label className="team-isolate">
+              <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} disabled={running} />
+              <Boxes size={13} /> Aislar en un ambiente (worktree) — los expertos no tocan el proyecto real
+            </label>
             <div className="team-delegate-actions">
               {running ? (
                 <button className="team-btn team-btn--stop" onClick={stopDelegate}><Square size={13} /> Detener</button>
               ) : (
                 <button className="team-btn team-btn--primary" onClick={() => void runDelegate()} disabled={!task.trim() || !lead}><Play size={13} /> Ejecutar con el equipo</button>
               )}
-              <span className="team-delegate-hint">El líder ({lead?.name}) descompone, los expertos resuelven y se sintetiza. Puede tardar varios turnos. ⚠ Los expertos editan los archivos del <strong>proyecto activo</strong> — para aislar los cambios, creá un <strong>Ambiente</strong> y abrí el chat ahí.</span>
+              <span className="team-delegate-hint">
+                El líder ({lead?.name}) descompone, los expertos resuelven y se sintetiza. Puede tardar varios turnos.
+                {!isolate && <> ⚠ Sin aislar, los expertos <strong>editan el proyecto activo</strong>.</>}
+              </span>
             </div>
+            {envName && !running && (
+              <div className="team-env-banner">
+                <Boxes size={14} />
+                <span>Los cambios de los expertos quedaron aislados en el ambiente <strong>{envName}</strong>. Revisá el diff y promové o descartá desde Ambientes.</span>
+                <button className="team-btn" onClick={() => useUiStore.getState().setView("environments")}>Ir a Ambientes →</button>
+              </div>
+            )}
             {steps.length > 0 && <DelegateResults steps={steps} running={running} />}
           </div>
         )}

@@ -1,6 +1,5 @@
 import { DEFAULT_PROVIDERS, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
-import { useProjectStore } from "../store/projectStore";
 
 // Auto-delegación (pilar 1, etapa 2): un agente LÍDER descompone la tarea en sub-tareas por área,
 // delega cada una a su experto (sesión ACP propia con el system prompt del experto), y sintetiza los
@@ -57,10 +56,10 @@ export async function autoDelegate(
   task: string,
   experts: AgentConfig[],
   lead: AgentConfig,
+  cwd: string, // dónde corren los expertos: projectPath normalmente, o el worktree de un ambiente (aislado)
   emit: (step: DelegateStep) => void,
   isCancelled: () => boolean
 ): Promise<void> {
-  const cwd = useProjectStore.getState().projectPath;
   const areaList = experts.map((e) => `- ${e.expertArea}: ${e.name} (${e.description})`).join("\n");
 
   // 1. Descomponer (el líder arma el plan)
