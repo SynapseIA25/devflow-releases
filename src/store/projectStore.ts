@@ -60,6 +60,13 @@ export type TestEnv = {
   createdAt: number;
 };
 
+// ── Terminales independientes (antes global, ahora scopeadas por proyecto) ──
+// Un shell interactivo con su propio cwd, desacoplado del chat y de los servicios. Antes vivían en un
+// terminalsStore GLOBAL; ahora cada proyecto tiene sus propias terminales (scope duro): al cambiar de
+// proyecto activo, la vista Terminales solo muestra las suyas. La definición (name/cwd) se persiste; el
+// proceso PTY es transitorio (se respawnea al reabrir). Reusa la PTY real vía TerminalPane.
+export type AppTerminal = { id: string; name: string; cwd: string; createdAt: number };
+
 // ── Proyecto ──
 // El contenedor natural de todo lo que es "por proyecto": su carpeta raíz, ambiente (env vars que se
 // inyectan a servicios y terminales), integración git, tracking de issues, y las asociaciones a
@@ -77,6 +84,7 @@ export type Project = {
   contextItems: ContextItem[]; // archivos/carpetas de contexto del proyecto (Tanda C)
   debt: DebtItem[]; // tablero de deuda técnica del proyecto (Tanda D)
   environments: TestEnv[]; // ambientes de prueba (worktrees efímeros)
+  terminals: AppTerminal[]; // terminales independientes del proyecto (scope duro)
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -90,6 +98,7 @@ const makeProjectId = () => `proj_${Math.random().toString(36).slice(2, 9)}`;
 const makeServiceId = () => `svc_${Math.random().toString(36).slice(2, 9)}`;
 const makeDebtId = () => `debt_${Math.random().toString(36).slice(2, 9)}`;
 const makeEnvId = () => `env_${Math.random().toString(36).slice(2, 9)}`;
+const makeTerminalId = () => `term_${Math.random().toString(36).slice(2, 9)}`;
 
 // basename de una ruta Windows o POSIX (para nombrar un proyecto nuevo por su carpeta).
 export function baseName(path: string): string {
@@ -112,6 +121,7 @@ function makeProject(path: string, name?: string): Project {
     contextItems: [],
     debt: [],
     environments: [],
+    terminals: [],
   };
 }
 
@@ -159,6 +169,11 @@ type ProjectStore = {
   addEnvironment: (env: Omit<TestEnv, "id" | "createdAt">) => string;
   updateEnvironment: (id: string, patch: Partial<Pick<TestEnv, "agentId">>) => void;
   removeEnvironment: (id: string) => void;
+
+  // ── Terminales del proyecto activo (scope duro) ──
+  addTerminal: (cwd: string, name?: string) => string;
+  removeTerminal: (id: string) => void;
+  renameTerminal: (id: string, name: string) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -300,6 +315,22 @@ export const useProjectStore = create<ProjectStore>()(
 
       removeEnvironment: (id) =>
         set((s) => patchActive(s, (p) => ({ environments: p.environments.filter((e) => e.id !== id) }))),
+
+      addTerminal: (cwd, name) => {
+        const id = makeTerminalId();
+        set((s) =>
+          patchActive(s, (p) => ({
+            terminals: [...p.terminals, { id, name: name?.trim() || `Terminal ${p.terminals.length + 1}`, cwd, createdAt: Date.now() }],
+          }))
+        );
+        return id;
+      },
+
+      removeTerminal: (id) =>
+        set((s) => patchActive(s, (p) => ({ terminals: p.terminals.filter((t) => t.id !== id) }))),
+
+      renameTerminal: (id, name) =>
+        set((s) => patchActive(s, (p) => ({ terminals: p.terminals.map((t) => (t.id === id ? { ...t, name: name.trim() || t.name } : t)) }))),
     }),
     {
       name: "devflow-project",
@@ -334,7 +365,7 @@ export const useProjectStore = create<ProjectStore>()(
         const projects = Object.fromEntries(
           Object.entries(p.projects).map(([id, proj]) => [
             id,
-            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [] },
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [], terminals: proj.terminals ?? [] },
           ])
         );
         return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };

@@ -1,28 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { SquareTerminal, Plus, Trash2, Pencil, Check, FolderOpen } from "lucide-react";
-import { useTerminalsStore } from "../store/terminalsStore";
 import { useProjectStore } from "../store/projectStore";
 import { TerminalPane } from "../components/TerminalPane";
 import { pickFolder } from "../lib/tauriApi";
 
-// Panel de terminales independientes a nivel App. Cada terminal es un shell interactivo con su cwd
-// propio, desacoplado del chat. Reusa TerminalPane (PTY real). Todas las terminales se montan a la vez
-// (display:none las inactivas) para no perder el proceso ni el scrollback al cambiar de una a otra.
+// Panel de terminales independientes, scopeadas por proyecto (scope duro). Cada terminal es un shell
+// interactivo con su cwd propio, desacoplado del chat, y vive DENTRO del proyecto activo: al cambiar de
+// proyecto solo se ven las suyas. Reusa TerminalPane (PTY real). Todas las terminales del proyecto se
+// montan a la vez (display:none las inactivas) para no perder el proceso ni el scrollback al cambiar.
 export function TerminalsView() {
-  const terminals = useTerminalsStore((s) => s.terminals);
-  const storedActiveId = useTerminalsStore((s) => s.activeId);
-  const addTerminal = useTerminalsStore((s) => s.addTerminal);
-  const removeTerminal = useTerminalsStore((s) => s.removeTerminal);
-  const renameTerminal = useTerminalsStore((s) => s.renameTerminal);
-  const setActive = useTerminalsStore((s) => s.setActive);
+  const activeProjectId = useProjectStore((s) => s.activeId);
+  const terminals = useProjectStore((s) => s.projects[s.activeId]?.terminals ?? []);
+  const addTerminal = useProjectStore((s) => s.addTerminal);
+  const removeTerminal = useProjectStore((s) => s.removeTerminal);
+  const renameTerminal = useProjectStore((s) => s.renameTerminal);
 
   const projectPath = useProjectStore((s) => s.projectPath);
   const projectEnv = useProjectStore((s) => s.projects[s.activeId]?.env ?? {});
 
-  // Active efectivo: si el guardado ya no existe (o es null), cae al primero.
+  // Selección activa: estado local (como en ServicesView). Se resetea al cambiar de proyecto.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => { setSelectedId(null); }, [activeProjectId]);
+  const setActive = (id: string) => setSelectedId(id);
+
+  // Active efectivo: si el seleccionado ya no existe (o es null), cae a la primera del proyecto.
   const activeId = useMemo(
-    () => (storedActiveId && terminals.some((t) => t.id === storedActiveId) ? storedActiveId : terminals[0]?.id ?? null),
-    [storedActiveId, terminals]
+    () => (selectedId && terminals.some((t) => t.id === selectedId) ? selectedId : terminals[0]?.id ?? null),
+    [selectedId, terminals]
   );
 
   const [showAdd, setShowAdd] = useState(false);
@@ -37,7 +41,8 @@ export function TerminalsView() {
   const openAdd = () => { setNewName(""); setNewCwd(projectPath); setShowAdd(true); };
   const create = () => {
     const cwd = newCwd.trim() || projectPath;
-    addTerminal(cwd, newName);
+    const id = addTerminal(cwd, newName);
+    setSelectedId(id);
     setShowAdd(false);
   };
   const pickCwd = async () => { try { const p = await pickFolder(); if (p) setNewCwd(p); } catch { /* cancelado */ } };
