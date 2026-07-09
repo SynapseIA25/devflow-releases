@@ -8,9 +8,8 @@ import type { ModelOption } from "../lib/acpClient";
 export type PermissionLogEntry = { ts: number; provider: string; tool: string; decision: "auto-allow" | "auto-deny" };
 
 type SettingsStore = {
+  // Config estática de providers ACP (DEFAULT_PROVIDERS). NO se persiste: es código, no estado editable.
   providers: ProviderConfig[];
-  selectedProviderId: string;
-  selectedModel: string;
   // Postura de permisos cuando NO hay UI para aprobar (workflows). Default false = denegar (seguro).
   // En true, se auto-aprueba la primera opción "allow*" (comodidad, riesgo: el agente hace todo solo).
   autoApprovePermissions: boolean;
@@ -22,9 +21,6 @@ type SettingsStore = {
   // NO se persisten: se repueblan en cada sesión.
   availableModelsByProvider: Record<string, ModelOption[]>;
   currentModelByProvider: Record<string, string>;
-  updateProvider: (id: string, updates: Partial<ProviderConfig>) => void;
-  setSelectedModel: (providerId: string, model: string) => void;
-  getActiveProvider: () => ProviderConfig | undefined;
   setAutoApprovePermissions: (v: boolean) => void;
   logPermission: (entry: Omit<PermissionLogEntry, "ts">) => void;
   // Elección explícita del usuario (persistida) — se aplicará en la próxima sesión de ese provider.
@@ -35,10 +31,8 @@ type SettingsStore = {
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       providers: DEFAULT_PROVIDERS,
-      selectedProviderId: "ollama",
-      selectedModel: "llama3",
       autoApprovePermissions: false,
       permissionLog: [],
       modelByProvider: {},
@@ -59,19 +53,6 @@ export const useSettingsStore = create<SettingsStore>()(
             : s.currentModelByProvider,
         })),
 
-      updateProvider: (id, updates) =>
-        set((s) => ({
-          providers: s.providers.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-        })),
-
-      setSelectedModel: (providerId, model) =>
-        set({ selectedProviderId: providerId, selectedModel: model }),
-
-      getActiveProvider: () => {
-        const s = get();
-        return s.providers.find((p) => p.id === s.selectedProviderId);
-      },
-
       setAutoApprovePermissions: (v) => set({ autoApprovePermissions: v }),
 
       logPermission: (entry) =>
@@ -82,13 +63,21 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: "devflow-settings",
-      // permissionLog es transitorio (auditoría de la sesión); el resto sí persiste.
+      version: 1,
+      // v0 persistía `providers` (con apiKey/baseUrl/modelos ficticios) y `selectedProviderId/selectedModel`
+      // — vestigios del diseño viejo "cliente-LLM directo". Los descartamos: providers es config estática y
+      // la selección de modelo vive en modelByProvider + el selector del chat.
+      migrate: (persisted: any) => {
+        if (persisted && typeof persisted === "object") {
+          delete persisted.providers;
+          delete persisted.selectedProviderId;
+          delete persisted.selectedModel;
+        }
+        return persisted;
+      },
+      // Solo persistimos preferencias reales; providers es estático y permissionLog/modelos-runtime no persisten.
       partialize: (s) => ({
-        providers: s.providers,
-        selectedProviderId: s.selectedProviderId,
-        selectedModel: s.selectedModel,
         autoApprovePermissions: s.autoApprovePermissions,
-        // La elección del usuario persiste; los modelos disponibles/activo son runtime (se repueblan).
         modelByProvider: s.modelByProvider,
       }),
     }

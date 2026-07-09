@@ -1,98 +1,51 @@
+// DevFlow es un HOST de agentes ACP: no hace inferencia ni guarda credenciales de modelos. Por eso un
+// provider ya NO tiene apiKey/models/defaultModel/enabled (eso lo gestiona el CLI del agente). Si tiene
+// `acp`, ChatView lo spawnea como proceso hijo y habla ACP; los modelos se descubren en runtime
+// (ver acpClient.newSession → onModelOptions) y se eligen en el selector de modelo del chat.
 export type ProviderConfig = {
   id: string;
   name: string;
   description: string;
   color: string;
   icon: string;
-  apiKey: string;
-  baseUrl: string;
-  models: string[];
-  defaultModel: string;
-  enabled: boolean;
-  isLocal?: boolean;
   docsUrl?: string;
-  // Si está presente, este provider habla el Agent Client Protocol — ChatView lo enruta por
-  // acpClient en vez del mock, spawneando este comando como proceso hijo (ver acp_start en Rust).
+  // Comando del agente ACP. Su ausencia = provider "directo" aún NO implementado (requiere adaptador).
   acp?: { command: string; args: string[] };
 };
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
   {
-    id: "openai",
-    name: "OpenAI",
-    description: "GPT-4o, GPT-4 Turbo y más",
-    color: "#10a37f",
-    icon: "⬡",
-    apiKey: "",
-    baseUrl: "https://api.openai.com/v1",
-    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-    defaultModel: "gpt-4o",
-    enabled: false,
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    description: "Claude Sonnet, Haiku, Opus",
-    color: "#d4a574",
-    icon: "◈",
-    apiKey: "",
-    baseUrl: "https://api.anthropic.com",
-    models: ["claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-8"],
-    defaultModel: "claude-sonnet-4-6",
-    enabled: false,
-  },
-  {
-    id: "ollama",
-    name: "Ollama (Local)",
-    description: "Modelos locales — sin internet",
-    color: "#4ade80",
-    icon: "◉",
-    apiKey: "",
-    baseUrl: "http://localhost:11434",
-    models: ["llama3", "codellama", "mistral", "phi3", "gemma2"],
-    defaultModel: "llama3",
-    enabled: false,
-    isLocal: true,
-  },
-  {
     id: "mimo",
     name: "MiMo Code",
-    description: "Agente de código de Xiaomi",
+    description: "Agente de código de Xiaomi. Modelo y credenciales gestionados por el CLI `mimo`.",
     color: "#f97316",
     icon: "⬡",
-    apiKey: "",
-    baseUrl: "https://mimo.xiaomi.com",
-    models: ["mimo-coder"],
-    defaultModel: "mimo-coder",
-    enabled: false,
     docsUrl: "https://mimo.xiaomi.com/coder",
     acp: { command: "mimo", args: ["acp", "--print-logs", "--log-level", "ERROR"] },
   },
   {
-    // INTEGRACIÓN DE REFERENCIA, NO PRODUCTIVA (decisión Fase 3, 2026-06-26).
-    // Hermes habla ACP de verdad y la integración funciona end-to-end, pero corre sobre
-    // Ollama local con llama3.2:3b — un modelo de 3B cuyo system prompt casi llena el
-    // contexto (4096 tok), así que nunca emite tool calls confiables y es lento (~40s).
-    // Sirve como prueba de que DevFlow soporta múltiples agentes ACP simultáneos, no como
-    // agente de trabajo real. Para volverlo productivo: apuntar `model.base_url`/`model.default`
-    // de Hermes (vía `hermes config set`) a un modelo más grande con buen function-calling.
-    // Los campos models/baseUrl/defaultModel de abajo son cosméticos para Settings (el modelo
-    // real lo fija la config global de Hermes, no estos valores).
+    // Integración ACP real, hoy sobre Ollama local (llama3.2:3b) — débil para trabajo agéntico. Para
+    // volverlo productivo: `hermes config set` apuntando a un modelo con buen function-calling. El plan
+    // (ver investigación MiMo×Hermes) es reubicar Hermes como infraestructura (tools MCP + gateway de
+    // inferencia), no como agente de chat.
     id: "hermes",
     name: "Nous Hermes",
-    description: "Agente multi-plataforma con memoria (referencia, no productivo)",
+    description: "Plataforma de asistente de Nous. Modelo y credenciales gestionados por el CLI `hermes`.",
     color: "#a78bfa",
     icon: "⬡",
-    apiKey: "",
-    baseUrl: "https://hermes-agent.nousresearch.com",
-    models: ["hermes-3", "hermes-2-pro"],
-    defaultModel: "hermes-3",
-    enabled: false,
     docsUrl: "https://hermes-agent.nousresearch.com",
-    // Ruta absoluta en vez de confiar en PATH: el venv recién se creó y el proceso de Tauri
-    // ya corriendo no tiene el PATH actualizado por el instalador hasta que se reinicie.
-    // Mismo criterio que PROJECT_CWD — hardcodeado a esta máquina, no hay UI de config real todavía.
+    // Ruta absoluta en vez de confiar en PATH: el venv del instalador no está en el PATH del proceso
+    // Tauri ya corriendo. Mismo criterio que otros paths hardcodeados a esta máquina (sin UI de config).
     acp: { command: "C:\\Users\\MSI\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", args: ["acp"] },
+  },
+  {
+    // Placeholder: aún no conectado. Requiere un adaptador ACP (ej. claude-code-acp) para spawnearse.
+    id: "anthropic",
+    name: "Claude Code",
+    description: "Requiere un adaptador ACP para conectarse (aún no implementado).",
+    color: "#d4a574",
+    icon: "◈",
+    docsUrl: "https://docs.anthropic.com",
   },
 ];
 

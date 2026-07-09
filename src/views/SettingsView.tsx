@@ -1,80 +1,43 @@
-import { useState } from "react";
-import { CheckCircle, AlertCircle, Eye, EyeOff, ShieldAlert } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
 import { ProviderConfig } from "../lib/providers";
 
+// DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
+// del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
 function ProviderCard({ provider }: { provider: ProviderConfig }) {
-  const { updateProvider, setSelectedModel, selectedProviderId, selectedModel } = useSettingsStore();
-  const [showKey, setShowKey] = useState(false);
-  const [key, setKey] = useState(provider.apiKey);
-
-  const isSelected = selectedProviderId === provider.id;
-
-  const handleSave = () => {
-    updateProvider(provider.id, { apiKey: key, enabled: key.length > 0 || provider.isLocal });
-  };
+  const currentModel = useSettingsStore((s) => s.currentModelByProvider[provider.id]);
+  const connected = !!provider.acp;
+  const cliName = provider.acp?.command.split(/[\\/]/).pop();
 
   return (
-    <div className={`provider-card${isSelected ? " selected" : ""}`}>
+    <div className="provider-card">
       <div className="provider-card-header">
         <div className="provider-dot" style={{ background: provider.color }} />
         <div className="provider-card-info">
           <div className="provider-card-name">{provider.name}</div>
           <div className="provider-card-desc">{provider.description}</div>
         </div>
-        <div className={`provider-status ${provider.enabled ? "enabled" : "disabled"}`}>
-          {provider.enabled
-            ? <><CheckCircle size={12} /> Activo</>
-            : <><AlertCircle size={12} /> Inactivo</>}
+        <div className={`provider-status ${connected ? "enabled" : "disabled"}`}>
+          {connected ? <><CheckCircle size={12} /> ACP</> : <><AlertCircle size={12} /> No conectado</>}
         </div>
       </div>
 
-      {!provider.isLocal && (
-        <div className="provider-field">
-          <label className="provider-label">API Key</label>
-          <div className="api-key-row">
-            <input
-              type={showKey ? "text" : "password"}
-              className="provider-input"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="sk-..."
-            />
-            <button className="icon-btn" onClick={() => setShowKey((v) => !v)}>
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
+      {connected ? (
+        <div className="provider-meta">
+          <div className="provider-meta-row">
+            <span className="provider-label">Modelo activo</span>
+            <span className="provider-meta-val">{currentModel ?? "— (se elige en el chat)"}</span>
+          </div>
+          <div className="provider-note">
+            Autenticación y modelos gestionados por el CLI <code>{cliName}</code>. El modelo se cambia
+            desde el selector del chat.
           </div>
         </div>
-      )}
-
-      <div className="provider-field">
-        <label className="provider-label">Base URL</label>
-        <input
-          className="provider-input"
-          defaultValue={provider.baseUrl}
-          onChange={(e) => updateProvider(provider.id, { baseUrl: e.target.value })}
-        />
-      </div>
-
-      <div className="provider-field">
-        <label className="provider-label">Modelo por defecto</label>
-        <div className="model-grid">
-          {provider.models.map((m) => (
-            <button
-              key={m}
-              className={`model-chip${isSelected && selectedModel === m ? " active" : ""}`}
-              onClick={() => setSelectedModel(provider.id, m)}
-              style={isSelected && selectedModel === m ? { borderColor: provider.color, color: provider.color } : {}}
-            >
-              {m}
-            </button>
-          ))}
+      ) : (
+        <div className="provider-meta">
+          <div className="provider-note">Requiere un adaptador ACP para conectarse (aún no implementado).</div>
         </div>
-      </div>
-
-      <button className="save-btn" onClick={handleSave}>
-        Guardar
-      </button>
+      )}
     </div>
   );
 }
@@ -119,27 +82,15 @@ function SecuritySection() {
 
 export function SettingsView() {
   const providers = useSettingsStore((s) => s.providers);
-  const selectedProviderId = useSettingsStore((s) => s.selectedProviderId);
-  const selectedModel = useSettingsStore((s) => s.selectedModel);
-  const active = providers.find((p) => p.id === selectedProviderId);
 
   return (
     <div className="settings-view">
       <div className="settings-header">
-        <h2 className="settings-title">Proveedores de IA</h2>
+        <h2 className="settings-title">Agentes de IA</h2>
         <p className="settings-subtitle">
-          Configurá los proveedores y modelos que los agentes usarán para procesar tus solicitudes.
+          DevFlow embebe agentes por ACP: la autenticación y los modelos los gestiona cada CLI. El modelo
+          activo se elige desde el chat.
         </p>
-        {active && (
-          <div className="settings-active-summary">
-            <span className="provider-dot" style={{ background: active.color }} />
-            Activo: <strong>{active.name}</strong>
-            <span className="settings-active-model">{selectedModel}</span>
-            <span className={`provider-status ${active.enabled ? "enabled" : "disabled"}`}>
-              {active.enabled ? <><CheckCircle size={12} /> listo</> : <><AlertCircle size={12} /> sin configurar</>}
-            </span>
-          </div>
-        )}
       </div>
       <SecuritySection />
       <div className="providers-grid">

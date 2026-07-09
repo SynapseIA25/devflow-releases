@@ -35,7 +35,7 @@ export const useAgentsStore = create<AgentsStore>()(
           description: partial.description?.trim() || "Agente definido por el usuario.",
           icon: partial.icon || "✦",
           color: partial.color || "#a78bfa",
-          providerId: partial.providerId || "ollama",
+          providerId: partial.providerId || "mimo",
           model: partial.model || "",
           systemPrompt: partial.systemPrompt || "",
           skills: partial.skills || [],
