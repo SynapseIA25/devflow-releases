@@ -427,26 +427,15 @@ export function ChatView() {
   // Pestaña nueva en el proyecto activo, sembrada con el agente de la pestaña actual (o el default global).
   const newWorkspace = () => storeNewWorkspace(ws?.agentId ?? activeAgentId, activeProjectId);
 
-  const runMockAI = async (wsId: string, text: string) => {
-    const taskSteps: Step[] = [
-      { id: "1", label: "Analizando solicitud", status: "pending" },
-      { id: "2", label: "Leyendo contexto",     status: "pending" },
-      { id: "3", label: "Generando respuesta",  status: "pending" },
-    ];
-    updateWsSteps(wsId, () => taskSteps);
+  // Fallback cuando el agente activo NO tiene un adaptador ACP configurado. No debería pasar con los
+  // agentes default (todos son ACP: MiMo, Claude Code, expertos), pero un agente custom podría apuntar
+  // a un provider sin `acp`. En vez de simular una respuesta falsa, avisamos claro qué hacer.
+  const runNoAdapter = async (wsId: string) => {
     try {
-      for (let i = 0; i < taskSteps.length; i++) {
-        if (cancelledRef.current.get(wsId)) return;
-        await new Promise((r) => setTimeout(r, 500));
-        updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "running" } : s));
-        await new Promise((r) => setTimeout(r, 600));
-        updateWsSteps(wsId, (p) => p.map((s, idx) => idx === i ? { ...s, status: "done" } : idx === i+1 ? { ...s, status: "running" } : s));
-      }
-
-      await new Promise((r) => setTimeout(r, 300));
+      const name = agentForWs(wsId)?.name ?? "Este agente";
       addBlockToWs(wsId, {
         type: "ai", agentId: agentForWs(wsId)?.id,
-        content: `## Respuesta: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}\n\nRecibí tu solicitud. Una vez que configures un proveedor en **⚙️ Settings**, procesaré la tarea y mostraré:\n\n### Plan de ejecución\n1. Leer archivos relevantes del proyecto\n2. Analizar estructura y dependencias\n3. Generar los cambios propuestos\n4. Ejecutar tests y validar\n\n### Archivos que se modificarían\n\`\`\`\nsrc/views/ChatView.tsx\nsrc/App.css\n\`\`\`\n\n> Configurá tu proveedor de IA en Settings para activar la ejecución real.`,
+        content: `**${name}** no tiene un adaptador ACP configurado, así que no puede ejecutar el turno.\n\nElegí un agente conectado por ACP (ej. **MiMo Code** o **Claude Code**) en el selector de arriba.`,
       });
     } finally {
       finishTurn(wsId);
@@ -586,7 +575,7 @@ export function ChatView() {
 
   const runAI = (wsId: string, text: string) => {
     const provider = DEFAULT_PROVIDERS.find((p) => p.id === agentForWs(wsId)?.providerId);
-    return provider?.acp ? runAcp(wsId, text, provider.id, provider.acp) : runMockAI(wsId, text);
+    return provider?.acp ? runAcp(wsId, text, provider.id, provider.acp) : runNoAdapter(wsId);
   };
 
   // Comando /run [nombre]: ejecuta un workflow desde el chat (sin nombre → el flujo activo; con

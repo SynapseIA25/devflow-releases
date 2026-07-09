@@ -1,20 +1,9 @@
 import { useState } from "react";
-import { CheckCircle, Circle, Plus, Zap, Globe, Database, Trash2, RotateCcw, Power } from "lucide-react";
+import { CheckCircle, Circle, Plus, Zap, Trash2, RotateCcw, Power } from "lucide-react";
 import { AgentConfig } from "../lib/providers";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useChatStore } from "../store/chatStore";
 import { useSettingsStore } from "../store/settingsStore";
-
-const PLATFORM_ICONS: Record<string, string> = {
-  telegram: "✈", discord: "◈", slack: "◆", email: "✉", cli: "⬡",
-  whatsapp: "◉", signal: "◎",
-};
-
-const BACKEND_INFO = {
-  local: { label: "Local", color: "#4ade80" },
-  docker: { label: "Docker", color: "#38bdf8" },
-  ssh: { label: "SSH", color: "#fbbf24" },
-};
 
 function AgentCard({ agent, selected, active, onSelect }: { agent: AgentConfig; selected: boolean; active: boolean; onSelect: () => void }) {
   return (
@@ -35,21 +24,11 @@ function AgentCard({ agent, selected, active, onSelect }: { agent: AgentConfig; 
         </div>
       </div>
       <p className="agent-card-desc">{agent.description}</p>
-      {agent.platforms && (
-        <div className="agent-card-platforms">
-          {agent.platforms.map((p) => (
-            <span key={p} className="platform-badge" title={p}>
-              {PLATFORM_ICONS[p] ?? p}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
 export function AgentDetail({ agent }: { agent: AgentConfig }) {
-  const backend = agent.executionBackend ? BACKEND_INFO[agent.executionBackend] : null;
   const updateAgent = useAgentsStore((s) => s.updateAgent);
   const removeAgent = useAgentsStore((s) => s.removeAgent);
   const resetAgent = useAgentsStore((s) => s.resetAgent);
@@ -104,37 +83,6 @@ export function AgentDetail({ agent }: { agent: AgentConfig }) {
                 <CheckCircle size={11} color="#4ade80" /> {s}
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {agent.platforms && (
-        <div className="detail-section">
-          <div className="detail-label"><Globe size={12} /> Plataformas</div>
-          <div className="skills-grid">
-            {agent.platforms.map((p) => (
-              <div key={p} className="skill-item">
-                {PLATFORM_ICONS[p]} {p}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {backend && (
-        <div className="detail-section">
-          <div className="detail-label">Execution backend</div>
-          <span className="backend-badge" style={{ background: `${backend.color}22`, color: backend.color }}>
-            {backend.label}
-          </span>
-        </div>
-      )}
-
-      {agent.memoryEnabled && (
-        <div className="detail-section">
-          <div className="detail-label"><Database size={12} /> Memoria</div>
-          <div className="memory-badge">
-            <CheckCircle size={11} color="#4ade80" /> Memoria persistente activada
           </div>
         </div>
       )}

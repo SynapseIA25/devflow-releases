@@ -48,9 +48,6 @@ export type AgentConfig = {
   model: string;
   systemPrompt: string;
   skills: string[];
-  platforms?: string[];
-  executionBackend?: "local" | "docker" | "ssh";
-  memoryEnabled?: boolean;
   status: "active" | "inactive" | "error";
   // Agentes expertos por área (pilar 1): si expertArea está presente, el agente es un experto
   // preconfigurado. areaKeywords alimenta el router determinista (expertRouter.ts). Los expertos NO
