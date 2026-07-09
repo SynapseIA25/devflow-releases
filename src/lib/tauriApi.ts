@@ -149,6 +149,18 @@ export async function pickFolder(): Promise<string | null> {
   return invoke<string | null>("pick_folder");
 }
 
+// Home del usuario (USERPROFILE/HOME) — para semillar el proyecto default sin hardcodear una ruta.
+export async function homeDir(): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("home_dir");
+}
+
+// Ruta detectada del binario de Hermes, o null si no está instalado.
+export async function hermesPath(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("hermes_path");
+}
+
 export type ShellResult = { output: string; exitCode: number };
 
 // One-shot: ejecuta un comando y devuelve stdout+stderr + exit code (no es la PTY interactiva).

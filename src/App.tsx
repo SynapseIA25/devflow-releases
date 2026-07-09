@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { type ReactElement } from "react";
 import "./App.css";
+import { useProjectStore } from "./store/projectStore";
+import { PROJECT_CWD } from "./lib/constants";
+import { homeDir } from "./lib/tauriApi";
 import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
@@ -51,6 +54,21 @@ export default function App() {
   const [dockWidth, setDockWidth]       = useState(420);
   const [showCodeFlow, setShowCodeFlow] = useState(false);
   const [showDataFlow, setShowDataFlow] = useState(false);
+
+  // Fresh install: si el único proyecto sigue siendo la semilla hardcodeada (PROJECT_CWD), lo re-apuntamos
+  // al home real del usuario — así DevFlow no arranca clavado a la ruta del repo de otra máquina.
+  useEffect(() => {
+    const ps = useProjectStore.getState();
+    const active = ps.projects[ps.activeId];
+    if (ps.order.length === 1 && active && active.path === PROJECT_CWD) {
+      homeDir().then((home) => {
+        if (home && home !== PROJECT_CWD) {
+          const name = home.split(/[\\/]/).filter(Boolean).pop() || "Proyecto";
+          useProjectStore.getState().updateProject(ps.activeId, { path: home, name });
+        }
+      });
+    }
+  }, []);
 
   const isChatFull = view === "chat";
   const chatMode: "full" | "side" | "hidden" = isChatFull ? "full" : chatDock ? "side" : "hidden";

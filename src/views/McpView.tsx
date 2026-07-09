@@ -5,7 +5,7 @@ import {
   Database, Search, GitBranch, FileCode, Globe2, Hash,
   ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare,
 } from "lucide-react";
-import { isTauri, checkPrerequisites, acpStop } from "../lib/tauriApi";
+import { isTauri, checkPrerequisites, acpStop, hermesPath } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
 import { useProjectStore } from "../store/projectStore";
 
@@ -149,7 +149,8 @@ const CATALOG: McpServer[] = [
     id: "hermes-messaging", name: "Hermes · Mensajería", transport: "stdio", official: false, version: "0.17",
     description: "Da a MiMo acceso al inbox multi-plataforma de Hermes (WhatsApp, Slack, Telegram…): listar conversaciones, leer/enviar mensajes, adjuntos y eventos. Requiere Hermes instalado.",
     icon: <MessagesSquare size={16} />, status: "stopped",
-    command: "C:/Users/MSI/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe mcp serve",
+    // Ruta resuelta en runtime (ver efecto en McpView: hermes_path detecta el binario). Fallback por PATH.
+    command: "hermes mcp serve",
     tools: [
       { name: "conversations_list", description: "Lista las conversaciones activas de todas las plataformas conectadas" },
       { name: "conversation_get",   description: "Detalle de una conversación por su session key" },
@@ -408,6 +409,15 @@ export function McpView() {
       })));
     }).catch(() => {});
     checkPrerequisites().then(setPrereqs).catch(() => {});
+    // Hermes: resolver la ruta del binario en runtime. Si está instalado, completar el command con la
+    // ruta absoluta detectada; si no, quitar la entrada (no ofrecer un server que no puede arrancar).
+    hermesPath().then((hp) => {
+      setServers((prev) =>
+        hp
+          ? prev.map((s) => (s.id === "hermes-messaging" ? { ...s, command: `${hp} mcp serve` } : s))
+          : prev.filter((s) => s.id !== "hermes-messaging")
+      );
+    }).catch(() => {});
   }, [inTauri, projectPath]);
 
   const setServerStatus = useCallback((id: string, status: McpServer["status"], err?: string) => {

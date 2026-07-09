@@ -576,6 +576,29 @@ fn run_shell_command(command: String, cwd: String) -> Result<ShellResult, String
     })
 }
 
+// Home del usuario — para semillar el proyecto default en un fresh install sin clavar una ruta a una
+// máquina concreta (antes se hardcodeaba en constants.ts). USERPROFILE en Windows, HOME en Unix.
+#[tauri::command]
+fn home_dir() -> String {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default()
+}
+
+// Detecta el binario de Hermes en ubicaciones conocidas (mismo patrón que windows_bash_path). Devuelve
+// None si no está instalado → la UI no ofrece la entrada MCP de Hermes. Evita hardcodear la ruta.
+#[tauri::command]
+fn hermes_path() -> Option<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        candidates.push(format!(r"{}\hermes\hermes-agent\venv\Scripts\hermes.exe", local));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(format!("{}/.local/share/hermes/hermes-agent/venv/bin/hermes", home));
+    }
+    candidates.into_iter().find(|p| std::path::Path::new(p).exists())
+}
+
 // En Windows, `bash` en el PATH resuelve al stub de System32 que lanza WSL (lento en frío
 // y requiere traducir cwd a /mnt/...). Usamos Git Bash directo si está instalado, así la
 // sintaxis de comandos (ls, cat, grep, pipes) es la misma que en Linux/Mac sin esa fricción.
@@ -781,6 +804,8 @@ pub fn run() {
             read_dir,
             create_dir,
             pick_folder,
+            home_dir,
+            hermes_path,
             run_shell_command,
             pty_spawn,
             pty_write,
