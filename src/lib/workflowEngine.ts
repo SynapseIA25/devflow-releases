@@ -8,13 +8,16 @@
 //   es azúcar = concatenación de los predecesores directos activos.
 // - Condición: misma sustitución de templating + new Function (input del propio usuario en una
 //   herramienta local de dev, no input no confiable).
-// - mimo: sesión ACP por nodo; los permisos se auto-aprueban (WorkflowView no monta el listener
-//   de permisos → acpClient cae al fail-safe allow-first-option ya existente).
+// - mimo/agent: sesión ACP REUSADA por corrida (una por agente, keyed en SessionCache) → el contexto
+//   se acumula entre nodos del mismo agente y se paga un solo session/new. Los loops aíslan una caché
+//   por item (en paralelo no se puede compartir una sesión). Permisos: WorkflowView no monta el
+//   listener → acpClient cae al fail-safe allow-first-option ya existente.
 import { runShellCommand, readTextFile, writeTextFile, httpRequest, mcpCallTool } from "./tauriApi";
 import * as acpClient from "./acpClient";
 import { DEFAULT_PROVIDERS } from "./providers";
 import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
+import { useSettingsStore } from "../store/settingsStore";
 import type { Edge } from "@xyflow/react";
 import type { WorkflowNode, NodeStatus } from "../store/workflowStore";
 import type { LogEntry } from "../components/OutputPanel";
@@ -103,57 +106,74 @@ function execCondition(node: WorkflowNode, results: Map<string, NodeResult>, inp
   return { output: String(truthy), branch };
 }
 
-async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+// Caché de sesiones ACP de UNA corrida de workflow (keyed por identidad de agente). Los nodos del
+// mismo agente comparten sesión → el contexto se acumula entre nodos (el agente "recuerda" lo anterior)
+// y se paga un solo initialize/session/new en vez de uno por nodo. Se descarta al terminar la corrida
+// (cada runWorkflow arranca con una caché nueva; una corrida no hereda el contexto de la anterior).
+type SessionCache = Map<string, string>; // key -> sessionId
+
+async function acquireSession(
+  sessions: SessionCache,
+  key: string,
+  provider: string,
+  spawn: acpClient.AcpSpawnConfig
+): Promise<{ sessionId: string; isNew: boolean }> {
+  const existing = sessions.get(key);
+  if (existing) return { sessionId: existing, isNew: false };
+  const preferredModel = useSettingsStore.getState().modelByProvider[provider];
+  const sessionId = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath, preferredModel);
+  sessions.set(key, sessionId);
+  return { sessionId, isNew: true };
+}
+
+// Manda un prompt a una sesión ACP y acumula el texto de la respuesta de ese turno.
+async function promptAndCollect(provider: string, sessionId: string, promptText: string): Promise<string> {
+  let text = "";
+  const unsub = acpClient.onUpdate((prov, sid, update) => {
+    if (prov !== provider || sid !== sessionId) return;
+    if (update.sessionUpdate === "agent_message_chunk") {
+      const content = update.content as { type?: string; text?: string } | string | undefined;
+      if (typeof content === "string") text += content;
+      else if (content?.type === "text" && typeof content.text === "string") text += content.text;
+    }
+  });
+  try {
+    await acpClient.prompt(provider, sessionId, promptText);
+  } finally {
+    unsub();
+  }
+  return text;
+}
+
+async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
   const mimo = DEFAULT_PROVIDERS.find((p) => p.id === "mimo");
   if (!mimo?.acp) throw new Error("Provider 'mimo' sin configuración ACP");
   const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 MiMo: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
-  const sessionId = await acpClient.newSession("mimo", mimo.acp, useProjectStore.getState().projectPath);
-  let text = "";
-  const unsub = acpClient.onUpdate((provider, sid, update) => {
-    if (provider !== "mimo" || sid !== sessionId) return;
-    if (update.sessionUpdate === "agent_message_chunk") {
-      const content = update.content as { type?: string; text?: string } | string | undefined;
-      if (typeof content === "string") text += content;
-      else if (content?.type === "text" && typeof content.text === "string") text += content.text;
-    }
-  });
-  try {
-    await acpClient.prompt("mimo", sessionId, promptText);
-  } finally {
-    unsub();
-  }
+  const { sessionId } = await acquireSession(sessions, "mimo", "mimo", mimo.acp);
+  const text = await promptAndCollect("mimo", sessionId, promptText);
   cb.onLog("success", `🤖 MiMo respondió (${text.length} chars)`);
   return { output: text };
 }
 
 // Nodo agente genérico: como execMimo pero el agente se elige por nodo (data.agentId → agentsStore).
-// Solo funcionan los agentes cuyo provider tiene config ACP (MiMo, Hermes); el resto es placeholder.
-async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+// Solo funcionan los agentes cuyo provider tiene config ACP; el resto tira error claro.
+async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
   const agentId = String(node.data.agentId ?? "");
   const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
   if (!agent) throw new Error("Nodo agente sin agente seleccionado (o el agente ya no existe)");
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
   if (!provider?.acp) throw new Error(`El agente "${agent.name}" no tiene backend ACP — elegí uno con motor real (ej. MiMo)`);
-  const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
+  let promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
-  const sessionId = await acpClient.newSession(agent.providerId, provider.acp, useProjectStore.getState().projectPath);
-  let text = "";
-  const unsub = acpClient.onUpdate((prov, sid, update) => {
-    if (prov !== agent.providerId || sid !== sessionId) return;
-    if (update.sessionUpdate === "agent_message_chunk") {
-      const content = update.content as { type?: string; text?: string } | string | undefined;
-      if (typeof content === "string") text += content;
-      else if (content?.type === "text" && typeof content.text === "string") text += content.text;
-    }
-  });
-  try {
-    await acpClient.prompt(agent.providerId, sessionId, promptText);
-  } finally {
-    unsub();
-  }
+  // Sesión propia por agente (distintos agentes = distinto system prompt/persona = distinta sesión).
+  const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}`, agent.providerId, provider.acp);
+  // El system prompt del agente se inyecta una sola vez, en el primer turno de su sesión.
+  const systemPrompt = agent.systemPrompt?.trim();
+  if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;
+  const text = await promptAndCollect(agent.providerId, sessionId, promptText);
   cb.onLog("success", `🤖 ${agent.name} respondió (${text.length} chars)`);
   return { output: text };
 }
@@ -232,7 +252,9 @@ async function execLoop(node: WorkflowNode, results: Map<string, NodeResult>, in
       isCancelled: cb.isCancelled,
       resolveFlow: cb.resolveFlow,
     };
-    const r = await runGraph(flow.nodes, flow.edges, childCb, itemInput, childStack);
+    // Cada iteración del loop es independiente → caché de sesiones ACP PROPIA (no la del padre).
+    // Clave en paralelo: iteraciones concurrentes NO pueden compartir una sesión (los turnos chocarían).
+    const r = await runGraph(flow.nodes, flow.edges, childCb, itemInput, childStack, new Map());
     if (r.cancelled) throw new Error("Cancelado");
     if (r.errored) throw new Error(`La iteración ${idx + 1} falló`);
     return r.output;
@@ -268,7 +290,7 @@ async function execLoop(node: WorkflowNode, results: Map<string, NodeResult>, in
 // se inyecta como {{input}} de los nodos de entrada del sub-flujo; el output del sub-flujo es la
 // concatenación de las salidas de sus nodos hoja. `stack` evita recursión infinita (un flujo que se
 // incluye a sí mismo, directa o indirectamente).
-async function execSubflow(node: WorkflowNode, input: string, cb: EngineCallbacks, stack: Set<string>): Promise<NodeResult> {
+async function execSubflow(node: WorkflowNode, input: string, cb: EngineCallbacks, stack: Set<string>, sessions: SessionCache): Promise<NodeResult> {
   const flowId = String(node.data.flowId ?? "");
   if (!flowId) throw new Error("Sub-flujo sin flujo asignado");
   const flow = cb.resolveFlow?.(flowId);
@@ -281,24 +303,26 @@ async function execSubflow(node: WorkflowNode, input: string, cb: EngineCallback
     isCancelled: cb.isCancelled,
     resolveFlow: cb.resolveFlow,
   };
-  const sub = await runGraph(flow.nodes, flow.edges, childCb, input, new Set(stack).add(flowId));
+  // El sub-flujo comparte la caché de sesiones del padre → un mismo agente sigue la conversación
+  // a través del límite del sub-flujo (no re-inicializa ni pierde contexto).
+  const sub = await runGraph(flow.nodes, flow.edges, childCb, input, new Set(stack).add(flowId), sessions);
   if (sub.cancelled) throw new Error("Cancelado");
   if (sub.errored) throw new Error(`El sub-flujo "${flow.name}" falló`);
   cb.onLog("success", `🧩 Sub-flujo "${flow.name}" completado (${sub.output.length} chars)`);
   return { output: sub.output };
 }
 
-async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, stack: Set<string>): Promise<NodeResult> {
+async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, stack: Set<string>, sessions: SessionCache): Promise<NodeResult> {
   switch (node.type) {
     case "file": return execFile(node, results, input, cb);
     case "terminal": return execTerminal(node, results, input, cb);
     case "condition": return execCondition(node, results, input, cb);
-    case "mimo": return execMimo(node, results, input, cb);
-    case "agent": return execAgent(node, results, input, cb);
+    case "mimo": return execMimo(node, results, input, cb, sessions);
+    case "agent": return execAgent(node, results, input, cb, sessions);
     case "http": return execHttp(node, results, input, cb);
     case "mcp": return execMcp(node, results, input, cb);
     case "loop": return execLoop(node, results, input, cb, stack);
-    case "subflow": return execSubflow(node, input, cb, stack);
+    case "subflow": return execSubflow(node, input, cb, stack, sessions);
     default: throw new Error(`Tipo de nodo desconocido: ${node.type}`);
   }
 }
@@ -314,7 +338,8 @@ async function runGraph(
   edges: Edge[],
   cb: EngineCallbacks,
   initialInput: string,
-  stack: Set<string>
+  stack: Set<string>,
+  sessions: SessionCache
 ): Promise<GraphRun> {
   if (nodes.length === 0) return { errored: false, cancelled: false, output: "" };
 
@@ -374,7 +399,7 @@ async function runGraph(
       if (cb.isCancelled()) { err = new Error("Cancelado"); break; }
       if (attempt > 0) cb.onLog("warn", `↻ Reintento ${attempt}/${retries} de "${title}" (${id})…`);
       try {
-        result = await execNode(node, results, input, cb, stack);
+        result = await execNode(node, results, input, cb, stack, sessions);
         err = undefined;
         break;
       } catch (e) {
@@ -417,7 +442,10 @@ export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: Engi
     cb.onLog("warn", "El canvas está vacío — nada que ejecutar.");
     return;
   }
-  const r = await runGraph(nodes, edges, cb, initialInput, new Set());
+  // Caché de sesiones ACP compartida por toda la corrida (excepto loops, que aíslan por item). Nace
+  // vacía en cada runWorkflow → una corrida no hereda contexto de la anterior.
+  const sessions: SessionCache = new Map();
+  const r = await runGraph(nodes, edges, cb, initialInput, new Set(), sessions);
   if (r.cancelled) return; // ya logueó "Ejecución cancelada."
   if (!r.errored) cb.onLog("success", "✓ Workflow completado.");
   else cb.onLog("error", "Workflow detenido por un error.");
