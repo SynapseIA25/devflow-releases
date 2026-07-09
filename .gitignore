@@ -31,3 +31,6 @@ mimocode.json
 *.njsproj
 *.sln
 *.sw?
+
+# Config local de cargo (target-dir por-maquina) - NO commitear, rompe CI
+src-tauri/.cargo/config.toml
