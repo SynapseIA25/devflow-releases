@@ -3,7 +3,7 @@ import {
   Server, Plus, Play, Square, Trash2, RefreshCw,
   CheckCircle, AlertCircle, Circle, Terminal, Globe,
   Database, Search, GitBranch, FileCode, Globe2, Hash,
-  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch,
+  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare,
 } from "lucide-react";
 import { isTauri, checkPrerequisites, acpStop } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
@@ -138,6 +138,26 @@ const CATALOG: McpServer[] = [
     tools: [
       { name: "run_command", description: "Ejecuta un comando en Warp terminal" },
       { name: "get_output",  description: "Obtiene el output del último comando" },
+    ],
+  },
+  {
+    // Hermes reubicado como INFRAESTRUCTURA (no como agente de chat, ver investigación MiMo×Hermes):
+    // `hermes mcp serve` expone las conversaciones/inbox multi-plataforma de Hermes como tools MCP, así
+    // MiMo (cerebro de código) puede leer/responder mensajes de WhatsApp/Slack/Telegram/etc. Requiere
+    // Hermes instalado (ruta absoluta a esta máquina, mismo criterio que providers.ts). Sus tools de
+    // browser/visión/computer-use NO se exponen por acá (viven dentro del agent loop de Hermes).
+    id: "hermes-messaging", name: "Hermes · Mensajería", transport: "stdio", official: false, version: "0.17",
+    description: "Da a MiMo acceso al inbox multi-plataforma de Hermes (WhatsApp, Slack, Telegram…): listar conversaciones, leer/enviar mensajes, adjuntos y eventos. Requiere Hermes instalado.",
+    icon: <MessagesSquare size={16} />, status: "stopped",
+    command: "C:/Users/MSI/AppData/Local/hermes/hermes-agent/venv/Scripts/hermes.exe mcp serve",
+    tools: [
+      { name: "conversations_list", description: "Lista las conversaciones activas de todas las plataformas conectadas" },
+      { name: "conversation_get",   description: "Detalle de una conversación por su session key" },
+      { name: "messages_read",      description: "Lee los mensajes recientes de una conversación" },
+      { name: "messages_send",      description: "Envía un mensaje a una conversación (platform:chat_id)" },
+      { name: "channels_list",      description: "Lista canales/targets disponibles en cada plataforma" },
+      { name: "attachments_fetch",  description: "Obtiene los adjuntos (imágenes/media) de un mensaje" },
+      { name: "events_poll",        description: "Consulta eventos nuevos de conversación desde un cursor" },
     ],
   },
 ];
