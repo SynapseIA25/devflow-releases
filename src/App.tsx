@@ -8,6 +8,7 @@ import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
 import { EditorWatcher } from "./components/EditorWatcher";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { FloatingWindow } from "./components/FloatingWindow";
 import { CodeFlowPanel } from "./components/panel/CodeFlowPanel";
 import { ChatView } from "./views/ChatView";
@@ -92,6 +93,7 @@ export default function App() {
       {/* Scheduler global de triggers + watcher del editor (no renderizan UI). */}
       <TriggerRunner />
       <EditorWatcher />
+      <UpdateBanner />
       <NavBar
         active={view}
         onChange={setView}
