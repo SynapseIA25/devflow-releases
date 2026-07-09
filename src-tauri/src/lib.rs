@@ -611,6 +611,13 @@ fn windows_bash_path() -> Option<&'static str> {
     CANDIDATES.iter().find(|p| std::path::Path::new(p).exists()).copied()
 }
 
+// En Unix la rama de Git Bash es código muerto (el `if cfg!(target_os = "windows")` es false en
+// runtime) pero igual se compila → necesita que el nombre resuelva. Stub que siempre devuelve None.
+#[cfg(not(target_os = "windows"))]
+fn windows_bash_path() -> Option<&'static str> {
+    None
+}
+
 // ── Terminal real con PTY ── reemplaza el viejo modelo "ejecutar y devolver el resultado
 // final" por un pseudo-terminal real (ConPTY en Windows, pty nativo en Unix) que soporta
 // streaming en vivo, colores ANSI y programas interactivos (vim, prompts, contraseñas).
