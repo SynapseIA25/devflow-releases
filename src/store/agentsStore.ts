@@ -8,6 +8,11 @@ import { DEFAULT_AGENTS, AgentConfig } from "../lib/providers";
 // nuevo en código, aparece; las ediciones guardadas del usuario se aplican encima por id.
 const DEFAULT_IDS = new Set(DEFAULT_AGENTS.map((a) => a.id));
 
+// Agentes default que se retiraron del código pero pueden seguir persistidos: el merge los descarta
+// para que no reaparezcan como "custom". "hermes" se reubicó como infraestructura MCP (Hermes · Mensajería
+// en la vista MCP), ya no es un agente de chat (su modelo local era débil). Ver investigación MiMo×Hermes.
+const RETIRED_AGENT_IDS = new Set(["hermes"]);
+
 export const isDefaultAgent = (id: string) => DEFAULT_IDS.has(id);
 
 type AgentsStore = {
@@ -66,7 +71,7 @@ export const useAgentsStore = create<AgentsStore>()(
         const saved = (persisted as { agents?: AgentConfig[] } | undefined)?.agents ?? [];
         const byId = new Map(saved.map((a) => [a.id, a]));
         const merged: AgentConfig[] = DEFAULT_AGENTS.map((d) => ({ ...d, ...byId.get(d.id) }));
-        for (const a of saved) if (!DEFAULT_IDS.has(a.id)) merged.push(a);
+        for (const a of saved) if (!DEFAULT_IDS.has(a.id) && !RETIRED_AGENT_IDS.has(a.id)) merged.push(a);
         return { ...current, agents: merged };
       },
     }

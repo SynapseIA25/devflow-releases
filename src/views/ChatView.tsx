@@ -275,6 +275,15 @@ export function ChatView() {
     useWorkspaceStore.getState().activateProject(activeProjectId, useChatStore.getState().activeAgentId || "mimo-coder");
   }, [activeProjectId]);
 
+  // Reconcilia workspaces que apunten a un agente que ya no existe (ej. "hermes", retirado del chat →
+  // ahora es infra MCP): los reasigna a mimo-coder para que sigan funcionando en vez de caer al mock.
+  useEffect(() => {
+    const valid = new Set(agents.map((a) => a.id));
+    for (const w of useWorkspaceStore.getState().workspaces) {
+      if (!valid.has(w.agentId)) setWorkspaceAgent(w.id, "mimo-coder");
+    }
+  }, [agents, setWorkspaceAgent]);
+
   // Resuelve el agente de un workspace por su id, leyendo estado FRESCO (turnos concurrentes de distintas
   // pestañas pueden usar agentes distintos → no sirve el activeAgent del closure).
   const agentForWs = useCallback((wsId: string) => {

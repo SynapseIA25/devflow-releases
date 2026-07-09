@@ -24,21 +24,6 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     acp: { command: "mimo", args: ["acp", "--print-logs", "--log-level", "ERROR"] },
   },
   {
-    // Integración ACP real, hoy sobre Ollama local (llama3.2:3b) — débil para trabajo agéntico. Para
-    // volverlo productivo: `hermes config set` apuntando a un modelo con buen function-calling. El plan
-    // (ver investigación MiMo×Hermes) es reubicar Hermes como infraestructura (tools MCP + gateway de
-    // inferencia), no como agente de chat.
-    id: "hermes",
-    name: "Nous Hermes",
-    description: "Plataforma de asistente de Nous. Modelo y credenciales gestionados por el CLI `hermes`.",
-    color: "#a78bfa",
-    icon: "⬡",
-    docsUrl: "https://hermes-agent.nousresearch.com",
-    // Ruta absoluta en vez de confiar en PATH: el venv del instalador no está en el PATH del proceso
-    // Tauri ya corriendo. Mismo criterio que otros paths hardcodeados a esta máquina (sin UI de config).
-    acp: { command: "C:\\Users\\MSI\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", args: ["acp"] },
-  },
-  {
     // Placeholder: aún no conectado. Requiere un adaptador ACP (ej. claude-code-acp) para spawnearse.
     id: "anthropic",
     name: "Claude Code",
@@ -82,21 +67,6 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     model: "mimo-coder",
     systemPrompt: "You are MiMo Code, an expert coding assistant. Help with code editing, refactoring, and debugging.",
     skills: ["file-edit", "terminal", "git", "search"],
-    status: "inactive",
-  },
-  {
-    id: "hermes",
-    name: "Hermes Agent",
-    description: "Agente multi-plataforma de Nous Research. Memoria persistente, subagentes y automatización.",
-    icon: "⬡",
-    color: "#a78bfa",
-    providerId: "hermes",
-    model: "hermes-3",
-    systemPrompt: "You are Hermes, a powerful multi-platform agent with persistent memory.",
-    skills: ["web-search", "browser", "file-edit", "terminal", "scheduling"],
-    platforms: ["telegram", "discord", "slack", "email", "cli"],
-    executionBackend: "local",
-    memoryEnabled: true,
     status: "inactive",
   },
   {
