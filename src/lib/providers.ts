@@ -24,13 +24,17 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     acp: { command: "mimo", args: ["acp", "--print-logs", "--log-level", "ERROR"] },
   },
   {
-    // Placeholder: aún no conectado. Requiere un adaptador ACP (ej. claude-code-acp) para spawnearse.
+    // Claude Code vía el adaptador ACP oficial de Zed (@zed-industries/claude-code-acp): envuelve el
+    // Claude Code SDK y habla ACP protocolVersion 1 (verificado por handshake). Auth: usa la sesión del
+    // CLI `claude` (correr `claude /login` una vez). En Windows, acp_start lo spawnea vía `cmd /C npx …`.
+    // npx -y baja el paquete la primera vez (cacheado después) — la primera sesión puede tardar unos seg.
     id: "anthropic",
     name: "Claude Code",
-    description: "Requiere un adaptador ACP para conectarse (aún no implementado).",
+    description: "Agente de Anthropic vía adaptador ACP. Requiere el CLI `claude` logueado (`claude /login`).",
     color: "#d4a574",
     icon: "◈",
     docsUrl: "https://docs.anthropic.com",
+    acp: { command: "npx", args: ["-y", "@zed-industries/claude-code-acp"] },
   },
 ];
 

@@ -147,6 +147,11 @@ fn acp_start(
         full_args.extend(args.iter().cloned());
         Command::new("cmd")
             .args(&full_args)
+            // El adaptador claude-code-acp se niega a arrancar si CLAUDECODE está seteado (guard de
+            // "sesión anidada"). DevFlow puede haber heredado esa var si se lo lanzó desde una sesión
+            // de Claude Code; la quitamos del hijo para que el adaptador funcione igual. Inofensivo
+            // para mimo/hermes (no la usan).
+            .env_remove("CLAUDECODE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -154,6 +159,7 @@ fn acp_start(
     } else {
         Command::new(&command)
             .args(&args)
+            .env_remove("CLAUDECODE")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
