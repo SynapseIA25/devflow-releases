@@ -887,6 +887,16 @@ html, body, #root {
 .ws-agent-name { font-weight: 600; }
 .ws-dropdown { right: 0; left: auto; top: calc(100% + 1px); }
 
+/* Selector de modelo del agente ACP (al lado del selector de agente) */
+.ws-model-selector {
+  display: flex; align-items: center; gap: 5px; padding: 4px 10px;
+  border-left: 1px solid var(--border); height: 36px; cursor: pointer; position: relative;
+  font-size: 11px; color: var(--text-3); flex-shrink: 0; user-select: none; max-width: 210px;
+}
+.ws-model-selector:hover { background: var(--bg-hover); color: var(--text); }
+.ws-model-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-model-dropdown { right: 0; left: auto; top: calc(100% + 1px); min-width: 220px; max-height: 340px; overflow-y: auto; }
+
 /* ── Document area ───────────────────────────────────── */
 .doc-area { flex: 1; overflow-y: auto; min-height: 0; }
 .doc-ai { padding: 18px 22px; border-bottom: 1px solid var(--border-2); font-size: 13px; line-height: 1.75; color: var(--text); }

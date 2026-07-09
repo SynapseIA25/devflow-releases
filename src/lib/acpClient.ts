@@ -21,6 +21,12 @@ export type PermissionRequest = {
 };
 type PermissionListener = (req: PermissionRequest) => void;
 
+// Modelos que el agente ACP ofrece para la sesión (descubiertos en session/new). El "current" es el
+// que quedó seleccionado tras aplicar la preferencia del usuario (o el default del agente).
+export type ModelOption = { value: string; label: string };
+export type ModelInfo = { available: ModelOption[]; current: string | null };
+type ModelOptionsListener = (provider: string, sessionId: string, info: ModelInfo) => void;
+
 // sessionId: qué sesión originó la request (solo lo llevan las requests largas como session/prompt).
 // Permite que cancel() rechace SOLO los pending de la sesión que se detiene, sin matar prompts en
 // vuelo de otros workspaces que comparten el mismo proceso agente (mimo/hermes = un proceso por provider).
@@ -37,6 +43,7 @@ type ProviderState = {
 const providerStates = new Map<string, ProviderState>();
 const updateListeners = new Set<UpdateListener>();
 const permissionListeners = new Set<PermissionListener>();
+const modelOptionsListeners = new Set<ModelOptionsListener>();
 
 function stateFor(provider: string): ProviderState {
   let s = providerStates.get(provider);
@@ -187,34 +194,57 @@ export async function initialize(provider: string, spawn: AcpSpawnConfig): Promi
   return s.initPromise;
 }
 
-type ConfigOption = { id: string; options?: Array<{ value: string }> };
+type ConfigOption = { id: string; value?: string; options?: Array<{ value: string; label?: string; name?: string }> };
 
-// MiMo: modelo conocido y siempre disponible (canal gratuito MiMo Auto). El default que trae
-// la cuenta puede quedar apuntando a un modelo deprecado/no soportado (visto en la práctica:
-// "xiaomi/mimo-v2.5-pro-ultraspeed"), así que cada sesión nueva lo fija explícitamente.
-// Otros providers (ej. Hermes) no tienen este problema — usan el modelo que ya quedó
-// configurado globalmente (hermes config set model.default ...).
-const MIMO_PREFERRED_MODEL = "mimo/mimo-auto";
+// Fallback para MiMo cuando el usuario no eligió modelo: el canal gratuito "MiMo Auto", siempre
+// disponible. El default que trae la cuenta puede quedar apuntando a un modelo deprecado/no soportado
+// (visto: "xiaomi/mimo-v2.5-pro-ultraspeed"), así que si no hay preferencia lo forzamos a mimo-auto.
+// Ya NO es un override duro: si el usuario eligió un modelo (o configuró un provider local en el CLI),
+// se respeta esa elección (ver settingsStore.modelByProvider → preferredModel).
+const MIMO_DEFAULT_MODEL = "mimo/mimo-auto";
 
-export async function newSession(provider: string, spawn: AcpSpawnConfig, cwd: string): Promise<string> {
+export function onModelOptions(cb: ModelOptionsListener): () => void {
+  modelOptionsListeners.add(cb);
+  return () => modelOptionsListeners.delete(cb);
+}
+
+// Cambia el modelo de una sesión ACP ya abierta (para el selector de modelo en vivo).
+export async function setSessionModel(provider: string, sessionId: string, value: string): Promise<void> {
+  await sendRequest(provider, "session/set_config_option", { sessionId, configId: "model", value });
+}
+
+export async function newSession(
+  provider: string,
+  spawn: AcpSpawnConfig,
+  cwd: string,
+  preferredModel?: string
+): Promise<string> {
   await initialize(provider, spawn);
   const result = await sendRequest<{ sessionId: string; configOptions?: ConfigOption[] }>(provider, "session/new", {
     cwd,
     mcpServers: [],
   });
-  if (provider === "mimo") {
-    const modelOption = result.configOptions?.find((o) => o.id === "model");
-    if (modelOption?.options?.some((o) => o.value === MIMO_PREFERRED_MODEL)) {
+  const modelOption = result.configOptions?.find((o) => o.id === "model");
+  if (modelOption) {
+    const available: ModelOption[] = (modelOption.options ?? []).map((o) => ({
+      value: o.value,
+      label: o.label ?? o.name ?? o.value,
+    }));
+    const has = (v?: string | null): v is string => !!v && available.some((o) => o.value === v);
+    // Prioridad: preferencia del usuario → fallback de MiMo (anti-deprecado) → default del agente.
+    let target: string | null = null;
+    if (has(preferredModel)) target = preferredModel;
+    else if (provider === "mimo" && has(MIMO_DEFAULT_MODEL)) target = MIMO_DEFAULT_MODEL;
+    if (target && target !== modelOption.value) {
       try {
-        await sendRequest(provider, "session/set_config_option", {
-          sessionId: result.sessionId,
-          configId: "model",
-          value: MIMO_PREFERRED_MODEL,
-        });
+        await setSessionModel(provider, result.sessionId, target);
       } catch {
         // si falla, seguimos con el modelo default de la sesión en vez de bloquear el chat
+        target = null;
       }
     }
+    const current = target ?? modelOption.value ?? available[0]?.value ?? null;
+    for (const l of modelOptionsListeners) l(provider, result.sessionId, { available, current });
   }
   return result.sessionId;
 }

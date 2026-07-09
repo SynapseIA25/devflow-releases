@@ -12,6 +12,10 @@ import * as acpClient from "../lib/acpClient";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
+import { useSettingsStore } from "../store/settingsStore";
+
+// Referencia estable para el selector de settingsStore (evita re-render por array nuevo en cada llamada).
+const EMPTY_MODELS: acpClient.ModelOption[] = [];
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
 import { TerminalPane } from "../components/TerminalPane";
@@ -213,6 +217,7 @@ export function ChatView() {
     if (pendingPrompt) { setInput(pendingPrompt); setPendingPrompt(undefined); }
   }, [pendingPrompt, setPendingPrompt]);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<acpClient.PermissionRequest | null>(null);
   const [recording, setRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -252,6 +257,13 @@ export function ChatView() {
   // un experto en otra al mismo tiempo. El selector muestra los agentes globales base (MiMo/Hermes/Claude,
   // defaults NO expertos) + los asociados al proyecto activo (+ el del ws activo, para que nunca desaparezca).
   const activeAgent = agents.find((a) => a.id === ws?.agentId);
+  // Selección de modelo (por provider ACP del agente activo). availableModels se descubre al abrir
+  // sesión; currentModel es el activo; la elección del usuario (modelByProvider) se persiste.
+  const activeProviderId = activeAgent?.providerId ?? "";
+  const activeAcp = activeAgent ? DEFAULT_PROVIDERS.find((p) => p.id === activeProviderId)?.acp : undefined;
+  const availableModels = useSettingsStore((s) => s.availableModelsByProvider[activeProviderId] ?? EMPTY_MODELS);
+  const currentModel = useSettingsStore((s) => s.currentModelByProvider[activeProviderId]);
+  const setModelForProvider = useSettingsStore((s) => s.setModelForProvider);
   const visibleAgents = useMemo(
     () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === ws?.agentId),
     [agents, projectAgentIds, ws?.agentId]
@@ -375,6 +387,26 @@ export function ChatView() {
       }
     };
   }, []);
+
+  // Suscripción a los modelos que el agente ofrece al abrir sesión → los volcamos al settingsStore
+  // para poblar el selector de modelo (ver acpClient.newSession).
+  useEffect(() => {
+    const unsub = acpClient.onModelOptions((provider, _sid, info) => {
+      useSettingsStore.getState().reportModelOptions(provider, info.available, info.current);
+    });
+    return unsub;
+  }, []);
+
+  // Cambia el modelo del agente activo: persiste la elección y, si ya hay sesión abierta en esta
+  // pestaña, la aplica en vivo (si no, se aplica al abrir la próxima sesión).
+  const selectModel = (value: string) => {
+    setModelForProvider(activeProviderId, value);
+    setShowModelMenu(false);
+    const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === curWsId);
+    if (w?.sessionId && w.sessionProvider === activeProviderId) {
+      acpClient.setSessionModel(activeProviderId, w.sessionId, value).catch(() => {});
+    }
+  };
 
   const resolvePermission = (optionId: string) => {
     if (!pendingPermission) return;
@@ -505,7 +537,9 @@ export function ChatView() {
         // estaba desincronizado en ese instante (bug: chat de un proyecto describiendo otro).
         const pstate = useProjectStore.getState();
         const sessionCwd = wsNow?.cwd ?? pstate.projects[wsNow?.projectId ?? ""]?.path ?? pstate.projectPath;
-        sid = await acpClient.newSession(provider, spawn, sessionCwd);
+        // Modelo elegido por el usuario para este provider (si hay); si no, acpClient usa el default.
+        const preferredModel = useSettingsStore.getState().modelByProvider[provider];
+        sid = await acpClient.newSession(provider, spawn, sessionCwd, preferredModel);
         setSession(wsId, sid, provider);
       }
       // Registramos el turno keyed por sesión: el handler de session/update lo encuentra por acá,
@@ -712,6 +746,25 @@ export function ChatView() {
               </div>
             )}
           </div>
+
+          {/* Model selector — solo para agentes ACP con modelos descubiertos. Cambia el modelo del
+              agente activo (persistido por provider), en vivo si ya hay sesión abierta. */}
+          {activeAcp && availableModels.length > 0 && (
+            <div className="ws-model-selector" onClick={() => setShowModelMenu((v) => !v)} title="Modelo del agente">
+              <span className="ws-model-name">{availableModels.find((m) => m.value === currentModel)?.label ?? currentModel ?? "modelo"}</span>
+              <ChevronDown size={10} />
+              {showModelMenu && (
+                <div className="agent-dropdown ws-dropdown ws-model-dropdown">
+                  {availableModels.map((m) => (
+                    <div key={m.value} className={`agent-option${m.value === currentModel ? " active" : ""}`}
+                      onClick={(e) => { e.stopPropagation(); selectModel(m.value); }}>
+                      <div className="agent-option-name">{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Steps bar */}
