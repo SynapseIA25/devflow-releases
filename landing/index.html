@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DevFlow — entorno de desarrollo con equipo de agentes IA</title>
+<meta name="description" content="DevFlow es una app de escritorio que orquesta un equipo de agentes IA expertos, workflows como grafo y ambientes aislados para construir software de punta a punta. Windows, macOS y Linux." />
+<style>
+  :root {
+    --ground: #0a0e16;
+    --surface: #111826;
+    --surface-2: #161f30;
+    --border: #232e42;
+    --text: #e7edf5;
+    --muted: #93a1b5;
+    --dim: #5d6b80;
+    --teal: #2fd4b6;
+    --azure: #4f9bff;
+    --amber: #f5a623;
+    --green: #47c97e;
+    --grad: linear-gradient(100deg, var(--teal), var(--azure));
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --maxw: 1120px;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: #f6f8fb;
+      --surface: #ffffff;
+      --surface-2: #f0f4f9;
+      --border: #dbe2ec;
+      --text: #0c1220;
+      --muted: #566173;
+      --dim: #8996a8;
+      --teal: #0f9e8c;
+      --azure: #2f6fe0;
+      --amber: #c9781a;
+      --green: #1f9d57;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0a0e16; --surface: #111826; --surface-2: #161f30; --border: #232e42;
+    --text: #e7edf5; --muted: #93a1b5; --dim: #5d6b80;
+    --teal: #2fd4b6; --azure: #4f9bff; --amber: #f5a623; --green: #47c97e;
+  }
+  :root[data-theme="light"] {
+    --ground: #f6f8fb; --surface: #ffffff; --surface-2: #f0f4f9; --border: #dbe2ec;
+    --text: #0c1220; --muted: #566173; --dim: #8996a8;
+    --teal: #0f9e8c; --azure: #2f6fe0; --amber: #c9781a; --green: #1f9d57;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--ground);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  /* ---- Top bar ---- */
+  header.bar {
+    position: sticky; top: 0; z-index: 40;
+    backdrop-filter: blur(10px);
+    background: color-mix(in srgb, var(--ground) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .bar-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .brand .dot { width: 20px; height: 20px; }
+  .brand .flow { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  nav.links { display: flex; align-items: center; gap: 26px; font-size: 14px; color: var(--muted); }
+  nav.links a { font-family: var(--font-mono); font-size: 13px; transition: color .15s; }
+  nav.links a:hover { color: var(--text); }
+  .nav-gh { display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border: 1px solid var(--border); border-radius: 8px; color: var(--text) !important; }
+  .nav-gh:hover { border-color: var(--teal); }
+  @media (max-width: 680px) { nav.links .hide-sm { display: none; } }
+
+  /* ---- Hero ---- */
+  .hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+  #graph { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.55; }
+  .hero-veil {
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 90% at 72% 8%, transparent 30%, var(--ground) 78%);
+    pointer-events: none;
+  }
+  .hero-inner { position: relative; padding: 96px 0 104px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: .04em;
+    color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px;
+  }
+  .badge .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 22%, transparent); }
+  h1 {
+    font-size: clamp(38px, 6.4vw, 68px);
+    line-height: 1.03; letter-spacing: -0.025em; font-weight: 780;
+    margin: 22px 0 0; max-width: 15ch; text-wrap: balance;
+  }
+  h1 .flow { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { margin: 22px 0 0; font-size: clamp(16px, 2.1vw, 20px); color: var(--muted); max-width: 56ch; }
+  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 34px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 600; padding: 13px 22px; border-radius: 11px;
+    border: 1px solid transparent; cursor: pointer; transition: transform .12s, box-shadow .2s, border-color .2s;
+  }
+  .btn-primary { color: #051016; background: var(--grad); box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--azure) 60%, transparent); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 40px -12px color-mix(in srgb, var(--azure) 70%, transparent); }
+  .btn-primary .os { font-family: var(--font-mono); font-size: 12.5px; opacity: .72; }
+  .btn-ghost { color: var(--text); background: var(--surface); border-color: var(--border); }
+  .btn-ghost:hover { border-color: var(--teal); }
+  .hero-meta { margin-top: 18px; font-family: var(--font-mono); font-size: 12.5px; color: var(--dim); display: flex; gap: 18px; flex-wrap: wrap; }
+
+  /* ---- Section scaffold ---- */
+  section { padding: 84px 0; border-bottom: 1px solid var(--border); }
+  .sec-head { max-width: 60ch; }
+  .sec-head h2 { font-size: clamp(26px, 3.6vw, 38px); letter-spacing: -0.02em; margin: 12px 0 0; text-wrap: balance; }
+  .sec-head p { color: var(--muted); font-size: 16.5px; margin: 14px 0 0; }
+
+  /* ---- Pillars grid ---- */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 46px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 26px; position: relative; overflow: hidden; transition: border-color .2s, transform .2s;
+  }
+  .card:hover { border-color: color-mix(in srgb, var(--teal) 55%, var(--border)); transform: translateY(-3px); }
+  .card .ic { width: 30px; height: 30px; color: var(--teal); }
+  .card h3 { font-size: 18.5px; margin: 16px 0 0; letter-spacing: -0.01em; }
+  .card p { color: var(--muted); font-size: 14.5px; margin: 9px 0 0; }
+  .card .tag { position: absolute; top: 20px; right: 22px; font-family: var(--font-mono); font-size: 11px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+
+  /* ---- Flow steps ---- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 46px; }
+  @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+  .step { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .step .n { font-family: var(--font-mono); font-size: 13px; color: var(--azure); letter-spacing: .1em; }
+  .step h4 { margin: 12px 0 0; font-size: 16.5px; }
+  .step p { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+
+  /* ---- Download ---- */
+  .dl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 46px; }
+  @media (max-width: 760px) { .dl-grid { grid-template-columns: 1fr; } }
+  .dl {
+    display: flex; flex-direction: column; align-items: flex-start;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .dl.reco { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal), 0 18px 50px -24px color-mix(in srgb, var(--teal) 70%, transparent); }
+  .dl .os-ic { width: 30px; height: 30px; color: var(--text); }
+  .dl h3 { margin: 15px 0 0; font-size: 18px; }
+  .dl .fmt { font-family: var(--font-mono); font-size: 12.5px; color: var(--dim); margin: 6px 0 0; }
+  .dl .reco-badge { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--teal); margin: 14px 0 0; opacity: 0; }
+  .dl.reco .reco-badge { opacity: 1; }
+  .dl a.get { margin-top: 18px; width: 100%; justify-content: center; }
+
+  /* ---- Footer ---- */
+  footer { padding: 46px 0 70px; }
+  .foot-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; color: var(--dim); font-family: var(--font-mono); font-size: 12.5px; }
+  .foot-inner a:hover { color: var(--text); }
+
+  :focus-visible { outline: 2px solid var(--azure); outline-offset: 3px; border-radius: 4px; }
+
+  /* Reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <a class="brand" href="#top" aria-label="DevFlow inicio">
+      <svg class="dot" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <defs><linearGradient id="bg" x1="0" y1="0" x2="24" y2="24">
+          <stop offset="0" stop-color="#2fd4b6"/><stop offset="1" stop-color="#4f9bff"/>
+        </linearGradient></defs>
+        <circle cx="5" cy="6" r="2.4" fill="url(#bg)"/>
+        <circle cx="19" cy="5" r="2.4" fill="url(#bg)"/>
+        <circle cx="12" cy="18" r="2.4" fill="url(#bg)"/>
+        <path d="M6.8 7 10.6 16 M17.4 6.6 13 16 M7 6.2h10" stroke="url(#bg)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span>Dev<span class="flow">Flow</span></span>
+    </a>
+    <nav class="links">
+      <a class="hide-sm" href="#features">Características</a>
+      <a class="hide-sm" href="#flow">Cómo funciona</a>
+      <a href="#download">Descargar</a>
+      <a class="nav-gh" href="https://github.com/pab-1984/devflow" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" style="border-bottom:1px solid var(--border);">
+    <canvas id="graph" aria-hidden="true"></canvas>
+    <div class="hero-veil"></div>
+    <div class="wrap hero-inner">
+      <span class="badge"><span class="pip"></span> App de escritorio · Windows · macOS · Linux</span>
+      <h1>Un equipo de agentes que construye tu software de <span class="flow">punta a punta</span>.</h1>
+      <p class="sub">DevFlow orquesta agentes IA expertos, workflows como grafo y ambientes aislados en un solo entorno de escritorio. Delegás, revisás el diff y promovés — sin que nada toque tu proyecto real hasta que vos lo decidas.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" id="heroDownload" href="#download">
+          Descargar DevFlow <span class="os" id="heroOs"></span>
+        </a>
+        <a class="btn btn-ghost" href="#features">Ver qué hace</a>
+      </div>
+      <div class="hero-meta">
+        <span id="verTag">v0.1.0</span>
+        <span>Código abierto</span>
+        <span>Construido con Tauri + React</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Los cuatro pilares</span>
+        <h2>No es un chat con IA. Es una plataforma para gestionar el proyecto entero.</h2>
+        <p>Cada pieza se apoya en la anterior: expertos que se coordinan, flujos que los ejecutan, ambientes que los aíslan y un hub que lo gobierna todo por proyecto.</p>
+      </div>
+      <div class="grid">
+        <article class="card reveal">
+          <span class="tag">9 roles</span>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M15 11a3 3 0 1 0-2-5.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M15.5 14a6 6 0 0 1 5.5 6"/></svg>
+          <h3>Equipo de agentes expertos</h3>
+          <p>Arquitecto, Frontend, Backend, Base de Datos, DevOps, SRE, Seguridad, QA y Producto. Un líder descompone la tarea, la delega a cada especialista en su propia sesión y sintetiza el resultado.</p>
+        </article>
+        <article class="card reveal">
+          <span class="tag">Grafo</span>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1.2"/><rect x="15" y="15" width="6" height="5" rx="1.2"/><rect x="9" y="10" width="6" height="4" rx="1.2"/><path d="M6 9v2a2 2 0 0 0 2 2M18 15v-1a2 2 0 0 0-2-2"/></svg>
+          <h3>Orquestador de workflows</h3>
+          <p>Encadená agentes, comandos y triggers como un grafo de nodos con variables nombradas. Loops, ramas y webhooks para automatizar tareas repetibles del proyecto.</p>
+        </article>
+        <article class="card reveal">
+          <span class="tag">Aislado</span>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3v6l-3 3 3 3v6"/><path d="M18 3v6l3 3-3 3v6"/><path d="M9 12h6"/></svg>
+          <h3>Ambientes de prueba</h3>
+          <p>Cada agente trabaja en un git worktree efímero: prueba, escribe y rompe sin tocar tu código. Revisás el diff y con un click promovés al proyecto real o lo descartás sin rastro.</p>
+        </article>
+        <article class="card reveal">
+          <span class="tag">Por proyecto</span>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 11h18"/></svg>
+          <h3>Project Hub</h3>
+          <p>Stack detectado, estructura, documentación, servicios, terminales y deuda técnica — todo scopeado por proyecto. Registrás varios proyectos y cada uno lleva su entorno, sus agentes y sus flujos.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">El flujo seguro</span>
+        <h2>Delegar sin miedo.</h2>
+        <p>El ciclo que hace que dejar trabajar a varios agentes en paralelo no termine en un proyecto roto.</p>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="n">01 · DELEGAR</div>
+          <h4>El líder reparte</h4>
+          <p>Describís la tarea; el agente líder la descompone y asigna cada sub-tarea al experto correcto según el área.</p>
+        </div>
+        <div class="step reveal">
+          <div class="n">02 · AISLAR</div>
+          <h4>Corren en un ambiente</h4>
+          <p>Los expertos ejecutan dentro de un worktree efímero, en paralelo, sin permiso para tocar tu proyecto real.</p>
+        </div>
+        <div class="step reveal">
+          <div class="n">03 · PROMOVER</div>
+          <h4>Vos tenés la última palabra</h4>
+          <p>Revisás el diff consolidado y promovés a la rama base o descartás. Los conflictos de merge se muestran antes de aplicar.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Descargar · v0.1.0</span>
+        <h2>Elegí tu plataforma.</h2>
+        <p>Detectamos tu sistema y te resaltamos el instalador recomendado. Todos los builds se publican automáticamente en cada versión.</p>
+      </div>
+      <div class="dl-grid">
+        <div class="dl" data-os="windows">
+          <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.3v7.2H3zM11 12.5v7.2L3 18.5v-6zM12 4.1 21 3v8.5h-9zM21 12.5V21l-9-1.3v-7.2z"/></svg>
+          <h3>Windows</h3>
+          <div class="fmt">.msi · .exe · x64</div>
+          <div class="reco-badge">Recomendado para vos</div>
+          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+        </div>
+        <div class="dl" data-os="mac">
+          <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.8.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.3 1.2-2.4-.1 0-2.3-.9-2.4-3.9zM14.2 5.3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z"/></svg>
+          <h3>macOS</h3>
+          <div class="fmt">.dmg · Apple Silicon + Intel</div>
+          <div class="reco-badge">Recomendado para vos</div>
+          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+        </div>
+        <div class="dl" data-os="linux">
+          <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-2 0-3.2 1.7-3.2 3.9 0 1.4.2 2.3-.3 3.4-.5 1-2 2.6-2.6 4.4-.3.9-.2 1.7 0 2.1-.4.3-.7.8-.5 1.5.1.5 0 .8-.1 1.2-.2.6.1 1.2.9 1.3.7.1 1.7.3 2.5.8.7.4 1.6.3 2.1-.1.4.1.9.1 1.4.1s1 0 1.4-.1c.5.4 1.4.5 2.1.1.8-.5 1.8-.7 2.5-.8.8-.1 1.1-.7.9-1.3-.1-.4-.2-.7-.1-1.2.2-.7-.1-1.2-.5-1.5.2-.4.3-1.2 0-2.1-.6-1.8-2.1-3.4-2.6-4.4-.5-1.1-.3-2-.3-3.4C15.2 3.7 14 2 12 2zm-1.4 4.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>
+          <h3>Linux</h3>
+          <div class="fmt">.AppImage · .deb</div>
+          <div class="reco-badge">Recomendado para vos</div>
+          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+        </div>
+      </div>
+      <p style="color:var(--dim);font-family:var(--font-mono);font-size:12.5px;margin-top:24px;">
+        DevFlow se auto-actualiza: una vez instalado, avisa cuando hay una versión nueva firmada y se actualiza solo.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot-inner">
+    <span>DevFlow · v0.1.0 · MIT</span>
+    <span>
+      <a href="https://github.com/pab-1984/devflow" target="_blank" rel="noopener">github.com/pab-1984/devflow</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  // --- Detección de SO -> resalta el instalador y ajusta el CTA del hero ---
+  (function () {
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+    p = p.toLowerCase();
+    var os = "linux", label = "Linux";
+    if (/mac|iphone|ipad|darwin/.test(p)) { os = "mac"; label = "macOS"; }
+    else if (/win/.test(p)) { os = "windows"; label = "Windows"; }
+
+    var card = document.querySelector('.dl[data-os="' + os + '"]');
+    if (card) card.classList.add("reco");
+
+    var heroOs = document.getElementById("heroOs");
+    if (heroOs) heroOs.textContent = "para " + label;
+
+    var hero = document.getElementById("heroDownload");
+    // El botón del hero lleva a la sección de descarga (anchor) para que el usuario vea las 3 opciones.
+    if (hero) hero.setAttribute("href", "#download");
+  })();
+
+  // --- Reveal al hacer scroll ---
+  (function () {
+    if (!("IntersectionObserver" in window)) {
+      document.querySelectorAll(".reveal").forEach(function (e) { e.classList.add("in"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add("in"); io.unobserve(en.target); } });
+    }, { threshold: 0.14 });
+    document.querySelectorAll(".reveal").forEach(function (e) { io.observe(e); });
+  })();
+
+  // --- Backdrop: grafo de nodos con pulso por las aristas (metáfora de orquestación) ---
+  (function () {
+    var canvas = document.getElementById("graph");
+    if (!canvas) return;
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var ctx = canvas.getContext("2d");
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W, H, nodes = [], edges = [], pulses = [];
+
+    function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+    var cTeal, cAzure, cLine;
+    function readColors() { cTeal = css("--teal") || "#2fd4b6"; cAzure = css("--azure") || "#4f9bff"; cLine = css("--border") || "#232e42"; }
+
+    function build() {
+      var rect = canvas.getBoundingClientRect();
+      W = rect.width; H = rect.height;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var count = Math.max(16, Math.min(34, Math.round(W / 46)));
+      nodes = [];
+      for (var i = 0; i < count; i++) {
+        nodes.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * 0.14, vy: (Math.random() - .5) * 0.14, r: 1.6 + Math.random() * 1.8 });
+      }
+      edges = [];
+      for (var a = 0; a < nodes.length; a++) for (var b = a + 1; b < nodes.length; b++) {
+        var dx = nodes[a].x - nodes[b].x, dy = nodes[a].y - nodes[b].y;
+        if (Math.hypot(dx, dy) < 150) edges.push([a, b]);
+      }
+      pulses = [];
+      for (var k = 0; k < Math.min(7, edges.length); k++) spawnPulse();
+    }
+    function spawnPulse() {
+      if (!edges.length) return;
+      pulses.push({ e: edges[(Math.random() * edges.length) | 0], t: Math.random(), sp: 0.0016 + Math.random() * 0.0024 });
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      if (!reduce) {
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i]; n.x += n.vx; n.y += n.vy;
+          if (n.x < 0 || n.x > W) n.vx *= -1;
+          if (n.y < 0 || n.y > H) n.vy *= -1;
+        }
+      }
+      // aristas
+      ctx.lineWidth = 1;
+      for (var j = 0; j < edges.length; j++) {
+        var A = nodes[edges[j][0]], B = nodes[edges[j][1]];
+        var d = Math.hypot(A.x - B.x, A.y - B.y);
+        var alpha = Math.max(0, 1 - d / 150) * 0.5;
+        ctx.strokeStyle = withAlpha(cLine, alpha + 0.08);
+        ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+      }
+      // pulsos
+      for (var p = pulses.length - 1; p >= 0; p--) {
+        var pu = pulses[p], A2 = nodes[pu.e[0]], B2 = nodes[pu.e[1]];
+        if (!reduce) pu.t += pu.sp;
+        if (pu.t > 1) { pulses.splice(p, 1); spawnPulse(); continue; }
+        var x = A2.x + (B2.x - A2.x) * pu.t, y = A2.y + (B2.y - A2.y) * pu.t;
+        var g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+        g.addColorStop(0, withAlpha(cTeal, 0.9)); g.addColorStop(1, withAlpha(cTeal, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.283); ctx.fill();
+      }
+      // nodos
+      for (var m = 0; m < nodes.length; m++) {
+        var nn = nodes[m];
+        ctx.fillStyle = withAlpha(m % 3 === 0 ? cAzure : cTeal, 0.85);
+        ctx.beginPath(); ctx.arc(nn.x, nn.y, nn.r, 0, 6.283); ctx.fill();
+      }
+      raf = requestAnimationFrame(frame);
+    }
+
+    function withAlpha(hex, a) {
+      hex = (hex || "#2fd4b6").replace("#", "");
+      if (hex.length === 3) hex = hex.split("").map(function (c) { return c + c; }).join("");
+      var r = parseInt(hex.substr(0, 2), 16), g = parseInt(hex.substr(2, 2), 16), b = parseInt(hex.substr(4, 2), 16);
+      return "rgba(" + r + "," + g + "," + b + "," + a + ")";
+    }
+
+    var raf;
+    function start() { cancelAnimationFrame(raf); readColors(); build(); if (reduce) { frame(); cancelAnimationFrame(raf); } else frame(); }
+    var rt;
+    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(start, 180); });
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+    start();
+  })();
+</script>
+</body>
+</html>
