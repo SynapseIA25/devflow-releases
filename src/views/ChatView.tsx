@@ -73,7 +73,7 @@ function PermissionPrompt({
   onResolve: (optionId: string) => void;
 }) {
   const tc = request.toolCall ?? {};
-  const title = (tc.title as string) ?? (tc.kind as string) ?? "Acción del agente";
+  const title = (tc.title as string) ?? (tc.kind as string) ?? "Agent action";
   const content = Array.isArray(tc.content) ? (tc.content as any[]) : [];
 
   return (
@@ -81,7 +81,7 @@ function PermissionPrompt({
       <div className="permission-card">
         <div className="permission-card-title">
           <ShieldAlert size={14} color="#fbbf24" />
-          <span>El agente pide permiso para continuar</span>
+          <span>The agent is asking for permission to continue</span>
         </div>
         <div className="permission-card-tool">{title}</div>
         {content.map((c, i) => (
@@ -142,7 +142,7 @@ function ExecToolBlock({ tool }: { tool: ToolBlockData }) {
       {tool.status !== "pending" && (
         <div className={`doc-out${tool.status === "failed" ? " doc-out--failed" : ""}`}>
           <pre>
-            {output?.text.trim() || (tool.status === "running" ? "..." : "(sin salida)")}
+            {output?.text.trim() || (tool.status === "running" ? "..." : "(no output)")}
             {hasExitCode && `\n[exit code ${tool.exitCode}]`}
           </pre>
         </div>
@@ -432,10 +432,10 @@ export function ChatView() {
   // a un provider sin `acp`. En vez de simular una respuesta falsa, avisamos claro qué hacer.
   const runNoAdapter = async (wsId: string) => {
     try {
-      const name = agentForWs(wsId)?.name ?? "Este agente";
+      const name = agentForWs(wsId)?.name ?? "This agent";
       addBlockToWs(wsId, {
         type: "ai", agentId: agentForWs(wsId)?.id,
-        content: `**${name}** no tiene un adaptador ACP configurado, así que no puede ejecutar el turno.\n\nElegí un agente conectado por ACP (ej. **MiMo Code** o **Claude Code**) en el selector de arriba.`,
+        content: `**${name}** has no ACP adapter configured, so it can't run the turn.\n\nPick an agent connected over ACP (e.g. **MiMo Code** or **Claude Code**) in the selector above.`,
       });
     } finally {
       finishTurn(wsId);
@@ -481,7 +481,7 @@ export function ChatView() {
     const editorPath = activeTab && !activeTab.loading && !activeTab.error && isInsideProject(activeTab.path) ? activeTab.path : null;
     if (activeTab && editorPath) {
       const key = `@editor:${editorPath}`;
-      const block = `Archivo abierto en el editor (el usuario lo está editando ahora): ${editorPath}\n\`\`\`\n${activeTab.content}\n\`\`\``;
+      const block = `Open file in the editor (the user is editing it right now): ${editorPath}\n\`\`\`\n${activeTab.content}\n\`\`\``;
       if (sent.get(key) !== block) {
         sent.set(key, block);
         parts.push(block);
@@ -495,7 +495,7 @@ export function ChatView() {
       try {
         content = await readTextFile(item.path, 1, 400);
       } catch (e) {
-        const errMsg = `Archivo adjunto: ${item.path}\n(no se pudo leer: ${e instanceof Error ? e.message : String(e)})`;
+        const errMsg = `Attached file: ${item.path}\n(could not read: ${e instanceof Error ? e.message : String(e)})`;
         if (sent.get(item.path) !== errMsg) {
           parts.push(errMsg);
           sent.set(item.path, errMsg);
@@ -504,7 +504,7 @@ export function ChatView() {
       }
       if (sent.get(item.path) === content) continue;
       sent.set(item.path, content);
-      parts.push(`Archivo adjunto: ${item.path}\n\`\`\`\n${content}\n\`\`\``);
+      parts.push(`Attached file: ${item.path}\n\`\`\`\n${content}\n\`\`\``);
     }
     if (parts.length === 0) return text;
     return `${parts.join("\n\n")}\n\n${text}`;
@@ -586,7 +586,7 @@ export function ChatView() {
     const query = arg.trim().toLowerCase();
     const w = query ? flows.find((f) => f.name.toLowerCase().includes(query)) : st.workflows[st.activeId];
     if (!w) {
-      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `No encontré un flujo para **${arg.trim()}**.\n\nFlujos disponibles: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
+      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `No flow found for **${arg.trim()}**.\n\nAvailable flows: ${flows.map((f) => `\`${f.name}\``).join(", ")}` });
       finishTurn(wsId);
       return;
     }
@@ -606,7 +606,7 @@ export function ChatView() {
     } catch (e) {
       lines.push(`✖ ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `### ▶ Flujo: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
+      addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: `### ▶ Flow: ${w.name}\n\n\`\`\`\n${lines.join("\n")}\n\`\`\`` });
       finishTurn(wsId);
     }
   };
@@ -650,7 +650,7 @@ export function ChatView() {
     }
     cancelledRef.current.set(wsId, true);
     updateWsSteps(wsId, (prev) => prev.map((s) => (s.status === "running" || s.status === "pending") ? { ...s, status: "failed" } : s));
-    addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: "_⏹ Turno detenido por el usuario._" });
+    addBlockToWs(wsId, { type: "ai", agentId: agentForWs(wsId)?.id, content: "_⏹ Turn stopped by the user._" });
   };
 
   const handleSend = () => {
@@ -677,12 +677,12 @@ export function ChatView() {
     }
     const SR = getSpeechRecognition();
     if (!SR) {
-      setVoiceError("Reconocimiento de voz no soportado en este entorno.");
+      setVoiceError("Speech recognition not supported in this environment.");
       return;
     }
     setVoiceError(null);
     const rec = new SR();
-    rec.lang = "es-AR";
+    rec.lang = "en-US";
     rec.continuous = true;
     rec.interimResults = false;
     rec.onresult = (e: any) => {
@@ -693,7 +693,7 @@ export function ChatView() {
       if (finalText.trim()) setInput((prev) => (prev ? `${prev} ${finalText.trim()}` : finalText.trim()));
     };
     rec.onerror = (e: any) => {
-      setVoiceError(e?.error === "not-allowed" ? "Permiso de micrófono denegado." : `Error de voz: ${e?.error ?? "desconocido"}`);
+      setVoiceError(e?.error === "not-allowed" ? "Microphone permission denied." : `Voice error: ${e?.error ?? "unknown"}`);
       setRecording(false);
     };
     rec.onend = () => setRecording(false);
@@ -711,7 +711,7 @@ export function ChatView() {
         {/* Workspace tabs — solo las del proyecto activo (scope por proyecto) */}
         <div className="ws-tabs">
           {projectWorkspaces.map((w) => (
-            <div key={w.id} className={`ws-tab${w.id === curWsId ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Ambiente aislado: ${w.envName}` : undefined}>
+            <div key={w.id} className={`ws-tab${w.id === curWsId ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Isolated environment: ${w.envName}` : undefined}>
               <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
               {w.envName && <GitBranch size={10} className="ws-tab-env" />}
               <span className="ws-tab-title">{w.title}</span>
@@ -727,7 +727,7 @@ export function ChatView() {
           {/* Agent selector — cambia el agente de la PESTAÑA activa (por-workspace) y el default global */}
           <div className="ws-agent-selector" onClick={() => setShowAgentMenu((v) => !v)}>
             <span className="ws-agent-dot" style={{ background: activeAgent?.color ?? "#a78bfa" }} />
-            <span className="ws-agent-name">{activeAgent?.name ?? "Agente"}</span>
+            <span className="ws-agent-name">{activeAgent?.name ?? "Agent"}</span>
             <ChevronDown size={11} />
             {showAgentMenu && (
               <div className="agent-dropdown ws-dropdown">
@@ -748,8 +748,8 @@ export function ChatView() {
           {/* Model selector — solo para agentes ACP con modelos descubiertos. Cambia el modelo del
               agente activo (persistido por provider), en vivo si ya hay sesión abierta. */}
           {activeAcp && availableModels.length > 0 && (
-            <div className="ws-model-selector" onClick={() => setShowModelMenu((v) => !v)} title="Modelo del agente">
-              <span className="ws-model-name">{availableModels.find((m) => m.value === currentModel)?.label ?? currentModel ?? "modelo"}</span>
+            <div className="ws-model-selector" onClick={() => setShowModelMenu((v) => !v)} title="Agent model">
+              <span className="ws-model-name">{availableModels.find((m) => m.value === currentModel)?.label ?? currentModel ?? "model"}</span>
               <ChevronDown size={10} />
               {showModelMenu && (
                 <div className="agent-dropdown ws-dropdown ws-model-dropdown">
@@ -807,7 +807,7 @@ export function ChatView() {
 
           {/* Status bar */}
           <div className="term-statusbar">
-            <span className="term-path">{ws?.cwd ?? projectPath}{ws?.envName ? ` · ambiente: ${ws.envName}` : ""}</span>
+            <span className="term-path">{ws?.cwd ?? projectPath}{ws?.envName ? ` · environment: ${ws.envName}` : ""}</span>
             <span className="term-model">{activeAgent?.name ?? "MiMo"} · devflow v0.1</span>
           </div>
         </div>
@@ -816,12 +816,12 @@ export function ChatView() {
         <div className="hterm-input-area">
           {(ws?.queue?.length ?? 0) > 0 && (
             <div className="queue-chip-row">
-              <span className="queue-chip-label">En cola:</span>
+              <span className="queue-chip-label">Queued:</span>
               {ws!.queue!.map((q, i) => (
                 <div key={i} className="queue-chip" title={q}>
                   <span className="queue-chip-idx">{i + 1}</span>
                   <span className="queue-chip-text">{q}</span>
-                  <button onClick={() => removeFromQueue(curWsId, i)} title="Quitar de la cola"><X size={9} /></button>
+                  <button onClick={() => removeFromQueue(curWsId, i)} title="Remove from queue"><X size={9} /></button>
                 </div>
               ))}
             </div>
@@ -829,16 +829,16 @@ export function ChatView() {
           {(editorActivePath || contextItems.length > 0) && (
             <div className="ctx-chip-row">
               {editorActivePath && (
-                <div className="ctx-chip ctx-chip--editor" title={`El agente ve este archivo del editor: ${editorActivePath}`}>
+                <div className="ctx-chip ctx-chip--editor" title={`The agent sees this editor file: ${editorActivePath}`}>
                   <FileCode size={10} />
-                  <span>editando: {editorActivePath.split(/[\\/]/).pop()}</span>
+                  <span>editing: {editorActivePath.split(/[\\/]/).pop()}</span>
                 </div>
               )}
               {contextItems.map((item) => (
                 <div key={item.path} className="ctx-chip" title={item.path}>
                   {item.isDir ? <Folder size={10} /> : <FileText size={10} />}
                   <span>{item.path.split(/[\\/]/).pop()}</span>
-                  <button onClick={() => removeContextItem(item.path)} title="Quitar del contexto"><X size={9} /></button>
+                  <button onClick={() => removeContextItem(item.path)} title="Remove from context"><X size={9} /></button>
                 </div>
               ))}
             </div>
@@ -852,21 +852,21 @@ export function ChatView() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
                 placeholder={ws?.running
-                  ? "Escribí para encolar el próximo mensaje… (Enter encola)"
-                  : "Pedile algo al agente… (o /run [flujo] para ejecutar un workflow)"}
+                  ? "Type to queue the next message… (Enter queues)"
+                  : "Ask the agent something… (or /run [flow] to run a workflow)"}
                 rows={2}
               />
               <button
                 className={`hterm-mic-btn${recording ? " recording" : ""}`}
                 onClick={toggleVoice}
-                title={recording ? "Detener dictado" : "Dictar por voz"}
+                title={recording ? "Stop dictation" : "Dictate by voice"}
               >
                 <Mic size={13} />
               </button>
               {/* Input nunca deshabilitado: durante un turno se puede seguir escribiendo (encola).
                   Stop aparece cuando hay un turno en curso; Send siempre (encola si corre). */}
               {ws?.running && (
-                <button className="hterm-stop-btn" onClick={stopTurn} title="Detener turno">
+                <button className="hterm-stop-btn" onClick={stopTurn} title="Stop turn">
                   <Square size={12} />
                 </button>
               )}
@@ -874,7 +874,7 @@ export function ChatView() {
                 className="hterm-send-btn"
                 onClick={handleSend}
                 disabled={!input.trim()}
-                title={ws?.running ? "Encolar mensaje" : "Enviar"}
+                title={ws?.running ? "Queue message" : "Send"}
               >
                 <Send size={13} />
               </button>
@@ -883,8 +883,8 @@ export function ChatView() {
               {voiceError
                 ? <span className="hterm-voice-error">{voiceError}</span>
                 : ws?.running
-                  ? <>Generando… · ⏹ para detener · Enter encola{(ws?.queue?.length ?? 0) > 0 ? ` · ${ws!.queue!.length} en cola` : ""}</>
-                  : <>IA · Enter envía{recording ? " · escuchando..." : ""}</>}
+                  ? <>Generating… · ⏹ to stop · Enter queues{(ws?.queue?.length ?? 0) > 0 ? ` · ${ws!.queue!.length} queued` : ""}</>
+                  : <>AI · Enter sends{recording ? " · listening..." : ""}</>}
             </div>
           </div>
         </div>
