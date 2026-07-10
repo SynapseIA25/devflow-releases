@@ -24,13 +24,13 @@ import { pickFolder, runShellCommand, createDir, writeTextFile, readDir, readTex
 
 const TABS = [
   { id: "overview",   label: "Overview" },
-  { id: "estructura", label: "Estructura" },
-  { id: "docs",       label: "Documentación" },
-  { id: "contexto",   label: "Contexto" },
-  { id: "agentes",    label: "Agentes" },
-  { id: "flujos",     label: "Flujos" },
-  { id: "servicios",  label: "Servicios" },
-  { id: "ajustes",    label: "Ajustes" },
+  { id: "estructura", label: "Structure" },
+  { id: "docs",       label: "Documentation" },
+  { id: "contexto",   label: "Context" },
+  { id: "agentes",    label: "Agents" },
+  { id: "flujos",     label: "Flows" },
+  { id: "servicios",  label: "Services" },
+  { id: "ajustes",    label: "Settings" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -71,7 +71,7 @@ export function ProjectsView() {
     <div className="proj-view">
       <div className="proj-sidebar">
         <div className="proj-side-header">
-          <span className="proj-side-title"><FolderKanban size={14} /> Proyectos</span>
+          <span className="proj-side-title"><FolderKanban size={14} /> Projects</span>
           <CreateProjectMenu onCreated={(path, name) => { createProject(path, name); setTab("overview"); }} />
         </div>
         <div className="proj-list">
@@ -107,14 +107,14 @@ export function ProjectsView() {
                   )}
                 </div>
                 <div className="proj-row-actions">
-                  <button className="proj-icon" title="Renombrar" onClick={(e) => { e.stopPropagation(); startRename(id, p.name); }}>
+                  <button className="proj-icon" title="Rename" onClick={(e) => { e.stopPropagation(); startRename(id, p.name); }}>
                     <Pencil size={12} />
                   </button>
                   <button
                     className="proj-icon proj-icon--del"
-                    title={order.length <= 1 ? "No se puede borrar el único proyecto" : "Borrar proyecto"}
+                    title={order.length <= 1 ? "Can't delete the only project" : "Delete project"}
                     disabled={order.length <= 1}
-                    onClick={(e) => { e.stopPropagation(); if (confirm(`¿Borrar el proyecto "${p.name}"? (no borra la carpeta del disco)`)) deleteProject(id); }}
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete project "${p.name}"? (doesn't delete the folder on disk)`)) deleteProject(id); }}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -127,7 +127,7 @@ export function ProjectsView() {
 
       <div className="proj-main">
         {!active ? (
-          <div className="proj-empty">Seleccioná o creá un proyecto.</div>
+          <div className="proj-empty">Select or create a project.</div>
         ) : (
           <>
             <div className="proj-tabbar">
@@ -159,14 +159,14 @@ function CreateProjectMenu({ onCreated }: { onCreated: (path: string, name?: str
 
   return (
     <div className="proj-create-wrap">
-      <button className="proj-add-btn" onClick={() => setOpen((v) => !v)} title="Crear proyecto">
+      <button className="proj-add-btn" onClick={() => setOpen((v) => !v)} title="Create project">
         <FolderPlus size={15} /><ChevronDown size={11} />
       </button>
       {open && (
         <div className="proj-create-menu" onMouseLeave={() => setOpen(false)}>
-          <button onClick={pickExisting}><FolderInput size={13} /> Carpeta existente…</button>
-          <button onClick={() => { setOpen(false); setModal("scaffold"); }}><FilePlus2 size={13} /> Proyecto nuevo…</button>
-          <button onClick={() => { setOpen(false); setModal("clone"); }}><GitFork size={13} /> Clonar de git…</button>
+          <button onClick={pickExisting}><FolderInput size={13} /> Existing folder…</button>
+          <button onClick={() => { setOpen(false); setModal("scaffold"); }}><FilePlus2 size={13} /> New project…</button>
+          <button onClick={() => { setOpen(false); setModal("clone"); }}><GitFork size={13} /> Clone from git…</button>
         </div>
       )}
       {modal === "scaffold" && <ScaffoldModal onClose={() => setModal(null)} onCreated={(p, n) => { setModal(null); onCreated(p, n); }} />}
@@ -188,7 +188,7 @@ function ScaffoldModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 
   const create = async () => {
     const nm = name.trim();
-    if (!parent || !nm) { setError("Elegí carpeta padre y nombre."); return; }
+    if (!parent || !nm) { setError("Choose a parent folder and name."); return; }
     setBusy(true); setError("");
     try {
       const path = joinPath(parent, nm);
@@ -205,15 +205,15 @@ function ScaffoldModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   };
 
   return (
-    <ModalShell title="Proyecto nuevo" onClose={onClose}>
-      <label className="proj-modal-label">Carpeta padre</label>
+    <ModalShell title="New project" onClose={onClose}>
+      <label className="proj-modal-label">Parent folder</label>
       <div className="proj-modal-pick">
-        <input className="proj-modal-input" placeholder="Elegí dónde crear la carpeta…" value={parent} readOnly />
-        <button className="proj-btn" onClick={pickParent}>Elegir…</button>
+        <input className="proj-modal-input" placeholder="Choose where to create the folder…" value={parent} readOnly />
+        <button className="proj-btn" onClick={pickParent}>Choose…</button>
       </div>
-      <label className="proj-modal-label">Nombre del proyecto</label>
-      <input className="proj-modal-input" placeholder="mi-proyecto" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      {parent && name.trim() && <div className="proj-modal-hint">Se creará: <code>{joinPath(parent, name.trim())}</code></div>}
+      <label className="proj-modal-label">Project name</label>
+      <input className="proj-modal-input" placeholder="my-project" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      {parent && name.trim() && <div className="proj-modal-hint">Will create: <code>{joinPath(parent, name.trim())}</code></div>}
       <div className="proj-modal-checks">
         <label><input type="checkbox" checked={gitInit} onChange={(e) => setGitInit(e.target.checked)} /> git init</label>
         <label><input type="checkbox" checked={readme} onChange={(e) => setReadme(e.target.checked)} /> README.md</label>
@@ -222,9 +222,9 @@ function ScaffoldModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       {error && <div className="proj-modal-error">{error}</div>}
       <div className="proj-modal-actions">
         <button className="proj-btn proj-btn--primary" onClick={create} disabled={busy || !parent || !name.trim()}>
-          {busy ? <Loader size={13} className="spin" /> : null} Crear
+          {busy ? <Loader size={13} className="spin" /> : null} Create
         </button>
-        <button className="proj-btn" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="proj-btn" onClick={onClose} disabled={busy}>Cancel</button>
       </div>
     </ModalShell>
   );
@@ -240,11 +240,11 @@ function CloneModal({ onClose, onCreated }: { onClose: () => void; onCreated: (p
   const name = url ? repoNameFromUrl(url) : "";
 
   const clone = async () => {
-    if (!url.trim() || !parent) { setError("Poné la URL del repo y elegí carpeta destino."); return; }
+    if (!url.trim() || !parent) { setError("Enter the repo URL and choose a destination folder."); return; }
     setBusy(true); setError("");
     try {
       const res = await runShellCommand(`git clone ${url.trim()}`, parent);
-      if (res.exitCode !== 0) { setError(`git clone falló (exit ${res.exitCode}):\n${res.output.slice(-400)}`); setBusy(false); return; }
+      if (res.exitCode !== 0) { setError(`git clone failed (exit ${res.exitCode}):\n${res.output.slice(-400)}`); setBusy(false); return; }
       onCreated(joinPath(parent, name), name);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -254,22 +254,22 @@ function CloneModal({ onClose, onCreated }: { onClose: () => void; onCreated: (p
   };
 
   return (
-    <ModalShell title="Clonar de git" onClose={onClose}>
-      <label className="proj-modal-label">URL del repositorio</label>
+    <ModalShell title="Clone from git" onClose={onClose}>
+      <label className="proj-modal-label">Repository URL</label>
       <input className="proj-modal-input" placeholder="https://github.com/owner/repo.git" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
-      <label className="proj-modal-label">Carpeta destino (padre)</label>
+      <label className="proj-modal-label">Destination folder (parent)</label>
       <div className="proj-modal-pick">
-        <input className="proj-modal-input" placeholder="Dónde clonar…" value={parent} readOnly />
-        <button className="proj-btn" onClick={pickParent}>Elegir…</button>
+        <input className="proj-modal-input" placeholder="Where to clone…" value={parent} readOnly />
+        <button className="proj-btn" onClick={pickParent}>Choose…</button>
       </div>
-      {parent && name && <div className="proj-modal-hint">Se clonará en: <code>{joinPath(parent, name)}</code></div>}
-      {busy && <div className="proj-modal-hint">Clonando… (puede tardar según el tamaño del repo)</div>}
+      {parent && name && <div className="proj-modal-hint">Will clone into: <code>{joinPath(parent, name)}</code></div>}
+      {busy && <div className="proj-modal-hint">Cloning… (may take a while depending on repo size)</div>}
       {error && <div className="proj-modal-error">{error}</div>}
       <div className="proj-modal-actions">
         <button className="proj-btn proj-btn--primary" onClick={clone} disabled={busy || !url.trim() || !parent}>
-          {busy ? <Loader size={13} className="spin" /> : null} Clonar
+          {busy ? <Loader size={13} className="spin" /> : null} Clone
         </button>
-        <button className="proj-btn" onClick={onClose} disabled={busy}>Cancelar</button>
+        <button className="proj-btn" onClick={onClose} disabled={busy}>Cancel</button>
       </div>
     </ModalShell>
   );
@@ -422,20 +422,20 @@ function DocsTab({ projectId }: { projectId: string }) {
   const dirty = content !== saved;
 
   if (!isTauri()) {
-    return <div className="proj-placeholder"><span className="proj-placeholder-icon">🖥️</span><div>La documentación requiere la app desktop.</div></div>;
+    return <div className="proj-placeholder"><span className="proj-placeholder-icon">🖥️</span><div>Documentation requires the desktop app.</div></div>;
   }
 
   return (
     <div className="proj-docs">
       <div className="proj-docs-list">
         <div className="proj-docs-list-head">
-          <span>{scanning ? "escaneando…" : `${files.length} doc(s)`}</span>
-          <button className="proj-icon" onClick={() => void scan()} disabled={scanning} title="Reescanear">
+          <span>{scanning ? "scanning…" : `${files.length} doc(s)`}</span>
+          <button className="proj-icon" onClick={() => void scan()} disabled={scanning} title="Rescan">
             <RefreshCw size={12} className={scanning ? "spin" : ""} />
           </button>
         </div>
         {scanError && <div className="proj-modal-error">{scanError}</div>}
-        {!scanning && files.length === 0 && <div className="proj-hint proj-docs-none">No hay archivos .md en el proyecto.</div>}
+        {!scanning && files.length === 0 && <div className="proj-hint proj-docs-none">No .md files in the project.</div>}
         {files.map((f) => (
           <button key={f} className={`proj-docs-item${selected === f ? " active" : ""}`} onClick={() => void open(f)} title={f}>
             <FileText size={12} /><span className="proj-docs-item-name">{rel(f)}</span>
@@ -445,20 +445,20 @@ function DocsTab({ projectId }: { projectId: string }) {
 
       <div className="proj-docs-main">
         {!selected ? (
-          <div className="proj-docs-empty">Elegí un documento de la izquierda para ver o editar.</div>
+          <div className="proj-docs-empty">Pick a document on the left to view or edit.</div>
         ) : (
           <>
             <div className="proj-docs-toolbar">
               <span className="proj-docs-name">{rel(selected)}{dirty ? " ●" : ""}</span>
               <div className="proj-docs-actions">
-                <button className={`proj-btn${mode === "view" ? " proj-btn--primary" : ""}`} onClick={() => setMode("view")}><Eye size={13} /> Ver</button>
-                <button className={`proj-btn${mode === "edit" ? " proj-btn--primary" : ""}`} onClick={() => setMode("edit")}><Pencil size={13} /> Editar</button>
+                <button className={`proj-btn${mode === "view" ? " proj-btn--primary" : ""}`} onClick={() => setMode("view")}><Eye size={13} /> View</button>
+                <button className={`proj-btn${mode === "edit" ? " proj-btn--primary" : ""}`} onClick={() => setMode("edit")}><Pencil size={13} /> Edit</button>
                 {mode === "edit" && (
                   <>
                     <button className="proj-btn proj-btn--primary" onClick={() => void save()} disabled={!dirty || saving}>
-                      {saving ? <Loader size={13} className="spin" /> : <Save size={13} />} Guardar
+                      {saving ? <Loader size={13} className="spin" /> : <Save size={13} />} Save
                     </button>
-                    <button className="proj-btn" onClick={() => setContent(saved)} disabled={!dirty}>Descartar</button>
+                    <button className="proj-btn" onClick={() => setContent(saved)} disabled={!dirty}>Discard</button>
                   </>
                 )}
               </div>
@@ -466,11 +466,11 @@ function DocsTab({ projectId }: { projectId: string }) {
             {fileError && <div className="proj-modal-error">{fileError}</div>}
             <div className="proj-docs-body">
               {loading ? (
-                <span className="proj-hint"><Loader size={12} className="spin" /> Cargando…</span>
+                <span className="proj-hint"><Loader size={12} className="spin" /> Loading…</span>
               ) : mode === "view" ? (
                 <div className="proj-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown></div>
               ) : (
-                <textarea className="proj-docs-editor" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="Documento vacío…" />
+                <textarea className="proj-docs-editor" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="Empty document…" />
               )}
             </div>
           </>
@@ -539,23 +539,23 @@ function OverviewTab({ projectId }: { projectId: string }) {
       </div>
 
       <section className="proj-section">
-        <div className="proj-section-title">🧱 Stack detectado</div>
+        <div className="proj-section-title">🧱 Detected stack</div>
         <div className="proj-section-body">
           {detecting ? (
-            <span className="proj-hint"><Loader size={12} className="spin" /> Detectando…</span>
+            <span className="proj-hint"><Loader size={12} className="spin" /> Detecting…</span>
           ) : stack.length > 0 ? (
             <div className="proj-stack">{stack.map((s) => <span key={s} className="proj-stack-tag">{s}</span>)}</div>
           ) : (
-            <span className="proj-hint">{isTauri() ? "No se detectó un stack conocido en la raíz." : "Requiere la app desktop."}</span>
+            <span className="proj-hint">{isTauri() ? "No known stack detected at the root." : "Requires the desktop app."}</span>
           )}
         </div>
       </section>
 
       <div className="proj-counters">
-        <Counter icon={<Server size={16} />} label="Servicios" value={project.services.length} />
-        <Counter icon={<Bot size={16} />} label="Agentes" value={project.agentIds.length} />
-        <Counter icon={<WorkflowIcon size={16} />} label="Flujos" value={project.workflowIds.length} />
-        <Counter icon={<AlertTriangle size={16} />} label="Deuda abierta" value={project.debt.filter((d) => d.status === "open").length} />
+        <Counter icon={<Server size={16} />} label="Services" value={project.services.length} />
+        <Counter icon={<Bot size={16} />} label="Agents" value={project.agentIds.length} />
+        <Counter icon={<WorkflowIcon size={16} />} label="Flows" value={project.workflowIds.length} />
+        <Counter icon={<AlertTriangle size={16} />} label="Open debt" value={project.debt.filter((d) => d.status === "open").length} />
         <Counter icon={<FilePlus2 size={16} />} label="Docs (.md)" value={docsCount ?? "—"} />
       </div>
 
@@ -568,9 +568,9 @@ function OverviewTab({ projectId }: { projectId: string }) {
 // Registro por proyecto: alta manual (título + severidad) o en lote pegando hallazgos de un /code-review
 // (uno por línea). Cada item se resuelve (toggle), se asigna a un agente experto, o se borra.
 const SEV_META: Record<DebtSeverity, { label: string; color: string }> = {
-  high: { label: "Alta", color: "#f85149" },
-  medium: { label: "Media", color: "#d29922" },
-  low: { label: "Baja", color: "#3fb950" },
+  high: { label: "High", color: "#f85149" },
+  medium: { label: "Medium", color: "#d29922" },
+  low: { label: "Low", color: "#3fb950" },
 };
 
 function DebtSection({ projectId }: { projectId: string }) {
@@ -607,49 +607,49 @@ function DebtSection({ projectId }: { projectId: string }) {
   return (
     <section className="proj-section">
       <div className="proj-section-title">
-        <AlertTriangle size={14} /> Deuda técnica ({open.length} abierta{open.length === 1 ? "" : "s"})
+        <AlertTriangle size={14} /> Tech debt ({open.length} open)
       </div>
       <div className="proj-section-body">
         <p className="proj-hint">
-          Registro de deuda del proyecto. Cargá items a mano o pegá los hallazgos de un <code>/code-review</code>
-          (uno por línea) con “Importar”. Asignalos a un agente experto para resolverlos.
+          Project debt log. Add items by hand or paste the findings from a <code>/code-review</code>
+          (one per line) with “Import”. Assign them to an expert agent to resolve them.
         </p>
 
         <div className="proj-debt-add">
           <input
             className="proj-debt-input"
-            placeholder="Nueva deuda (ej. Falta test de auth)…"
+            placeholder="New debt (e.g. Missing auth test)…"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") add(); }}
           />
           <select className="proj-select" value={sev} onChange={(e) => setSev(e.target.value as DebtSeverity)}>
-            <option value="high">Alta</option>
-            <option value="medium">Media</option>
-            <option value="low">Baja</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </select>
-          <button className="proj-icon proj-icon--add" title="Agregar" onClick={add} disabled={!title.trim()}><Plus size={13} /></button>
-          <button className="proj-btn" onClick={() => setBulkOpen((v) => !v)}>Importar…</button>
+          <button className="proj-icon proj-icon--add" title="Add" onClick={add} disabled={!title.trim()}><Plus size={13} /></button>
+          <button className="proj-btn" onClick={() => setBulkOpen((v) => !v)}>Import…</button>
         </div>
 
         {bulkOpen && (
           <div className="proj-debt-bulk">
             <textarea
               className="proj-debt-bulk-input"
-              placeholder={"Pegá hallazgos de /code-review, uno por línea…"}
+              placeholder={"Paste /code-review findings, one per line…"}
               value={bulkText}
               onChange={(e) => setBulkText(e.target.value)}
               rows={5}
             />
             <div className="proj-debt-bulk-actions">
-              <button className="proj-btn proj-btn--primary" onClick={importBulk} disabled={!bulkText.trim()}>Importar como “{SEV_META[sev].label}”</button>
-              <button className="proj-btn" onClick={() => { setBulkOpen(false); setBulkText(""); }}>Cancelar</button>
+              <button className="proj-btn proj-btn--primary" onClick={importBulk} disabled={!bulkText.trim()}>Import as “{SEV_META[sev].label}”</button>
+              <button className="proj-btn" onClick={() => { setBulkOpen(false); setBulkText(""); }}>Cancel</button>
             </div>
           </div>
         )}
 
         {debt.length === 0 ? (
-          <div className="proj-env-empty">Sin deuda registrada. 🎉</div>
+          <div className="proj-env-empty">No debt recorded. 🎉</div>
         ) : (
           <>
             <div className="proj-debt-list">
@@ -659,7 +659,7 @@ function DebtSection({ projectId }: { projectId: string }) {
             </div>
             {resolved.length > 0 && (
               <button className="proj-debt-toggle" onClick={() => setShowResolved((v) => !v)}>
-                {showResolved ? "Ocultar resueltas" : `Ver ${resolved.length} resuelta(s)`}
+                {showResolved ? "Hide resolved" : `Show ${resolved.length} resolved`}
               </button>
             )}
           </>
@@ -681,7 +681,7 @@ function DebtRow({ item, agents, updateDebt, removeDebt }: {
     <div className={`proj-debt-item${resolved ? " resolved" : ""}`}>
       <button
         className="proj-debt-check"
-        title={resolved ? "Reabrir" : "Marcar resuelta"}
+        title={resolved ? "Reopen" : "Mark resolved"}
         onClick={() => updateDebt(item.id, { status: resolved ? "open" : "resolved" })}
       >
         {resolved ? <Check size={13} color="#3fb950" /> : <Circle size={13} />}
@@ -691,13 +691,13 @@ function DebtRow({ item, agents, updateDebt, removeDebt }: {
       <select
         className="proj-debt-assign"
         value={item.agentId ?? ""}
-        title="Asignar a un agente experto"
+        title="Assign to an expert agent"
         onChange={(e) => updateDebt(item.id, { agentId: e.target.value || undefined })}
       >
-        <option value="">Sin asignar</option>
+        <option value="">Unassigned</option>
         {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
-      <button className="proj-icon proj-icon--del" title="Quitar" onClick={() => removeDebt(item.id)}><X size={12} /></button>
+      <button className="proj-icon proj-icon--del" title="Remove" onClick={() => removeDebt(item.id)}><X size={12} /></button>
     </div>
   );
 }
@@ -726,15 +726,15 @@ function ContextoTab({ projectId }: { projectId: string }) {
   return (
     <div className="proj-config">
       <section className="proj-section">
-        <div className="proj-section-title"><Paperclip size={14} /> Archivos en contexto ({items.length})</div>
+        <div className="proj-section-title"><Paperclip size={14} /> Files in context ({items.length})</div>
         <div className="proj-section-body">
           <p className="proj-hint">
-            Archivos y carpetas que el agente recibe con cada mensaje en este proyecto. Agregalos desde la
-            tab <strong>Estructura</strong> (o el explorador del chat) con el botón de marcador. El contexto es
-            por proyecto: al cambiar de proyecto el chat ve solo el suyo.
+            Files and folders the agent receives with every message in this project. Add them from the
+            <strong> Structure</strong> tab (or the chat explorer) with the bookmark button. Context is
+            per project: switching projects, the chat only sees its own.
           </p>
           {items.length === 0 ? (
-            <div className="proj-env-empty">Sin archivos en contexto.</div>
+            <div className="proj-env-empty">No files in context.</div>
           ) : (
             <div className="proj-ctx-list">
               {items.map((item) => (
@@ -742,7 +742,7 @@ function ContextoTab({ projectId }: { projectId: string }) {
                   {item.isDir ? <Folder size={13} color="#fbbf24" /> : <FileText size={13} color="#8b949e" />}
                   <span className="proj-ctx-name">{baseNameOf(item.path)}</span>
                   <span className="proj-ctx-path" title={item.path}>{item.path}</span>
-                  <button className="proj-icon proj-icon--del" title="Quitar del contexto" onClick={() => removeContextItem(item.path)}>
+                  <button className="proj-icon proj-icon--del" title="Remove from context" onClick={() => removeContextItem(item.path)}>
                     <X size={12} />
                   </button>
                 </div>
@@ -750,7 +750,7 @@ function ContextoTab({ projectId }: { projectId: string }) {
             </div>
           )}
           {items.length > 0 && (
-            <button className="proj-btn" onClick={clearContext}><Trash2 size={13} /> Vaciar contexto</button>
+            <button className="proj-btn" onClick={clearContext}><Trash2 size={13} /> Clear context</button>
           )}
         </div>
       </section>
@@ -777,8 +777,8 @@ function AgentesTab({ projectId }: { projectId: string }) {
     <div className="proj-agents">
       <div className="proj-agents-list">
         <div className="proj-agents-list-head">
-          <span>Agentes ({agents.length})</span>
-          <button className="proj-icon" title="Nuevo agente custom" onClick={() => setCreating(true)}><Plus size={13} /></button>
+          <span>Agents ({agents.length})</span>
+          <button className="proj-icon" title="New custom agent" onClick={() => setCreating(true)}><Plus size={13} /></button>
         </div>
         {agents.map((a) => {
           const isGlobal = isDefaultAgent(a.id);
@@ -795,7 +795,7 @@ function AgentesTab({ projectId }: { projectId: string }) {
                 type="checkbox"
                 checked={checked}
                 disabled={isGlobal}
-                title={isGlobal ? "Agente global (siempre disponible en el chat)" : "Asociar al proyecto"}
+                title={isGlobal ? "Global agent (always available in the chat)" : "Associate with the project"}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => toggleAssoc(a.id, e.target.checked)}
               />
@@ -835,7 +835,7 @@ function FlujosTab({ projectId }: { projectId: string }) {
 
   const editFlow = (id: string) => { setActiveWorkflow(id); setView("workflow"); };
   const newFlow = () => {
-    const id = createWorkflow(`Flujo de ${project.name}`);
+    const id = createWorkflow(`${project.name} flow`);
     updateProject(projectId, { workflowIds: [...project.workflowIds, id] });
     setView("workflow"); // createWorkflow ya lo deja activo
   };
@@ -846,8 +846,8 @@ function FlujosTab({ projectId }: { projectId: string }) {
         <div className="proj-section-title"><WorkflowIcon size={14} /> Workflows</div>
         <div className="proj-section-body">
           <p className="proj-hint">
-            Flujos asociados a este proyecto (checkbox). Editalos en el canvas con ✎ o creá uno nuevo ya
-            asociado. Los flujos se ejecutan desde la vista Workflows o con <code>/run</code> en el chat.
+            Flows associated with this project (checkbox). Edit them on the canvas with ✎ or create a new
+            one already associated. Flows run from the Workflows view or with <code>/run</code> in the chat.
           </p>
           {workflowOrder.map((id) => {
             const w = workflows[id];
@@ -865,13 +865,13 @@ function FlujosTab({ projectId }: { projectId: string }) {
                     }}
                   />
                   <span className="proj-check-name">{w.name}</span>
-                  <span className="proj-flow-count">{w.nodes.length} nodo(s)</span>
+                  <span className="proj-flow-count">{w.nodes.length} node(s)</span>
                 </label>
-                <button className="proj-icon" title="Editar en el canvas" onClick={() => editFlow(id)}><Pencil size={12} /></button>
+                <button className="proj-icon" title="Edit on the canvas" onClick={() => editFlow(id)}><Pencil size={12} /></button>
               </div>
             );
           })}
-          <button className="proj-btn" onClick={newFlow}><Plus size={13} /> Nuevo flujo</button>
+          <button className="proj-btn" onClick={newFlow}><Plus size={13} /> New flow</button>
         </div>
       </section>
     </div>
@@ -895,23 +895,23 @@ function EnvSection({ env, setEnvVar, removeEnvVar }: { env: Record<string, stri
 
   return (
     <section className="proj-section">
-      <div className="proj-section-title">⚙ Ambiente (env vars)</div>
+      <div className="proj-section-title">⚙ Environment (env vars)</div>
       <div className="proj-section-body">
-        <p className="proj-hint">Se inyectan a los servicios y a las terminales del proyecto.</p>
-        {entries.length === 0 && <div className="proj-env-empty">Sin variables de ambiente.</div>}
+        <p className="proj-hint">Injected into the project's services and terminals.</p>
+        {entries.length === 0 && <div className="proj-env-empty">No environment variables.</div>}
         {entries.map(([k, v]) => (
           <div key={k} className="proj-env-row">
             <input className="proj-env-key" value={k} readOnly />
             <span className="proj-env-eq">=</span>
             <input className="proj-env-val" value={v} onChange={(e) => setEnvVar(k, e.target.value)} />
-            <button className="proj-icon proj-icon--del" title="Quitar" onClick={() => removeEnvVar(k)}><Trash2 size={12} /></button>
+            <button className="proj-icon proj-icon--del" title="Remove" onClick={() => removeEnvVar(k)}><Trash2 size={12} /></button>
           </div>
         ))}
         <div className="proj-env-row proj-env-new">
-          <input className="proj-env-key" placeholder="CLAVE" value={newKey} onChange={(e) => setNewKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+          <input className="proj-env-key" placeholder="KEY" value={newKey} onChange={(e) => setNewKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
           <span className="proj-env-eq">=</span>
-          <input className="proj-env-val" placeholder="valor" value={newVal} onChange={(e) => setNewVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-          <button className="proj-icon proj-icon--add" title="Agregar" onClick={add} disabled={!newKey.trim()}><Plus size={12} /></button>
+          <input className="proj-env-val" placeholder="value" value={newVal} onChange={(e) => setNewVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+          <button className="proj-icon proj-icon--add" title="Add" onClick={add} disabled={!newKey.trim()}><Plus size={12} /></button>
         </div>
       </div>
     </section>
@@ -924,13 +924,13 @@ function GitSection({ projectId, path, enabled, updateProject }: { projectId: st
   const reqRef = useRef(0);
 
   const refresh = useMemo(() => async () => {
-    if (!isTauri()) { setStatus("(requiere la app desktop)"); return; }
+    if (!isTauri()) { setStatus("(requires the desktop app)"); return; }
     const req = ++reqRef.current;
     setLoading(true);
     try {
       const res = await runShellCommand("git rev-parse --abbrev-ref HEAD && echo '===GITSPLIT===' && git status --short", path);
       if (req !== reqRef.current) return;
-      setStatus(res.exitCode === 0 ? res.output.trim() : "No es un repositorio git.");
+      setStatus(res.exitCode === 0 ? res.output.trim() : "Not a git repository.");
     } catch (e) {
       if (req === reqRef.current) setStatus(e instanceof Error ? e.message : String(e));
     } finally {
@@ -950,17 +950,17 @@ function GitSection({ projectId, path, enabled, updateProject }: { projectId: st
       <div className="proj-section-body">
         <label className="proj-check-row">
           <input type="checkbox" checked={enabled} onChange={(e) => updateProject(projectId, { git: { enabled: e.target.checked } })} />
-          <span className="proj-check-name">Integración git habilitada</span>
+          <span className="proj-check-name">Git integration enabled</span>
         </label>
         {enabled && (
           <>
             <div className="proj-git-bar">
-              <span className="proj-git-branch">{branch || (loading ? "cargando…" : "—")}</span>
-              <button className="proj-icon" title="Refrescar" onClick={() => void refresh()} disabled={loading}>
+              <span className="proj-git-branch">{branch || (loading ? "loading…" : "—")}</span>
+              <button className="proj-icon" title="Refresh" onClick={() => void refresh()} disabled={loading}>
                 <RefreshCw size={12} className={loading ? "spin" : ""} />
               </button>
             </div>
-            <pre className="proj-git-status">{changes || (branch ? "Working tree limpio." : "")}</pre>
+            <pre className="proj-git-status">{changes || (branch ? "Working tree clean." : "")}</pre>
           </>
         )}
       </div>
@@ -973,20 +973,20 @@ function TrackingSection({ projectId, tracking, updateProject }: { projectId: st
   const url = tracking?.url ?? "";
   return (
     <section className="proj-section">
-      <div className="proj-section-title"><Check size={14} /> Tracking de issues</div>
+      <div className="proj-section-title"><Check size={14} /> Issue tracking</div>
       <div className="proj-section-body">
         <div className="proj-track-row">
           <select className="proj-select" value={type} onChange={(e) => updateProject(projectId, { tracking: { type: e.target.value as "github" | "url" | "none", url } })}>
-            <option value="none">Ninguno</option>
+            <option value="none">None</option>
             <option value="github">GitHub</option>
             <option value="url">URL</option>
           </select>
           {type !== "none" && (
-            <input className="proj-track-url" placeholder={type === "github" ? "owner/repo o URL del repo" : "https://…"} value={url} onChange={(e) => updateProject(projectId, { tracking: { type, url: e.target.value } })} />
+            <input className="proj-track-url" placeholder={type === "github" ? "owner/repo or repo URL" : "https://…"} value={url} onChange={(e) => updateProject(projectId, { tracking: { type, url: e.target.value } })} />
           )}
         </div>
         {type !== "none" && url && (
-          <a className="proj-track-link" href={type === "github" && !url.startsWith("http") ? `https://github.com/${url}` : url} target="_blank" rel="noreferrer">Abrir ↗</a>
+          <a className="proj-track-link" href={type === "github" && !url.startsWith("http") ? `https://github.com/${url}` : url} target="_blank" rel="noreferrer">Open ↗</a>
         )}
       </div>
     </section>
@@ -998,19 +998,19 @@ function DangerZone({ projectId, name, canDelete, renameProject, deleteProject }
   useEffect(() => { setNm(name); }, [name]);
   return (
     <section className="proj-section">
-      <div className="proj-section-title">🧩 Proyecto</div>
+      <div className="proj-section-title">🧩 Project</div>
       <div className="proj-section-body">
-        <label className="proj-modal-label">Nombre</label>
+        <label className="proj-modal-label">Name</label>
         <div className="proj-track-row">
           <input className="proj-track-url" value={nm} onChange={(e) => setNm(e.target.value)} onBlur={() => nm.trim() && renameProject(projectId, nm.trim())} />
         </div>
         <button
           className="proj-btn proj-btn--danger"
           disabled={!canDelete}
-          title={canDelete ? "Borrar del registro (no borra la carpeta del disco)" : "No se puede borrar el único proyecto"}
-          onClick={() => { if (confirm(`¿Borrar el proyecto "${name}"? (no borra la carpeta del disco)`)) deleteProject(projectId); }}
+          title={canDelete ? "Remove from the registry (doesn't delete the folder on disk)" : "Can't delete the only project"}
+          onClick={() => { if (confirm(`Delete project "${name}"? (doesn't delete the folder on disk)`)) deleteProject(projectId); }}
         >
-          <Trash2 size={13} /> Borrar proyecto
+          <Trash2 size={13} /> Delete project
         </button>
       </div>
     </section>
