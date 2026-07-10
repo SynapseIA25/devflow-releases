@@ -168,6 +168,8 @@
   .dl .reco-badge { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--teal); margin: 14px 0 0; opacity: 0; }
   .dl.reco .reco-badge { opacity: 1; }
   .dl a.get { margin-top: 18px; width: 100%; justify-content: center; }
+  .dl .mac-intel { margin-top: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  .dl .mac-intel:hover { color: var(--text); }
 
   /* ---- Footer ---- */
   footer { padding: 46px 0 70px; }
@@ -306,23 +308,24 @@
         <div class="dl" data-os="windows">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.3v7.2H3zM11 12.5v7.2L3 18.5v-6zM12 4.1 21 3v8.5h-9zM21 12.5V21l-9-1.3v-7.2z"/></svg>
           <h3>Windows</h3>
-          <div class="fmt">.msi · .exe · x64</div>
+          <div class="fmt">.exe · x64</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="btn btn-primary get" id="dl-windows" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
         </div>
         <div class="dl" data-os="mac">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.8.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.3 1.2-2.4-.1 0-2.3-.9-2.4-3.9zM14.2 5.3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z"/></svg>
           <h3>macOS</h3>
-          <div class="fmt">.dmg · Apple Silicon + Intel</div>
+          <div class="fmt">.dmg · Apple Silicon</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="btn btn-primary get" id="dl-mac" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="mac-intel" id="dl-mac-intel" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">¿Mac con Intel? Descargar x64</a>
         </div>
         <div class="dl" data-os="linux">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-2 0-3.2 1.7-3.2 3.9 0 1.4.2 2.3-.3 3.4-.5 1-2 2.6-2.6 4.4-.3.9-.2 1.7 0 2.1-.4.3-.7.8-.5 1.5.1.5 0 .8-.1 1.2-.2.6.1 1.2.9 1.3.7.1 1.7.3 2.5.8.7.4 1.6.3 2.1-.1.4.1.9.1 1.4.1s1 0 1.4-.1c.5.4 1.4.5 2.1.1.8-.5 1.8-.7 2.5-.8.8-.1 1.1-.7.9-1.3-.1-.4-.2-.7-.1-1.2.2-.7-.1-1.2-.5-1.5.2-.4.3-1.2 0-2.1-.6-1.8-2.1-3.4-2.6-4.4-.5-1.1-.3-2-.3-3.4C15.2 3.7 14 2 12 2zm-1.4 4.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>
           <h3>Linux</h3>
-          <div class="fmt">.AppImage · .deb</div>
+          <div class="fmt">.AppImage · .deb · .rpm</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="btn btn-primary get" id="dl-linux" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
         </div>
       </div>
       <p style="color:var(--dim);font-family:var(--font-mono);font-size:12.5px;margin-top:24px;">
@@ -342,8 +345,23 @@
 </footer>
 
 <script>
-  // --- Detección de SO -> resalta el instalador y ajusta el CTA del hero ---
+  // --- Descargas + detección de SO ---
+  // Los assets llevan la versión en el nombre → al publicar una versión nueva, actualizar V.
   (function () {
+    var BASE = "https://github.com/pab-1984/devflow/releases/latest/download/";
+    var V = "0.1.0";
+    var DL = {
+      windows: BASE + "DevFlow_" + V + "_x64-setup.exe",
+      mac: BASE + "DevFlow_" + V + "_aarch64.dmg",
+      mac_intel: BASE + "DevFlow_" + V + "_x64.dmg",
+      linux: BASE + "DevFlow_" + V + "_amd64.AppImage"
+    };
+    function set(id, href) { var el = document.getElementById(id); if (el) el.href = href; }
+    set("dl-windows", DL.windows);
+    set("dl-mac", DL.mac);
+    set("dl-mac-intel", DL.mac_intel);
+    set("dl-linux", DL.linux);
+
     var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
     p = p.toLowerCase();
     var os = "linux", label = "Linux";
@@ -357,8 +375,7 @@
     if (heroOs) heroOs.textContent = "para " + label;
 
     var hero = document.getElementById("heroDownload");
-    // El botón del hero lleva a la sección de descarga (anchor) para que el usuario vea las 3 opciones.
-    if (hero) hero.setAttribute("href", "#download");
+    if (hero) hero.href = DL[os] || "#download";
   })();
 
   // --- Reveal al hacer scroll ---
