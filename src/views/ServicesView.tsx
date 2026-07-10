@@ -56,7 +56,7 @@ export function ServicesView() {
   const addNew = () => {
     const cmd = newCmd.trim();
     if (!cmd) return;
-    const name = newName.trim() || cmd.slice(0, 24) || "Servicio";
+    const name = newName.trim() || cmd.slice(0, 24) || "Service";
     const id = addService(name, cmd);
     setNewName("");
     setNewCmd("");
@@ -68,36 +68,36 @@ export function ServicesView() {
   const paneServices = services.filter((s) => s.status === "running" || s.status === "exited");
   const selectedSvc = services.find((s) => s.id === selected);
   const statusLabel = (s: Service) =>
-    s.status === "running" ? "corriendo" : s.status === "exited" ? `terminado${s.exitCode != null ? ` (exit ${s.exitCode})` : ""}` : "detenido";
+    s.status === "running" ? "running" : s.status === "exited" ? `exited${s.exitCode != null ? ` (exit ${s.exitCode})` : ""}` : "stopped";
 
   return (
     <div className="services-view">
       <div className="services-sidebar">
         <div className="services-header">
-          <span className="services-title"><Server size={14} /> Servicios</span>
-          <button className="svc-add-btn" onClick={() => setShowAdd((v) => !v)} title="Agregar servicio"><Plus size={14} /></button>
+          <span className="services-title"><Server size={14} /> Services</span>
+          <button className="svc-add-btn" onClick={() => setShowAdd((v) => !v)} title="Add service"><Plus size={14} /></button>
         </div>
 
         {showAdd && (
           <div className="svc-add-form">
-            <input className="svc-input" placeholder="Nombre (ej. Dev server)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <input className="svc-input" placeholder="Name (e.g. Dev server)" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <input
               className="svc-input"
-              placeholder="Comando (ej. npm run dev)"
+              placeholder="Command (e.g. npm run dev)"
               value={newCmd}
               onChange={(e) => setNewCmd(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") addNew(); }}
             />
             <div className="svc-add-actions">
-              <button className="svc-btn svc-btn--primary" onClick={addNew} disabled={!newCmd.trim()}>Agregar</button>
-              <button className="svc-btn" onClick={() => setShowAdd(false)}>Cancelar</button>
+              <button className="svc-btn svc-btn--primary" onClick={addNew} disabled={!newCmd.trim()}>Add</button>
+              <button className="svc-btn" onClick={() => setShowAdd(false)}>Cancel</button>
             </div>
           </div>
         )}
 
         <div className="svc-list">
           {services.length === 0 && !showAdd && (
-            <div className="svc-empty">Sin servicios. Agregá uno con ＋ para correr un server (npm run dev, etc.) sin colgar el chat del agente.</div>
+            <div className="svc-empty">No services. Add one with ＋ to run a server (npm run dev, etc.) without hanging the agent chat.</div>
           )}
           {services.map((svc) => (
             <div key={svc.id} className={`svc-row${selected === svc.id ? " selected" : ""}`} onClick={() => setSelected(svc.id)}>
@@ -109,13 +109,13 @@ export function ServicesView() {
               <div className="svc-row-actions">
                 {svc.status === "running" ? (
                   <>
-                    <button className="svc-icon" onClick={(e) => { e.stopPropagation(); stop(svc); }} title="Detener"><Square size={12} /></button>
-                    <button className="svc-icon" onClick={(e) => { e.stopPropagation(); start(svc); }} title="Reiniciar"><RotateCw size={12} /></button>
+                    <button className="svc-icon" onClick={(e) => { e.stopPropagation(); stop(svc); }} title="Stop"><Square size={12} /></button>
+                    <button className="svc-icon" onClick={(e) => { e.stopPropagation(); start(svc); }} title="Restart"><RotateCw size={12} /></button>
                   </>
                 ) : (
-                  <button className="svc-icon svc-icon--play" onClick={(e) => { e.stopPropagation(); start(svc); }} title="Iniciar"><Play size={12} /></button>
+                  <button className="svc-icon svc-icon--play" onClick={(e) => { e.stopPropagation(); start(svc); }} title="Start"><Play size={12} /></button>
                 )}
-                <button className="svc-icon svc-icon--del" onClick={(e) => { e.stopPropagation(); remove(svc); }} title="Quitar"><Trash2 size={12} /></button>
+                <button className="svc-icon svc-icon--del" onClick={(e) => { e.stopPropagation(); remove(svc); }} title="Remove"><Trash2 size={12} /></button>
               </div>
             </div>
           ))}
@@ -146,10 +146,10 @@ export function ServicesView() {
           {(!selectedSvc || selectedSvc.status === "stopped") && (
             <div className="svc-logs-empty">
               {services.length === 0
-                ? "Agregá y arrancá un servicio para ver sus logs en vivo acá."
+                ? "Add and start a service to see its live logs here."
                 : selectedSvc
-                  ? "Servicio detenido. Iniciálo (▶) para ver sus logs en vivo."
-                  : "Seleccioná un servicio de la izquierda."}
+                  ? "Service stopped. Start it (▶) to see its live logs."
+                  : "Select a service on the left."}
             </div>
           )}
         </div>

@@ -18,24 +18,24 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
           <div className="provider-card-desc">{provider.description}</div>
         </div>
         <div className={`provider-status ${connected ? "enabled" : "disabled"}`}>
-          {connected ? <><CheckCircle size={12} /> ACP</> : <><AlertCircle size={12} /> No conectado</>}
+          {connected ? <><CheckCircle size={12} /> ACP</> : <><AlertCircle size={12} /> Not connected</>}
         </div>
       </div>
 
       {connected ? (
         <div className="provider-meta">
           <div className="provider-meta-row">
-            <span className="provider-label">Modelo activo</span>
-            <span className="provider-meta-val">{currentModel ?? "— (se elige en el chat)"}</span>
+            <span className="provider-label">Active model</span>
+            <span className="provider-meta-val">{currentModel ?? "— (set in the chat)"}</span>
           </div>
           <div className="provider-note">
-            Autenticación y modelos gestionados por el CLI <code>{cliName}</code>. El modelo se cambia
-            desde el selector del chat.
+            Authentication and models are managed by the <code>{cliName}</code> CLI. The model is
+            switched from the chat selector.
           </div>
         </div>
       ) : (
         <div className="provider-meta">
-          <div className="provider-note">Requiere un adaptador ACP para conectarse (aún no implementado).</div>
+          <div className="provider-note">Requires an ACP adapter to connect (not implemented yet).</div>
         </div>
       )}
     </div>
@@ -49,26 +49,26 @@ function SecuritySection() {
 
   return (
     <div className="settings-security">
-      <h3 className="settings-section-title"><ShieldAlert size={14} /> Seguridad · Permisos del agente</h3>
+      <h3 className="settings-section-title"><ShieldAlert size={14} /> Security · Agent permissions</h3>
       <div className="security-row">
         <label className={`security-toggle${autoApprove ? " on" : ""}`} onClick={() => setAutoApprove(!autoApprove)}>
           <span className="security-toggle-dot" />
         </label>
         <div className="security-row-text">
-          <div className="security-row-title">Auto-aprobar permisos en workflows</div>
+          <div className="security-row-title">Auto-approve permissions in workflows</div>
           <div className="security-row-desc">
             {autoApprove
-              ? "⚠️ Activo: cuando un workflow corre sin interfaz para aprobar, el agente aprueba solo sus acciones (escribir archivos, ejecutar shell). Cómodo pero riesgoso."
-              : "Seguro (recomendado): sin interfaz para aprobar, las solicitudes de permiso se deniegan. En el chat siempre se te pregunta con un modal."}
+              ? "⚠️ On: when a workflow runs with no UI to approve, the agent auto-approves its own actions (writing files, running shell). Convenient but risky."
+              : "Safe (recommended): with no UI to approve, permission requests are denied. In the chat you're always asked with a modal."}
           </div>
         </div>
       </div>
       {permissionLog.length > 0 && (
         <div className="security-log">
-          <div className="security-log-title">Decisiones automáticas recientes</div>
+          <div className="security-log-title">Recent automatic decisions</div>
           {permissionLog.slice(0, 8).map((e, i) => (
             <div key={i} className={`security-log-row security-log-row--${e.decision}`}>
-              <span className="security-log-decision">{e.decision === "auto-allow" ? "✔ aprobado" : "✖ denegado"}</span>
+              <span className="security-log-decision">{e.decision === "auto-allow" ? "✔ allowed" : "✖ denied"}</span>
               <span className="security-log-tool">{e.tool}</span>
               <span className="security-log-provider">{e.provider}</span>
               <span className="security-log-time">{new Date(e.ts).toLocaleTimeString()}</span>
@@ -86,10 +86,10 @@ export function SettingsView() {
   return (
     <div className="settings-view">
       <div className="settings-header">
-        <h2 className="settings-title">Agentes de IA</h2>
+        <h2 className="settings-title">AI agents</h2>
         <p className="settings-subtitle">
-          DevFlow embebe agentes por ACP: la autenticación y los modelos los gestiona cada CLI. El modelo
-          activo se elige desde el chat.
+          DevFlow embeds agents over ACP: authentication and models are managed by each CLI. The active
+          model is chosen from the chat.
         </p>
       </div>
       <SecuritySection />

@@ -15,11 +15,11 @@ function AgentCard({ agent, selected, active, onSelect }: { agent: AgentConfig; 
         <div className="agent-card-info">
           <div className="agent-card-name">
             {agent.name}
-            {active && <span className="agent-active-tag">activo</span>}
+            {active && <span className="agent-active-tag">active</span>}
           </div>
           <div className={`agent-card-status agent-card-status--${active ? "active" : "inactive"}`}>
             {active ? <CheckCircle size={10} /> : <Circle size={10} />}
-            {active ? "en uso en el chat" : "inactivo"}
+            {active ? "in use in the chat" : "inactive"}
           </div>
         </div>
       </div>
@@ -51,32 +51,32 @@ export function AgentDetail({ agent }: { agent: AgentConfig }) {
           <p className="agent-detail-desc">{agent.description}</p>
         </div>
         {isDefault ? (
-          <button className="agent-icon-action" title="Restaurar valores por defecto" onClick={() => resetAgent(agent.id)}>
+          <button className="agent-icon-action" title="Restore defaults" onClick={() => resetAgent(agent.id)}>
             <RotateCcw size={14} />
           </button>
         ) : (
-          <button className="agent-icon-action" title="Eliminar agente custom" onClick={() => removeAgent(agent.id)}>
+          <button className="agent-icon-action" title="Delete custom agent" onClick={() => removeAgent(agent.id)}>
             <Trash2 size={14} />
           </button>
         )}
       </div>
 
       <div className="detail-section">
-        <div className="detail-label">Proveedor</div>
+        <div className="detail-label">Provider</div>
         <div className="agent-provider-row">
           <span className="agent-provider-pill" style={{ borderColor: provider?.color ?? "#666" }}>
             <span className="provider-dot" style={{ background: provider?.color ?? "#666" }} />
             {provider?.name ?? agent.providerId}
           </span>
           {!provider?.acp && (
-            <span className="agent-provider-warn">Proveedor sin adaptador ACP — no ejecutable todavía</span>
+            <span className="agent-provider-warn">Provider without an ACP adapter — not runnable yet</span>
           )}
         </div>
       </div>
 
       {agent.skills.length > 0 && (
         <div className="detail-section">
-          <div className="detail-label"><Zap size={12} /> Skills disponibles</div>
+          <div className="detail-label"><Zap size={12} /> Available skills</div>
           <div className="skills-grid">
             {agent.skills.map((s) => (
               <div key={s} className="skill-item">
@@ -94,9 +94,9 @@ export function AgentDetail({ agent }: { agent: AgentConfig }) {
           value={agent.systemPrompt}
           onChange={(e) => updateAgent(agent.id, { systemPrompt: e.target.value })}
           rows={4}
-          placeholder="Instrucciones que se anteponen al iniciar una conversación nueva con este agente…"
+          placeholder="Instructions prepended when starting a new conversation with this agent…"
         />
-        <p className="detail-hint">Se inyecta al inicio de cada sesión ACP nueva en el chat.</p>
+        <p className="detail-hint">Injected at the start of each new ACP session in the chat.</p>
       </div>
 
       <button
@@ -108,7 +108,7 @@ export function AgentDetail({ agent }: { agent: AgentConfig }) {
         disabled={isActive}
       >
         <Power size={13} />
-        {isActive ? "Agente activo" : "Activar agente"}
+        {isActive ? "Agent active" : "Activate agent"}
       </button>
     </div>
   );
@@ -133,19 +133,19 @@ export function NewAgentForm({ onClose, onCreated }: { onClose: () => void; onCr
     <div className="agent-detail">
       <div className="agent-detail-header">
         <div className="agent-detail-icon" style={{ background: "#a78bfa22", color: "#a78bfa" }}>✦</div>
-        <div><h2 className="agent-detail-name">Nuevo agente custom</h2></div>
+        <div><h2 className="agent-detail-name">New custom agent</h2></div>
       </div>
 
       <div className="detail-section">
-        <div className="detail-label">Nombre</div>
-        <input className="provider-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mi agente" />
+        <div className="detail-label">Name</div>
+        <input className="provider-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="My agent" />
       </div>
       <div className="detail-section">
-        <div className="detail-label">Descripción</div>
-        <input className="provider-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Para qué sirve" />
+        <div className="detail-label">Description</div>
+        <input className="provider-input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it's for" />
       </div>
       <div className="detail-section">
-        <div className="detail-label">Proveedor</div>
+        <div className="detail-label">Provider</div>
         <select className="provider-input" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
           {providers.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
@@ -154,12 +154,12 @@ export function NewAgentForm({ onClose, onCreated }: { onClose: () => void; onCr
       </div>
       <div className="detail-section">
         <div className="detail-label">System prompt</div>
-        <textarea className="system-prompt-input" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} placeholder="Instrucciones del agente…" />
+        <textarea className="system-prompt-input" value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} placeholder="Agent instructions…" />
       </div>
 
       <div className="agent-form-actions">
-        <button className="save-btn" onClick={save} disabled={!name.trim()}>Crear agente</button>
-        <button className="agent-cancel-btn" onClick={onClose}>Cancelar</button>
+        <button className="save-btn" onClick={save} disabled={!name.trim()}>Create agent</button>
+        <button className="agent-cancel-btn" onClick={onClose}>Cancel</button>
       </div>
     </div>
   );
@@ -177,8 +177,8 @@ export function AgentsView() {
     <div className="agents-view">
       <div className="agents-list">
         <div className="agents-list-header">
-          <span>Agentes</span>
-          <button className="icon-btn" title="Agregar agente custom" onClick={() => setCreating(true)}>
+          <span>Agents</span>
+          <button className="icon-btn" title="Add custom agent" onClick={() => setCreating(true)}>
             <Plus size={14} />
           </button>
         </div>
@@ -193,7 +193,7 @@ export function AgentsView() {
         ))}
         <div className="add-agent-card" onClick={() => setCreating(true)}>
           <Plus size={16} />
-          <span>Agregar agente custom</span>
+          <span>Add custom agent</span>
         </div>
       </div>
 
