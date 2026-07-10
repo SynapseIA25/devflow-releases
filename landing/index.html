@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>DevFlow — entorno de desarrollo con equipo de agentes IA</title>
-<meta name="description" content="DevFlow es una app de escritorio que orquesta un equipo de agentes IA expertos, workflows como grafo y ambientes aislados para construir software de punta a punta. Windows, macOS y Linux." />
+<title>DevFlow — the desktop dev environment with a team of AI agents</title>
+<meta name="description" content="DevFlow is a desktop app that orchestrates a team of expert AI agents, graph-based workflows and isolated environments to build software end to end. Windows, macOS and Linux." />
 <style>
   :root {
     --ground: #0a0e16;
@@ -192,7 +192,7 @@
 
 <header class="bar">
   <div class="wrap bar-inner">
-    <a class="brand" href="#top" aria-label="DevFlow inicio">
+    <a class="brand" href="#top" aria-label="DevFlow home">
       <svg class="dot" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <defs><linearGradient id="bg" x1="0" y1="0" x2="24" y2="24">
           <stop offset="0" stop-color="#2fd4b6"/><stop offset="1" stop-color="#4f9bff"/>
@@ -205,9 +205,9 @@
       <span>Dev<span class="flow">Flow</span></span>
     </a>
     <nav class="links">
-      <a class="hide-sm" href="#features">Características</a>
-      <a class="hide-sm" href="#flow">Cómo funciona</a>
-      <a href="#download">Descargar</a>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#flow">How it works</a>
+      <a href="#download">Download</a>
       <a class="nav-gh" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">
         <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
         GitHub
@@ -221,19 +221,19 @@
     <canvas id="graph" aria-hidden="true"></canvas>
     <div class="hero-veil"></div>
     <div class="wrap hero-inner">
-      <span class="badge"><span class="pip"></span> App de escritorio · Windows · macOS · Linux</span>
-      <h1>Un equipo de agentes que construye tu software de <span class="flow">punta a punta</span>.</h1>
-      <p class="sub">DevFlow orquesta agentes IA expertos, workflows como grafo y ambientes aislados en un solo entorno de escritorio. Delegás, revisás el diff y promovés — sin que nada toque tu proyecto real hasta que vos lo decidas.</p>
+      <span class="badge"><span class="pip"></span> Desktop app · Windows · macOS · Linux</span>
+      <h1>A team of agents that builds your software <span class="flow">end to end</span>.</h1>
+      <p class="sub">DevFlow orchestrates expert AI agents, graph-based workflows and isolated environments in a single desktop app. You delegate, review the diff and promote — nothing touches your real project until you say so.</p>
       <div class="cta-row">
         <a class="btn btn-primary" id="heroDownload" href="#download">
-          Descargar DevFlow <span class="os" id="heroOs"></span>
+          Download DevFlow <span class="os" id="heroOs"></span>
         </a>
-        <a class="btn btn-ghost" href="#features">Ver qué hace</a>
+        <a class="btn btn-ghost" href="#features">See what it does</a>
       </div>
       <div class="hero-meta">
         <span id="verTag">v0.1.1</span>
-        <span>Auto-actualizable</span>
-        <span>Construido con Tauri + React</span>
+        <span>Auto-updating</span>
+        <span>Built with Tauri + React</span>
       </div>
     </div>
   </section>
@@ -241,34 +241,34 @@
   <section id="features">
     <div class="wrap">
       <div class="sec-head reveal">
-        <span class="eyebrow">Los cuatro pilares</span>
-        <h2>No es un chat con IA. Es una plataforma para gestionar el proyecto entero.</h2>
-        <p>Cada pieza se apoya en la anterior: expertos que se coordinan, flujos que los ejecutan, ambientes que los aíslan y un hub que lo gobierna todo por proyecto.</p>
+        <span class="eyebrow">The four pillars</span>
+        <h2>Not an AI chat. A platform to manage the entire project.</h2>
+        <p>Each piece builds on the last: experts that coordinate, flows that run them, environments that isolate them, and a hub that governs it all per project.</p>
       </div>
       <div class="grid">
         <article class="card reveal">
           <span class="tag">9 roles</span>
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M15 11a3 3 0 1 0-2-5.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M15.5 14a6 6 0 0 1 5.5 6"/></svg>
-          <h3>Equipo de agentes expertos</h3>
-          <p>Arquitecto, Frontend, Backend, Base de Datos, DevOps, SRE, Seguridad, QA y Producto. Un líder descompone la tarea, la delega a cada especialista en su propia sesión y sintetiza el resultado.</p>
+          <h3>Team of expert agents</h3>
+          <p>Architect, Frontend, Backend, Database, DevOps, SRE, Security, QA and Product. A lead breaks the task down, delegates each part to its specialist in its own session, and synthesizes the result.</p>
         </article>
         <article class="card reveal">
-          <span class="tag">Grafo</span>
+          <span class="tag">Graph</span>
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1.2"/><rect x="15" y="15" width="6" height="5" rx="1.2"/><rect x="9" y="10" width="6" height="4" rx="1.2"/><path d="M6 9v2a2 2 0 0 0 2 2M18 15v-1a2 2 0 0 0-2-2"/></svg>
-          <h3>Orquestador de workflows</h3>
-          <p>Encadená agentes, comandos y triggers como un grafo de nodos con variables nombradas. Loops, ramas y webhooks para automatizar tareas repetibles del proyecto.</p>
+          <h3>Workflow orchestrator</h3>
+          <p>Chain agents, commands and triggers as a graph of nodes with named variables. Loops, branches and webhooks to automate your project's repeatable tasks.</p>
         </article>
         <article class="card reveal">
-          <span class="tag">Aislado</span>
+          <span class="tag">Isolated</span>
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3v6l-3 3 3 3v6"/><path d="M18 3v6l3 3-3 3v6"/><path d="M9 12h6"/></svg>
-          <h3>Ambientes de prueba</h3>
-          <p>Cada agente trabaja en un git worktree efímero: prueba, escribe y rompe sin tocar tu código. Revisás el diff y con un click promovés al proyecto real o lo descartás sin rastro.</p>
+          <h3>Test environments</h3>
+          <p>Each agent works in an ephemeral git worktree: it tests, writes and breaks things without touching your code. Review the diff and promote to the real project with one click, or discard it without a trace.</p>
         </article>
         <article class="card reveal">
-          <span class="tag">Por proyecto</span>
+          <span class="tag">Per project</span>
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 11h18"/></svg>
           <h3>Project Hub</h3>
-          <p>Stack detectado, estructura, documentación, servicios, terminales y deuda técnica — todo scopeado por proyecto. Registrás varios proyectos y cada uno lleva su entorno, sus agentes y sus flujos.</p>
+          <p>Detected stack, structure, docs, services, terminals and tech debt — all scoped per project. Register multiple projects, each with its own environment, agents and flows.</p>
         </article>
       </div>
     </div>
@@ -277,25 +277,25 @@
   <section id="flow">
     <div class="wrap">
       <div class="sec-head reveal">
-        <span class="eyebrow">El flujo seguro</span>
-        <h2>Delegar sin miedo.</h2>
-        <p>El ciclo que hace que dejar trabajar a varios agentes en paralelo no termine en un proyecto roto.</p>
+        <span class="eyebrow">The safe loop</span>
+        <h2>Delegate without fear.</h2>
+        <p>The cycle that keeps letting several agents work in parallel from ending in a broken project.</p>
       </div>
       <div class="steps">
         <div class="step reveal">
-          <div class="n">01 · DELEGAR</div>
-          <h4>El líder reparte</h4>
-          <p>Describís la tarea; el agente líder la descompone y asigna cada sub-tarea al experto correcto según el área.</p>
+          <div class="n">01 · DELEGATE</div>
+          <h4>The lead splits it up</h4>
+          <p>You describe the task; the lead agent breaks it down and assigns each sub-task to the right expert by area.</p>
         </div>
         <div class="step reveal">
-          <div class="n">02 · AISLAR</div>
-          <h4>Corren en un ambiente</h4>
-          <p>Los expertos ejecutan dentro de un worktree efímero, en paralelo, sin permiso para tocar tu proyecto real.</p>
+          <div class="n">02 · ISOLATE</div>
+          <h4>They run in an environment</h4>
+          <p>The experts run inside an ephemeral worktree, in parallel, with no permission to touch your real project.</p>
         </div>
         <div class="step reveal">
-          <div class="n">03 · PROMOVER</div>
-          <h4>Vos tenés la última palabra</h4>
-          <p>Revisás el diff consolidado y promovés a la rama base o descartás. Los conflictos de merge se muestran antes de aplicar.</p>
+          <div class="n">03 · PROMOTE</div>
+          <h4>You have the final say</h4>
+          <p>Review the consolidated diff and promote to the base branch or discard it. Merge conflicts are shown before applying.</p>
         </div>
       </div>
     </div>
@@ -304,41 +304,41 @@
   <section id="download">
     <div class="wrap">
       <div class="sec-head reveal">
-        <span class="eyebrow">Descargar · v0.1.1</span>
-        <h2>Elegí tu plataforma.</h2>
-        <p>Detectamos tu sistema y te resaltamos el instalador recomendado. Todos los builds se publican automáticamente en cada versión.</p>
+        <span class="eyebrow">Download · v0.1.1</span>
+        <h2>Pick your platform.</h2>
+        <p>We detect your system and highlight the recommended installer. Every build is published automatically on each release.</p>
       </div>
       <div class="dl-grid">
         <div class="dl" data-os="windows">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 11 4.3v7.2H3zM11 12.5v7.2L3 18.5v-6zM12 4.1 21 3v8.5h-9zM21 12.5V21l-9-1.3v-7.2z"/></svg>
           <h3>Windows</h3>
           <div class="fmt">.exe · x64</div>
-          <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-windows" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <div class="reco-badge">Recommended for you</div>
+          <a class="btn btn-primary get" id="dl-windows" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Download</a>
         </div>
         <div class="dl" data-os="mac">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.8.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.3 1.2-2.4-.1 0-2.3-.9-2.4-3.9zM14.2 5.3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z"/></svg>
           <h3>macOS</h3>
           <div class="fmt">.dmg · Apple Silicon</div>
-          <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-mac" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
-          <a class="mac-intel" id="dl-mac-intel" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">¿Mac con Intel? Descargar x64</a>
+          <div class="reco-badge">Recommended for you</div>
+          <a class="btn btn-primary get" id="dl-mac" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Download</a>
+          <a class="mac-intel" id="dl-mac-intel" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">On an Intel Mac? Download x64</a>
         </div>
         <div class="dl" data-os="linux">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-2 0-3.2 1.7-3.2 3.9 0 1.4.2 2.3-.3 3.4-.5 1-2 2.6-2.6 4.4-.3.9-.2 1.7 0 2.1-.4.3-.7.8-.5 1.5.1.5 0 .8-.1 1.2-.2.6.1 1.2.9 1.3.7.1 1.7.3 2.5.8.7.4 1.6.3 2.1-.1.4.1.9.1 1.4.1s1 0 1.4-.1c.5.4 1.4.5 2.1.1.8-.5 1.8-.7 2.5-.8.8-.1 1.1-.7.9-1.3-.1-.4-.2-.7-.1-1.2.2-.7-.1-1.2-.5-1.5.2-.4.3-1.2 0-2.1-.6-1.8-2.1-3.4-2.6-4.4-.5-1.1-.3-2-.3-3.4C15.2 3.7 14 2 12 2zm-1.4 4.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>
           <h3>Linux</h3>
           <div class="fmt">.AppImage · .deb · .rpm</div>
-          <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-linux" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <div class="reco-badge">Recommended for you</div>
+          <a class="btn btn-primary get" id="dl-linux" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Download</a>
         </div>
       </div>
       <div class="term-install">
-        <div class="term-install-label">O instalá por terminal · macOS y Linux</div>
+        <div class="term-install-label">Or install from the terminal · macOS and Linux</div>
         <code class="term-install-cmd">curl -fsSL https://raw.githubusercontent.com/pab-1984/devflow-releases/main/install.sh | sh</code>
-        <div class="term-install-note">En macOS evita el aviso de Gatekeeper automáticamente.</div>
+        <div class="term-install-note">On macOS it bypasses the Gatekeeper prompt automatically.</div>
       </div>
       <p style="color:var(--dim);font-family:var(--font-mono);font-size:12.5px;margin-top:24px;">
-        DevFlow se auto-actualiza: una vez instalado, avisa cuando hay una versión nueva firmada y se actualiza solo.
+        DevFlow auto-updates: once installed, it notifies you when a new signed version is available and updates itself.
       </p>
     </div>
   </section>
@@ -348,14 +348,14 @@
   <div class="wrap foot-inner">
     <span>DevFlow · v0.1.1</span>
     <span>
-      <a href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Todas las descargas</a>
+      <a href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">All downloads</a>
     </span>
   </div>
 </footer>
 
 <script>
-  // --- Descargas + detección de SO ---
-  // Los assets llevan la versión en el nombre → al publicar una versión nueva, actualizar V.
+  // --- Downloads + OS detection ---
+  // Assets carry the version in their name -> bump V when publishing a new version.
   (function () {
     var BASE = "https://github.com/pab-1984/devflow-releases/releases/latest/download/";
     var V = "0.1.1";
@@ -381,13 +381,13 @@
     if (card) card.classList.add("reco");
 
     var heroOs = document.getElementById("heroOs");
-    if (heroOs) heroOs.textContent = "para " + label;
+    if (heroOs) heroOs.textContent = "for " + label;
 
     var hero = document.getElementById("heroDownload");
     if (hero) hero.href = DL[os] || "#download";
   })();
 
-  // --- Reveal al hacer scroll ---
+  // --- Reveal on scroll ---
   (function () {
     if (!("IntersectionObserver" in window)) {
       document.querySelectorAll(".reveal").forEach(function (e) { e.classList.add("in"); });
@@ -399,7 +399,7 @@
     document.querySelectorAll(".reveal").forEach(function (e) { io.observe(e); });
   })();
 
-  // --- Backdrop: grafo de nodos con pulso por las aristas (metáfora de orquestación) ---
+  // --- Backdrop: node graph with pulses traveling along the edges (orchestration metaphor) ---
   (function () {
     var canvas = document.getElementById("graph");
     if (!canvas) return;
@@ -444,7 +444,7 @@
           if (n.y < 0 || n.y > H) n.vy *= -1;
         }
       }
-      // aristas
+      // edges
       ctx.lineWidth = 1;
       for (var j = 0; j < edges.length; j++) {
         var A = nodes[edges[j][0]], B = nodes[edges[j][1]];
@@ -453,7 +453,7 @@
         ctx.strokeStyle = withAlpha(cLine, alpha + 0.08);
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
       }
-      // pulsos
+      // pulses
       for (var p = pulses.length - 1; p >= 0; p--) {
         var pu = pulses[p], A2 = nodes[pu.e[0]], B2 = nodes[pu.e[1]];
         if (!reduce) pu.t += pu.sp;
@@ -463,7 +463,7 @@
         g.addColorStop(0, withAlpha(cTeal, 0.9)); g.addColorStop(1, withAlpha(cTeal, 0));
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.283); ctx.fill();
       }
-      // nodos
+      // nodes
       for (var m = 0; m < nodes.length; m++) {
         var nn = nodes[m];
         ctx.fillStyle = withAlpha(m % 3 === 0 ? cAzure : cTeal, 0.85);
