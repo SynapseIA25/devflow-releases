@@ -1,73 +1,71 @@
-# Firma de código — Windows y macOS
+# Code signing — Windows and macOS
 
-El pipeline de firma ya está **cableado**. Los builds salen sin firmar hasta que cargues las
-credenciales como **secrets del repo público `pab-1984/devflow-releases`** (Settings → Secrets
-and variables → Actions). Apenas estén, la próxima release se firma sola. No hace falta tocar
-código.
+The signing pipeline is already **wired up**. Builds ship unsigned until you add the credentials
+as **secrets in the public repo `pab-1984/devflow-releases`** (Settings → Secrets and variables →
+Actions). Once they're there, the next release signs itself. No code changes needed.
 
-> La firma del **auto-updater** (secret `TAURI_SIGNING_PRIVATE_KEY`) ya está configurada y es
-> distinta de esto: aquella evita el "no se pudo verificar el update", esta evita los avisos de
-> SmartScreen (Windows) y Gatekeeper (macOS) al instalar.
+> The **auto-updater** signing (`TAURI_SIGNING_PRIVATE_KEY` secret) is already configured and is a
+> separate thing: that one prevents the "update could not be verified" error; this one prevents the
+> SmartScreen (Windows) and Gatekeeper (macOS) warnings when installing.
 
 ---
 
-## macOS — Apple Developer ID + notarización
+## macOS — Apple Developer ID + notarization
 
-**Requisito:** membresía **Apple Developer Program — US$99/año** (obligatoria).
+**Requirement:** an **Apple Developer Program** membership — **US$99/year** (mandatory).
 
-1. Inscribite en https://developer.apple.com/programs/ (verificación de identidad de Apple).
-2. En **Certificates, Identifiers & Profiles** creá un certificado **"Developer ID Application"**.
-3. Descargalo, abrilo en **Acceso a Llaveros** (Keychain), y **exportá** la clave como `.p12`
-   con una contraseña.
-4. Convertí el `.p12` a base64:  `base64 -i certificado.p12 | pbcopy`
-5. Para notarizar, generá una **contraseña específica de app** en https://appleid.apple.com
-   (Seguridad → Contraseñas específicas de app).
+1. Enroll at https://developer.apple.com/programs/ (Apple identity verification).
+2. Under **Certificates, Identifiers & Profiles**, create a **"Developer ID Application"** certificate.
+3. Download it, open it in **Keychain Access**, and **export** the key as a `.p12` with a password.
+4. Convert the `.p12` to base64:  `base64 -i certificate.p12 | pbcopy`
+5. To notarize, generate an **app-specific password** at https://appleid.apple.com
+   (Sign-In and Security → App-Specific Passwords).
 
-**Secrets a cargar** en `devflow-releases`:
+**Secrets to add** to `devflow-releases`:
 
-| Secret | Valor |
+| Secret | Value |
 |---|---|
-| `APPLE_CERTIFICATE` | el `.p12` en base64 (paso 4) |
-| `APPLE_CERTIFICATE_PASSWORD` | la contraseña del `.p12` (paso 3) |
-| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Tu Nombre (TEAMID)` |
-| `APPLE_ID` | tu Apple ID (email) |
-| `APPLE_PASSWORD` | la contraseña específica de app (paso 5) |
-| `APPLE_TEAM_ID` | tu Team ID (10 caracteres, en la cuenta de developer) |
+| `APPLE_CERTIFICATE` | the `.p12` as base64 (step 4) |
+| `APPLE_CERTIFICATE_PASSWORD` | the `.p12` password (step 3) |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` | your Apple ID (email) |
+| `APPLE_PASSWORD` | the app-specific password (step 5) |
+| `APPLE_TEAM_ID` | your Team ID (10 chars, in your developer account) |
 
 ---
 
 ## Windows — Azure Trusted Signing
 
-**Requisito:** cuenta de **Azure** + **Trusted Signing** (~US$10/mes). Es el método moderno de
-Microsoft (sin token físico). Necesita verificación de identidad (individuo u organización).
+**Requirement:** an **Azure** account + **Trusted Signing** (~US$10/month). It's Microsoft's modern
+method (no hardware token). It requires identity verification (individual or organization).
 
-1. En el portal de Azure creá un recurso **Trusted Signing Account** (elegí una región).
-2. Dentro creá un **Certificate Profile** (Public Trust). Completá la verificación de identidad.
-3. Creá un **App Registration** (service principal) y asignale el rol
-   **"Trusted Signing Certificate Profile Signer"** sobre la cuenta. Guardá client id, tenant id
-   y un client secret.
+1. In the Azure portal create a **Trusted Signing Account** resource (pick a region).
+2. Inside it create a **Certificate Profile** (Public Trust). Complete the identity verification.
+3. Create an **App Registration** (service principal) and give it the
+   **"Trusted Signing Certificate Profile Signer"** role over the account. Save the client id,
+   tenant id and a client secret.
 
-**Secrets a cargar** en `devflow-releases`:
+**Secrets to add** to `devflow-releases`:
 
-| Secret | Valor |
+| Secret | Value |
 |---|---|
 | `TRUSTED_SIGNING_ENDPOINT` | `https://<region>.codesigning.azure.net/` |
-| `TRUSTED_SIGNING_ACCOUNT` | nombre de la Trusted Signing Account |
-| `TRUSTED_SIGNING_PROFILE` | nombre del Certificate Profile |
-| `AZURE_CLIENT_ID` | client id del service principal |
-| `AZURE_CLIENT_SECRET` | client secret del service principal |
+| `TRUSTED_SIGNING_ACCOUNT` | the Trusted Signing Account name |
+| `TRUSTED_SIGNING_PROFILE` | the Certificate Profile name |
+| `AZURE_CLIENT_ID` | the service principal client id |
+| `AZURE_CLIENT_SECRET` | the service principal client secret |
 | `AZURE_TENANT_ID` | tenant id |
 
-La CI instala `trusted-signing-cli` **solo si `TRUSTED_SIGNING_ENDPOINT` está seteado**, y
-`src-tauri/sign-windows.ps1` firma cada artefacto. Sin esos secrets, ese script no-opea.
+The CI installs `trusted-signing-cli` **only if `TRUSTED_SIGNING_ENDPOINT` is set**, and
+`src-tauri/sign-windows.ps1` signs each artifact. Without those secrets, that script is a no-op.
 
 ---
 
-## Probar
+## Testing
 
-Cargados los secrets, publicá una versión nueva (ver el flujo de release en el README del repo
-público). El build va a firmar y notarizar automáticamente. Verificá:
+With the secrets in place, publish a new version (see the release flow in the public repo's README).
+The build will sign and notarize automatically. Verify:
 
-- **Windows:** clic derecho en el `.exe` → Propiedades → pestaña *Firmas digitales* debe listar tu
-  certificado. Ya no debería saltar el aviso de SmartScreen (puede tardar en ganar reputación).
-- **macOS:** `spctl -a -vvv -t install DevFlow.app` debe decir `accepted` / `source=Notarized`.
+- **Windows:** right-click the `.exe` → Properties → *Digital Signatures* tab should list your
+  certificate. The SmartScreen warning should no longer appear (it may take time to gain reputation).
+- **macOS:** `spctl -a -vvv -t install DevFlow.app` should say `accepted` / `source=Notarized`.

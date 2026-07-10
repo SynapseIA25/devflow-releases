@@ -12,16 +12,16 @@ type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string };
 //    cwd del proyecto activo). Cambiar el proyecto arriba cambia el contexto de todos estos.
 const PROJECT_ITEMS: NavItem[] = [
   { id: "chat",         icon: MessageSquare,  label: "Chat" },
-  { id: "editor",       icon: FileCode,       label: "Código" },
-  { id: "terminals",    icon: SquareTerminal, label: "Terminales" },
-  { id: "map",          icon: Network,        label: "Mapa" },
-  { id: "services",     icon: TerminalSquare, label: "Servicios" },
-  { id: "environments", icon: Boxes,          label: "Ambientes" },
+  { id: "editor",       icon: FileCode,       label: "Code" },
+  { id: "terminals",    icon: SquareTerminal, label: "Terminals" },
+  { id: "map",          icon: Network,        label: "Map" },
+  { id: "services",     icon: TerminalSquare, label: "Services" },
+  { id: "environments", icon: Boxes,          label: "Environments" },
 ];
 // ── Tier "General": herramientas/bibliotecas transversales, no atadas a un proyecto (catálogo de
 //    agentes, equipo de expertos, biblioteca de workflows, servidores MCP, ajustes de la app).
 const GENERAL_ITEMS: NavItem[] = [
-  { id: "team",     icon: Users,     label: "Equipo" },
+  { id: "team",     icon: Users,     label: "Team" },
   { id: "workflow", icon: GitBranch, label: "Workflows" },
   { id: "agents",   icon: Bot,       label: "Agents" },
   { id: "mcp",      icon: Server,    label: "MCP" },
@@ -78,16 +78,16 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
         <button
           className={`navbar-project${menuOpen ? " open" : ""}`}
           onClick={() => setMenuOpen((v) => !v)}
-          title={activeProject ? `Proyecto: ${activeProject.name}` : "Proyecto"}
+          title={activeProject ? `Project: ${activeProject.name}` : "Project"}
         >
           <FolderKanban size={16} />
-          <span className="navbar-project-name">{activeProject?.name ?? "Proyecto"}</span>
+          <span className="navbar-project-name">{activeProject?.name ?? "Project"}</span>
           <ChevronsUpDown size={11} className="navbar-project-caret" />
         </button>
 
         {menuOpen && (
           <div className="navbar-projmenu">
-            <div className="navbar-projmenu-head">Proyectos</div>
+            <div className="navbar-projmenu-head">Projects</div>
             {order.map((id) => {
               const p = projects[id];
               if (!p) return null;
@@ -111,14 +111,14 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
               className="navbar-projmenu-manage"
               onClick={() => { onChange("projects"); setMenuOpen(false); }}
             >
-              <Plus size={12} /> Gestionar proyectos…
+              <Plus size={12} /> Manage projects…
             </button>
           </div>
         )}
       </div>
 
       <div className="navbar-items">
-        <div className="navbar-section-label">Proyecto</div>
+        <div className="navbar-section-label">Project</div>
         {PROJECT_ITEMS.map(renderItem)}
 
         <div className="navbar-section-label navbar-section-label--gap">General</div>
@@ -131,7 +131,7 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
         <button
           className={`navbar-item navbar-chat-toggle${chatDockOpen ? " active" : ""}`}
           onClick={onToggleChatDock}
-          title="Chat lateral"
+          title="Side chat"
         >
           <PanelRight size={18} />
           <span className="navbar-label">Chat</span>

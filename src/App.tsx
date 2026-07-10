@@ -142,7 +142,7 @@ export default function App() {
         >
           <div className="rp-data-placeholder" style={{ height: "100%" }}>
             <Activity size={36} opacity={0.2} />
-            <p>Seleccioná un archivo en el explorador para visualizar el flujo de datos entre sus funciones.</p>
+            <p>Select a file in the explorer to visualize the data flow between its functions.</p>
           </div>
         </FloatingWindow>
       )}
