@@ -170,6 +170,10 @@
   .dl a.get { margin-top: 18px; width: 100%; justify-content: center; }
   .dl .mac-intel { margin-top: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
   .dl .mac-intel:hover { color: var(--text); }
+  .term-install { margin-top: 28px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; }
+  .term-install-label { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+  .term-install-cmd { display: block; margin-top: 12px; font-family: var(--font-mono); font-size: 13px; color: var(--teal); background: var(--ground); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; white-space: nowrap; }
+  .term-install-note { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 
   /* ---- Footer ---- */
   footer { padding: 46px 0 70px; }
@@ -310,23 +314,28 @@
           <h3>Windows</h3>
           <div class="fmt">.exe · x64</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-windows" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="btn btn-primary get" id="dl-windows" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
         </div>
         <div class="dl" data-os="mac">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7 1.3 0 1.7.7 2.8.7 1.2 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.3 1.2-2.4-.1 0-2.3-.9-2.4-3.9zM14.2 5.3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.6 1 .1 1.9-.5 2.5-1.2z"/></svg>
           <h3>macOS</h3>
           <div class="fmt">.dmg · Apple Silicon</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-mac" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
-          <a class="mac-intel" id="dl-mac-intel" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">¿Mac con Intel? Descargar x64</a>
+          <a class="btn btn-primary get" id="dl-mac" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="mac-intel" id="dl-mac-intel" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">¿Mac con Intel? Descargar x64</a>
         </div>
         <div class="dl" data-os="linux">
           <svg class="os-ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-2 0-3.2 1.7-3.2 3.9 0 1.4.2 2.3-.3 3.4-.5 1-2 2.6-2.6 4.4-.3.9-.2 1.7 0 2.1-.4.3-.7.8-.5 1.5.1.5 0 .8-.1 1.2-.2.6.1 1.2.9 1.3.7.1 1.7.3 2.5.8.7.4 1.6.3 2.1-.1.4.1.9.1 1.4.1s1 0 1.4-.1c.5.4 1.4.5 2.1.1.8-.5 1.8-.7 2.5-.8.8-.1 1.1-.7.9-1.3-.1-.4-.2-.7-.1-1.2.2-.7-.1-1.2-.5-1.5.2-.4.3-1.2 0-2.1-.6-1.8-2.1-3.4-2.6-4.4-.5-1.1-.3-2-.3-3.4C15.2 3.7 14 2 12 2zm-1.4 4.2c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9zm2.8 0c.4 0 .7.4.7.9s-.3.9-.7.9-.7-.4-.7-.9.3-.9.7-.9z"/></svg>
           <h3>Linux</h3>
           <div class="fmt">.AppImage · .deb · .rpm</div>
           <div class="reco-badge">Recomendado para vos</div>
-          <a class="btn btn-primary get" id="dl-linux" href="https://github.com/pab-1984/devflow/releases/latest" target="_blank" rel="noopener">Descargar</a>
+          <a class="btn btn-primary get" id="dl-linux" href="https://github.com/pab-1984/devflow-releases/releases/latest" target="_blank" rel="noopener">Descargar</a>
         </div>
+      </div>
+      <div class="term-install">
+        <div class="term-install-label">O instalá por terminal · macOS y Linux</div>
+        <code class="term-install-cmd">curl -fsSL https://raw.githubusercontent.com/pab-1984/devflow-releases/main/install.sh | sh</code>
+        <div class="term-install-note">En macOS evita el aviso de Gatekeeper automáticamente.</div>
       </div>
       <p style="color:var(--dim);font-family:var(--font-mono);font-size:12.5px;margin-top:24px;">
         DevFlow se auto-actualiza: una vez instalado, avisa cuando hay una versión nueva firmada y se actualiza solo.
