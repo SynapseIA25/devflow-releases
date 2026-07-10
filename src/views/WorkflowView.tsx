@@ -13,7 +13,7 @@ import { runWorkflow } from "../lib/workflowEngine";
 
 export function WorkflowView() {
   const [logs, setLogs] = useState<LogEntry[]>([
-    { time: new Date().toLocaleTimeString(), level: "info", message: "Editor de workflows listo. Arrastrá nodos desde el panel izquierdo y dale Run." },
+    { time: new Date().toLocaleTimeString(), level: "info", message: "Workflow editor ready. Drag nodes from the left panel and hit Run." },
   ]);
   const [running, setRunning] = useState(false);
   const [showTriggers, setShowTriggers] = useState(false);
@@ -48,7 +48,7 @@ export function WorkflowView() {
     setRunning(true);
     setWrittenFiles([]);
     st.resetStatuses();
-    log("info", `▶ Ejecutando "${w.name}" (${w.nodes.length} nodos)…`);
+    log("info", `▶ Running "${w.name}" (${w.nodes.length} nodes)…`);
     const startedAt = performance.now();
     try {
       await runWorkflow(w.nodes, w.edges, {
@@ -63,7 +63,7 @@ export function WorkflowView() {
         onFileWritten: (path) => setWrittenFiles((prev) => (prev.includes(path) ? prev : [...prev, path])),
       });
     } catch (e) {
-      log("error", `Error inesperado: ${e instanceof Error ? e.message : String(e)}`);
+      log("error", `Unexpected error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       useMetricsStore.getState().recordWorkflowRun({ latencyMs: performance.now() - startedAt });
       setRunning(false);
@@ -72,7 +72,7 @@ export function WorkflowView() {
 
   const handleStop = useCallback(() => {
     cancelRef.current = true;
-    log("warn", "Cancelando… (se detiene al terminar el nodo actual)");
+    log("warn", "Cancelling… (stops after the current node finishes)");
   }, [log]);
 
   return (
@@ -86,7 +86,7 @@ export function WorkflowView() {
               value={activeId}
               onChange={(e) => setActiveWorkflow(e.target.value)}
               disabled={running}
-              title="Cambiar de flujo"
+              title="Switch flow"
             >
               {order.map((id) => (
                 <option key={id} value={id}>
@@ -99,14 +99,14 @@ export function WorkflowView() {
               value={activeName}
               onChange={(e) => renameWorkflow(activeId, e.target.value)}
               disabled={running}
-              title="Renombrar flujo activo"
-              placeholder="Nombre del flujo"
+              title="Rename active flow"
+              placeholder="Flow name"
             />
             <button
               className="wf-icon-btn"
               onClick={() => createWorkflow()}
               disabled={running}
-              title="Nuevo flujo"
+              title="New flow"
             >
               <Plus size={14} />
             </button>
@@ -114,7 +114,7 @@ export function WorkflowView() {
               className="wf-icon-btn wf-icon-btn--danger"
               onClick={() => deleteWorkflow(activeId)}
               disabled={running || order.length <= 1}
-              title={order.length <= 1 ? "No podés borrar el último flujo" : "Borrar flujo activo"}
+              title={order.length <= 1 ? "You can't delete the last flow" : "Delete active flow"}
             >
               <Trash2 size={14} />
             </button>
@@ -124,7 +124,7 @@ export function WorkflowView() {
             <button
               className="wf-icon-btn"
               onClick={() => setShowTriggers(true)}
-              title="Triggers / programar este flujo"
+              title="Triggers / schedule this flow"
             >
               <Clock size={14} />
             </button>
@@ -137,19 +137,19 @@ export function WorkflowView() {
               {running ? "Stop" : "Run"}
             </button>
             <span className="wf-toolbar-hint">
-              {running ? "Ejecutando…" : "Ejecuta el grafo de izquierda a derecha"}
+              {running ? "Running…" : "Runs the graph left to right"}
             </span>
           </div>
           <Canvas onLog={addLog} />
           {writtenFiles.length > 0 && (
             <div className="wf-written">
-              <span className="wf-written-label">Archivos generados:</span>
+              <span className="wf-written-label">Generated files:</span>
               {writtenFiles.map((p) => (
                 <button
                   key={p}
                   className="wf-written-chip"
                   onClick={() => openInEditor(p)}
-                  title={`Abrir ${p} en el editor`}
+                  title={`Open ${p} in the editor`}
                 >
                   <FileCode size={11} /> {p.split(/[\\/]/).pop()}
                 </button>

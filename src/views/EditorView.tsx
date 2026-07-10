@@ -49,7 +49,7 @@ export function EditorView() {
                     e.stopPropagation();
                     closeTab(t.path);
                   }}
-                  title="Cerrar"
+                  title="Close"
                 >
                   <X size={11} />
                 </button>
@@ -63,31 +63,31 @@ export function EditorView() {
             <div className="editor-toolbar">
               <span className="editor-path">{active.path}</span>
               <div className="editor-toolbar-actions">
-                <button className="editor-tb-btn" onClick={() => reload(active.path)} title="Recargar desde disco">
+                <button className="editor-tb-btn" onClick={() => reload(active.path)} title="Reload from disk">
                   <RotateCw size={12} />
                 </button>
                 <button
                   className="editor-tb-btn editor-tb-save"
                   onClick={() => save(active.path)}
                   disabled={!dirty}
-                  title="Guardar (Ctrl+S)"
+                  title="Save (Ctrl+S)"
                 >
                   <Save size={12} />
-                  <span>{dirty ? "Guardar" : "Guardado"}</span>
+                  <span>{dirty ? "Save" : "Saved"}</span>
                 </button>
               </div>
             </div>
             {active.externalChanged && (
               <div className="editor-conflict">
-                <span>⚠ El archivo cambió en disco (afuera del editor) y tenés cambios sin guardar.</span>
-                <button onClick={() => reload(active.path)}>Recargar desde disco</button>
+                <span>⚠ The file changed on disk (outside the editor) and you have unsaved changes.</span>
+                <button onClick={() => reload(active.path)}>Reload from disk</button>
               </div>
             )}
             <div className="editor-body">
               {active.error ? (
-                <div className="editor-error">No se puede abrir: {active.error}</div>
+                <div className="editor-error">Can't open: {active.error}</div>
               ) : active.loading ? (
-                <div className="editor-loading">Cargando...</div>
+                <div className="editor-loading">Loading...</div>
               ) : (
                 <CodeEditor
                   key={active.path}
@@ -102,7 +102,7 @@ export function EditorView() {
         ) : (
           <div className="editor-empty">
             <FileCode size={40} opacity={0.2} />
-            <p>Seleccioná un archivo en el explorador para editarlo.</p>
+            <p>Select a file in the explorer to edit it.</p>
           </div>
         )}
       </div>
