@@ -17,10 +17,10 @@ export function MetricsView() {
   const providerEntries = Object.entries(m.byProvider).sort((a, b) => b[1].prompts - a[1].prompts);
 
   const stats = [
-    { icon: TrendingUp,    label: "Ejecuciones",         value: String(totalExec),               sub: `${m.chatPrompts} chat · ${m.workflowRuns} workflows` },
-    { icon: Clock,         label: "Tiempo de respuesta", value: avgLatency != null ? fmtMs(avgLatency) : "—", sub: "promedio" },
-    { icon: Zap,           label: "Tokens (aprox.)",     value: fmtTokens(totalTokens),          sub: `${fmtTokens(approxTokens(m.inChars))} in · ${fmtTokens(approxTokens(m.outChars))} out` },
-    { icon: MessageSquare, label: "Mensajes al agente",  value: String(m.chatPrompts),           sub: "turnos de chat" },
+    { icon: TrendingUp,    label: "Executions",     value: String(totalExec),               sub: `${m.chatPrompts} chat · ${m.workflowRuns} workflows` },
+    { icon: Clock,         label: "Response time",  value: avgLatency != null ? fmtMs(avgLatency) : "—", sub: "average" },
+    { icon: Zap,           label: "Tokens (approx.)", value: fmtTokens(totalTokens),        sub: `${fmtTokens(approxTokens(m.inChars))} in · ${fmtTokens(approxTokens(m.outChars))} out` },
+    { icon: MessageSquare, label: "Messages to agent", value: String(m.chatPrompts),        sub: "chat turns" },
   ];
 
   const providerName = (id: string) => providers.find((p) => p.id === id)?.name ?? id;
@@ -30,12 +30,12 @@ export function MetricsView() {
     <div className="metrics-view">
       <div className="settings-header metrics-header-row">
         <div>
-          <h2 className="settings-title">Métricas</h2>
-          <p className="settings-subtitle">Uso real de agentes y workflows. Última actividad: {fmtTime(m.lastActivity)}</p>
+          <h2 className="settings-title">Metrics</h2>
+          <p className="settings-subtitle">Real agent and workflow usage. Last activity: {fmtTime(m.lastActivity)}</p>
         </div>
         {totalExec > 0 && (
-          <button className="metrics-reset-btn" onClick={reset} title="Reiniciar métricas">
-            <RotateCcw size={13} /> Reiniciar
+          <button className="metrics-reset-btn" onClick={reset} title="Reset metrics">
+            <RotateCcw size={13} /> Reset
           </button>
         )}
       </div>
@@ -53,14 +53,14 @@ export function MetricsView() {
 
       {providerEntries.length > 0 ? (
         <div className="metrics-table-wrap">
-          <div className="detail-label" style={{ marginBottom: 8 }}>Por proveedor</div>
+          <div className="detail-label" style={{ marginBottom: 8 }}>By provider</div>
           <table className="metrics-table">
             <thead>
               <tr>
-                <th>Proveedor</th>
-                <th>Mensajes</th>
-                <th>Latencia prom.</th>
-                <th>Tokens (aprox.)</th>
+                <th>Provider</th>
+                <th>Messages</th>
+                <th>Avg. latency</th>
+                <th>Tokens (approx.)</th>
               </tr>
             </thead>
             <tbody>
@@ -78,13 +78,13 @@ export function MetricsView() {
             </tbody>
           </table>
           <p className="detail-hint">
-            Los tokens son una aproximación (≈ caracteres ÷ 4): ACP no reporta uso exacto de tokens.
+            Tokens are an approximation (≈ characters ÷ 4): ACP doesn't report exact token usage.
           </p>
         </div>
       ) : (
         <div className="metrics-empty">
           <TrendingUp size={40} opacity={0.2} />
-          <p>Las métricas aparecerán acá una vez que uses un agente en el chat o ejecutes un workflow.</p>
+          <p>Metrics will appear here once you use an agent in the chat or run a workflow.</p>
         </div>
       )}
     </div>

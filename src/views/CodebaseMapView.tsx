@@ -71,7 +71,7 @@ export function CodebaseMapView() {
 
   const scan = useCallback(async () => {
     if (!isTauri()) {
-      setError("El mapa requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+      setError("The map requires the desktop app (Tauri). Run: npm run tauri dev");
       return;
     }
     setLoading(true);
@@ -106,20 +106,20 @@ export function CodebaseMapView() {
       <div className="cbmap-toolbar">
         <div className="cbmap-title">
           <Network size={14} />
-          <span>Mapa del codebase</span>
-          {graph && <span className="cbmap-count">{graph.nodes.length} archivos · {graph.edges.length} imports</span>}
-          {graph?.truncated && <span className="cbmap-warn">(truncado a los primeros 250)</span>}
+          <span>Codebase map</span>
+          {graph && <span className="cbmap-count">{graph.nodes.length} files · {graph.edges.length} imports</span>}
+          {graph?.truncated && <span className="cbmap-warn">(truncated to the first 250)</span>}
         </div>
-        <button className="cbmap-refresh" onClick={scan} disabled={loading} title="Reescanear">
+        <button className="cbmap-refresh" onClick={scan} disabled={loading} title="Rescan">
           {loading ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
-          <span>{loading ? "Escaneando…" : "Reescanear"}</span>
+          <span>{loading ? "Scanning…" : "Rescan"}</span>
         </button>
       </div>
       <div className="cbmap-canvas">
         {error ? (
           <div className="cbmap-empty cbmap-error">{error}</div>
         ) : loading && !graph ? (
-          <div className="cbmap-empty"><Loader2 size={20} className="spin" /> Escaneando el proyecto…</div>
+          <div className="cbmap-empty"><Loader2 size={20} className="spin" /> Scanning the project…</div>
         ) : (
           <ReactFlow
             nodes={nodes}
