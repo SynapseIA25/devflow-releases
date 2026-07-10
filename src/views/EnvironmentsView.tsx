@@ -88,13 +88,13 @@ export function EnvironmentsView() {
   };
 
   const promote = async (env: TestEnv) => {
-    if (!confirm(`¿Promover el ambiente "${env.name}"?\nSe commitean sus cambios y se hace merge de ${env.branch} a ${env.baseBranch}, y luego se descarta el ambiente.`)) return;
+    if (!confirm(`Promote environment "${env.name}"?\nIts changes are committed and ${env.branch} is merged into ${env.baseBranch}, then the environment is discarded.`)) return;
     setBusy("promote"); setError(null); setConflict(null);
     try {
       await git("git add -A", env.path);
       // Si no hay cambios, el commit falla con exit≠0 — no es error fatal, seguimos al merge.
-      await git(`git commit -m "devflow: cambios del ambiente ${env.name}"`, env.path);
-      const m = await git(`git merge --no-ff "${env.branch}" -m "devflow: promover ambiente ${env.name}"`, projectPath);
+      await git(`git commit -m "devflow: changes from environment ${env.name}"`, env.path);
+      const m = await git(`git merge --no-ff "${env.branch}" -m "devflow: promote environment ${env.name}"`, projectPath);
       if (m.exitCode !== 0) {
         // ¿Falló por conflictos? Listamos los archivos en conflicto (diff-filter=U) para resolverlos.
         const u = await git("git diff --name-only --diff-filter=U", projectPath);
@@ -102,7 +102,7 @@ export function EnvironmentsView() {
         if (files.length > 0) {
           setConflict({ envId: env.id, files });
         } else {
-          setError(`El merge a ${env.baseBranch} falló (working tree sucio o base desactualizada). El ambiente NO se descartó.\n${m.output.slice(-500)}`);
+          setError(`Merge into ${env.baseBranch} failed (dirty working tree or outdated base). The environment was NOT discarded.\n${m.output.slice(-500)}`);
         }
         return;
       }
@@ -147,7 +147,7 @@ export function EnvironmentsView() {
   };
 
   const discard = async (env: TestEnv) => {
-    if (!confirm(`¿Descartar el ambiente "${env.name}"?\nSe borra el worktree y la rama ${env.branch} (se pierden los cambios no promovidos).`)) return;
+    if (!confirm(`Discard environment "${env.name}"?\nThe worktree and branch ${env.branch} are deleted (unpromoted changes are lost).`)) return;
     setBusy("discard"); setError(null);
     try {
       await discardWorktree(env);
@@ -167,24 +167,24 @@ export function EnvironmentsView() {
     <div className="env-view">
       <div className="env-sidebar">
         <div className="env-header">
-          <span className="env-title"><Boxes size={14} /> Ambientes</span>
+          <span className="env-title"><Boxes size={14} /> Environments</span>
         </div>
         <div className="env-create">
           <input
             className="env-input"
-            placeholder="Nombre (ej. exp-auth)"
+            placeholder="Name (e.g. exp-auth)"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void create(); }}
           />
-          <button className="env-add-btn" title="Crear ambiente (worktree)" onClick={() => void create()} disabled={creating || !newName.trim()}>
+          <button className="env-add-btn" title="Create environment (worktree)" onClick={() => void create()} disabled={creating || !newName.trim()}>
             {creating ? <Loader size={13} className="spin" /> : <Plus size={14} />}
           </button>
         </div>
-        <p className="env-hint">Cada ambiente es un git worktree aislado con su rama. El agente/terminal trabajan ahí sin tocar el proyecto real.</p>
+        <p className="env-hint">Each environment is an isolated git worktree with its own branch. The agent/terminal work there without touching the real project.</p>
 
         <div className="env-list">
-          {environments.length === 0 && <div className="env-empty">Sin ambientes. Creá uno para que el agente pruebe cambios sin riesgo.</div>}
+          {environments.length === 0 && <div className="env-empty">No environments. Create one so the agent can test changes safely.</div>}
           {environments.map((env) => (
             <div key={env.id} className={`env-row${selected === env.id ? " selected" : ""}`} onClick={() => setSelected(env.id)}>
               <GitBranch size={13} className="env-row-icon" />
@@ -201,7 +201,7 @@ export function EnvironmentsView() {
         {error && <div className="env-error"><pre>{error}</pre><button onClick={() => setError(null)}><X size={12} /></button></div>}
         {!selectedEnv ? (
           <div className="env-placeholder">
-            {isTauri() ? "Seleccioná o creá un ambiente." : "Los ambientes requieren la app desktop (Tauri)."}
+            {isTauri() ? "Select or create an environment." : "Environments require the desktop app (Tauri)."}
           </div>
         ) : (
           <>
@@ -213,24 +213,24 @@ export function EnvironmentsView() {
               <select
                 className="env-agent-select"
                 value={selectedEnv.agentId ?? ""}
-                title="Agente asignado a este ambiente"
+                title="Agent assigned to this environment"
                 onChange={(e) => updateEnvironment(selectedEnv.id, { agentId: e.target.value || undefined })}
               >
-                <option value="">Sin agente</option>
+                <option value="">No agent</option>
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <div className="env-actions">
                 <button className="env-btn env-btn--chat" onClick={() => openInChat(selectedEnv)} disabled={busy !== null}>
-                  <MessageSquare size={12} /> Abrir en chat
+                  <MessageSquare size={12} /> Open in chat
                 </button>
                 <button className="env-btn" onClick={() => void loadDiff(selectedEnv)} disabled={busy !== null}>
-                  {busy === "diff" ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} Ver diff
+                  {busy === "diff" ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} View diff
                 </button>
                 <button className="env-btn env-btn--promote" onClick={() => void promote(selectedEnv)} disabled={busy !== null}>
-                  {busy === "promote" ? <Loader size={12} className="spin" /> : <ArrowUpFromLine size={12} />} Promover
+                  {busy === "promote" ? <Loader size={12} className="spin" /> : <ArrowUpFromLine size={12} />} Promote
                 </button>
                 <button className="env-btn env-btn--discard" onClick={() => void discard(selectedEnv)} disabled={busy !== null}>
-                  {busy === "discard" ? <Loader size={12} className="spin" /> : <Trash2 size={12} />} Descartar
+                  {busy === "discard" ? <Loader size={12} className="spin" /> : <Trash2 size={12} />} Discard
                 </button>
               </div>
             </div>
@@ -238,31 +238,31 @@ export function EnvironmentsView() {
             {diff && diff.envId === selectedEnv.id && (
               <div className="env-diff">
                 <div className="env-diff-head">
-                  <span>Diff del ambiente</span>
-                  <button onClick={() => setDiff(null)} title="Cerrar diff"><X size={12} /></button>
+                  <span>Environment diff</span>
+                  <button onClick={() => setDiff(null)} title="Close diff"><X size={12} /></button>
                 </div>
-                {diff.text.trim() ? <DiffBody text={diff.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> Sin cambios respecto de la base.</div>}
+                {diff.text.trim() ? <DiffBody text={diff.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>}
               </div>
             )}
 
             {conflict && conflict.envId === selectedEnv.id && (
               <div className="env-conflict">
-                <div className="env-conflict-head"><ShieldAlert size={14} color="#d29922" /> Conflictos de merge — {conflict.files.length} archivo(s)</div>
+                <div className="env-conflict-head"><ShieldAlert size={14} color="#d29922" /> Merge conflicts — {conflict.files.length} file(s)</div>
                 <p className="env-conflict-hint">
-                  El merge de <code>{selectedEnv.branch}</code> a <code>{selectedEnv.baseBranch}</code> tiene conflictos. Resolvelos en el editor
-                  (buscá los marcadores <code>{"<<<<<<<"}</code>) y volvé a <strong>Promover</strong>, o <strong>abortá el merge</strong> para dejar la base como estaba.
+                  Merging <code>{selectedEnv.branch}</code> into <code>{selectedEnv.baseBranch}</code> has conflicts. Resolve them in the editor
+                  (look for the <code>{"<<<<<<<"}</code> markers) and hit <strong>Promote</strong> again, or <strong>abort the merge</strong> to leave the base as it was.
                 </p>
                 <ul className="env-conflict-list">
                   {conflict.files.map((f) => (
                     <li key={f}>
                       <FileWarning size={12} color="#d29922" />
                       <code className="env-conflict-file">{f}</code>
-                      <button className="env-btn" onClick={() => useUiStore.getState().openInEditor(projectFile(f))}>Abrir en editor</button>
+                      <button className="env-btn" onClick={() => useUiStore.getState().openInEditor(projectFile(f))}>Open in editor</button>
                     </li>
                   ))}
                 </ul>
                 <button className="env-btn env-btn--discard" onClick={() => void abortMerge()} disabled={busy !== null}>
-                  {busy === "promote" ? <Loader size={12} className="spin" /> : <X size={12} />} Abortar merge
+                  {busy === "promote" ? <Loader size={12} className="spin" /> : <X size={12} />} Abort merge
                 </button>
               </div>
             )}
