@@ -54,29 +54,29 @@ export function TerminalsView() {
     <div className="terms-view">
       <div className="terms-sidebar">
         <div className="terms-header">
-          <span className="terms-title"><SquareTerminal size={14} /> Terminales</span>
-          <button className="terms-add-btn" onClick={openAdd} title="Nueva terminal"><Plus size={14} /></button>
+          <span className="terms-title"><SquareTerminal size={14} /> Terminals</span>
+          <button className="terms-add-btn" onClick={openAdd} title="New terminal"><Plus size={14} /></button>
         </div>
 
         {showAdd && (
           <div className="terms-add-form">
-            <input className="terms-input" placeholder="Nombre (opcional)" value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus
+            <input className="terms-input" placeholder="Name (optional)" value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus
               onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") setShowAdd(false); }} />
             <div className="terms-cwd-row">
-              <input className="terms-input" placeholder="Carpeta (cwd)" value={newCwd} onChange={(e) => setNewCwd(e.target.value)}
+              <input className="terms-input" placeholder="Folder (cwd)" value={newCwd} onChange={(e) => setNewCwd(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") create(); if (e.key === "Escape") setShowAdd(false); }} />
-              <button className="terms-icon" title="Elegir carpeta…" onClick={() => void pickCwd()}><FolderOpen size={13} /></button>
+              <button className="terms-icon" title="Choose folder…" onClick={() => void pickCwd()}><FolderOpen size={13} /></button>
             </div>
             <div className="terms-add-actions">
-              <button className="terms-btn terms-btn--primary" onClick={create}>Crear</button>
-              <button className="terms-btn" onClick={() => setShowAdd(false)}>Cancelar</button>
+              <button className="terms-btn terms-btn--primary" onClick={create}>Create</button>
+              <button className="terms-btn" onClick={() => setShowAdd(false)}>Cancel</button>
             </div>
           </div>
         )}
 
         <div className="terms-list">
           {terminals.length === 0 && !showAdd && (
-            <div className="terms-empty">Sin terminales. Creá una con ＋ para tener un shell interactivo con su propio cwd, independiente del chat.</div>
+            <div className="terms-empty">No terminals. Create one with ＋ for an interactive shell with its own cwd, independent of the chat.</div>
           )}
           {terminals.map((t) => (
             <div key={t.id} className={`terms-row${activeId === t.id ? " selected" : ""}`} onClick={() => setActive(t.id)}>
@@ -96,8 +96,8 @@ export function TerminalsView() {
                 )}
               </div>
               <div className="terms-row-actions">
-                <button className="terms-icon" title="Renombrar" onClick={(e) => { e.stopPropagation(); startRename(t.id, t.name); }}><Pencil size={11} /></button>
-                <button className="terms-icon terms-icon--del" title="Cerrar terminal" onClick={(e) => { e.stopPropagation(); removeTerminal(t.id); }}><Trash2 size={11} /></button>
+                <button className="terms-icon" title="Rename" onClick={(e) => { e.stopPropagation(); startRename(t.id, t.name); }}><Pencil size={11} /></button>
+                <button className="terms-icon terms-icon--del" title="Close terminal" onClick={(e) => { e.stopPropagation(); removeTerminal(t.id); }}><Trash2 size={11} /></button>
               </div>
             </div>
           ))}
@@ -108,8 +108,8 @@ export function TerminalsView() {
         {terminals.length === 0 ? (
           <div className="terms-placeholder">
             <SquareTerminal size={34} />
-            <div>Terminales independientes<br /><span className="terms-placeholder-sub">Shells interactivos con su propio cwd, desacoplados del chat.</span></div>
-            <button className="terms-btn terms-btn--primary" onClick={openAdd}><Plus size={13} /> Nueva terminal</button>
+            <div>Independent terminals<br /><span className="terms-placeholder-sub">Interactive shells with their own cwd, decoupled from the chat.</span></div>
+            <button className="terms-btn terms-btn--primary" onClick={openAdd}><Plus size={13} /> New terminal</button>
           </div>
         ) : (
           <>

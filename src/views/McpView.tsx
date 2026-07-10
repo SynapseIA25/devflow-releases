@@ -36,108 +36,108 @@ type Prereqs = { node: boolean; npx: boolean; uvx: boolean; uv: boolean };
 const CATALOG: McpServer[] = [
   {
     id: "filesystem", name: "Filesystem", transport: "stdio", official: true, version: "1.0.4",
-    description: "Lee y escribe archivos del sistema. Permite al agente acceder, crear y modificar archivos locales.",
+    description: "Reads and writes files on the system. Lets the agent access, create and modify local files.",
     icon: <FileCode size={16} />, status: "stopped",
     command: "npx -y @modelcontextprotocol/server-filesystem .",
     tools: [
-      { name: "read_file",       description: "Lee el contenido completo de un archivo" },
-      { name: "write_file",      description: "Crea o sobreescribe un archivo" },
-      { name: "list_directory",  description: "Lista el contenido de un directorio" },
-      { name: "search_files",    description: "Busca archivos por patrón glob" },
-      { name: "get_file_info",   description: "Obtiene metadata de un archivo" },
+      { name: "read_file",       description: "Reads the full content of a file" },
+      { name: "write_file",      description: "Creates or overwrites a file" },
+      { name: "list_directory",  description: "Lists the contents of a directory" },
+      { name: "search_files",    description: "Searches files by glob pattern" },
+      { name: "get_file_info",   description: "Gets a file's metadata" },
     ],
-    resources: [{ uri: "file://.", name: "Directorio actual" }],
+    resources: [{ uri: "file://.", name: "Current directory" }],
   },
   {
     id: "code-index", name: "Code Index", transport: "stdio", official: false, version: "0.6.0",
-    description: "Indexa el código del proyecto de forma estructural (símbolos, funciones, imports — sin embeddings ni API externa) y permite al agente buscar código y archivos por lenguaje natural. Ideal para proyectos grandes.",
+    description: "Indexes the project's code structurally (symbols, functions, imports — no embeddings or external API) and lets the agent search code and files in natural language. Ideal for large projects.",
     icon: <ScanSearch size={16} />, status: "stopped",
     command: "uvx code-index-mcp",
     tools: [
-      { name: "set_project_path",  description: "Fija la carpeta base a indexar" },
-      { name: "search_code",       description: "Busca patrones/símbolos en el código indexado" },
-      { name: "find_files",        description: "Encuentra archivos por patrón glob" },
-      { name: "get_file_summary",  description: "Resume un archivo: funciones, imports, líneas" },
-      { name: "refresh_index",     description: "Reconstruye el índice del proyecto" },
+      { name: "set_project_path",  description: "Sets the base folder to index" },
+      { name: "search_code",       description: "Searches patterns/symbols in the indexed code" },
+      { name: "find_files",        description: "Finds files by glob pattern" },
+      { name: "get_file_summary",  description: "Summarizes a file: functions, imports, lines" },
+      { name: "refresh_index",     description: "Rebuilds the project index" },
     ],
   },
   {
     id: "git", name: "Git", transport: "stdio", official: true, version: "0.6.2",
-    description: "Commits, branches, diffs, logs. Permite al agente gestionar el repositorio.",
+    description: "Commits, branches, diffs, logs. Lets the agent manage the repository.",
     icon: <GitBranch size={16} />, status: "stopped",
     command: "uvx mcp-server-git --repository .",
     tools: [
-      { name: "git_status",  description: "Muestra el estado del repositorio" },
-      { name: "git_diff",    description: "Muestra diferencias entre commits" },
-      { name: "git_commit",  description: "Crea un commit con mensaje" },
-      { name: "git_log",     description: "Lista el historial de commits" },
-      { name: "git_branch",  description: "Lista, crea o cambia de branch" },
-      { name: "git_add",     description: "Agrega archivos al staging" },
+      { name: "git_status",  description: "Shows the repository status" },
+      { name: "git_diff",    description: "Shows differences between commits" },
+      { name: "git_commit",  description: "Creates a commit with a message" },
+      { name: "git_log",     description: "Lists the commit history" },
+      { name: "git_branch",  description: "Lists, creates or switches branches" },
+      { name: "git_add",     description: "Stages files" },
     ],
   },
   {
     id: "brave-search", name: "Brave Search", transport: "stdio", official: true, version: "0.6.2",
-    description: "Búsqueda web en tiempo real usando la API de Brave. Sin rastreo.",
+    description: "Real-time web search using the Brave API. No tracking.",
     icon: <Search size={16} />, status: "stopped",
     command: "npx -y @modelcontextprotocol/server-brave-search",
     env: { BRAVE_API_KEY: "" },
     tools: [
-      { name: "brave_web_search",   description: "Búsqueda web con resultados paginados" },
-      { name: "brave_local_search", description: "Búsqueda de negocios y lugares locales" },
+      { name: "brave_web_search",   description: "Web search with paginated results" },
+      { name: "brave_local_search", description: "Search for local businesses and places" },
     ],
   },
   {
     id: "puppeteer", name: "Puppeteer", transport: "stdio", official: true, version: "0.6.2",
-    description: "Automatización de navegador: navega URLs, hace screenshots, extrae contenido.",
+    description: "Browser automation: navigate URLs, take screenshots, extract content.",
     icon: <Globe2 size={16} />, status: "stopped",
     command: "npx -y @modelcontextprotocol/server-puppeteer",
     tools: [
-      { name: "puppeteer_navigate",   description: "Navega a una URL" },
-      { name: "puppeteer_screenshot", description: "Captura pantalla de la página" },
-      { name: "puppeteer_click",      description: "Hace click en un elemento" },
-      { name: "puppeteer_fill",       description: "Rellena un campo de formulario" },
-      { name: "puppeteer_evaluate",   description: "Ejecuta JavaScript en el navegador" },
+      { name: "puppeteer_navigate",   description: "Navigates to a URL" },
+      { name: "puppeteer_screenshot", description: "Captures a screenshot of the page" },
+      { name: "puppeteer_click",      description: "Clicks an element" },
+      { name: "puppeteer_fill",       description: "Fills a form field" },
+      { name: "puppeteer_evaluate",   description: "Runs JavaScript in the browser" },
     ],
   },
   {
     id: "postgres", name: "PostgreSQL", transport: "stdio", official: true, version: "0.6.2",
-    description: "Acceso de solo lectura a bases de datos PostgreSQL.",
+    description: "Read-only access to PostgreSQL databases.",
     icon: <Database size={16} />, status: "stopped",
     command: "npx -y @modelcontextprotocol/server-postgres",
     env: { POSTGRES_CONNECTION_STRING: "postgresql://user:pass@localhost/db" },
     tools: [
-      { name: "query",          description: "Ejecuta un query SQL de solo lectura" },
-      { name: "list_tables",    description: "Lista todas las tablas del schema" },
-      { name: "describe_table", description: "Muestra la estructura de una tabla" },
+      { name: "query",          description: "Runs a read-only SQL query" },
+      { name: "list_tables",    description: "Lists all tables in the schema" },
+      { name: "describe_table", description: "Shows a table's structure" },
     ],
   },
   {
     id: "fetch", name: "Fetch", transport: "stdio", official: true, version: "1.1.6",
-    description: "Hace requests HTTP y convierte páginas web a markdown.",
+    description: "Makes HTTP requests and converts web pages to markdown.",
     icon: <Globe size={16} />, status: "stopped",
     command: "uvx mcp-server-fetch",
-    tools: [{ name: "fetch", description: "Obtiene una URL y devuelve su contenido en markdown" }],
+    tools: [{ name: "fetch", description: "Fetches a URL and returns its content as markdown" }],
   },
   {
     id: "slack", name: "Slack", transport: "stdio", official: true, version: "0.6.2",
-    description: "Lee mensajes, lista canales y envía notificaciones a Slack.",
+    description: "Reads messages, lists channels and sends notifications to Slack.",
     icon: <Hash size={16} />, status: "stopped",
     command: "npx -y @modelcontextprotocol/server-slack",
     env: { SLACK_BOT_TOKEN: "", SLACK_TEAM_ID: "" },
     tools: [
-      { name: "slack_list_channels",       description: "Lista canales del workspace" },
-      { name: "slack_post_message",        description: "Envía un mensaje a un canal" },
-      { name: "slack_get_channel_history", description: "Lee el historial de un canal" },
+      { name: "slack_list_channels",       description: "Lists workspace channels" },
+      { name: "slack_post_message",        description: "Sends a message to a channel" },
+      { name: "slack_get_channel_history", description: "Reads a channel's history" },
     ],
   },
   {
     id: "warp", name: "Warp Terminal", transport: "stdio", official: false,
-    description: "Integración con Warp — ejecuta comandos con terminal potenciado por IA.",
+    description: "Warp integration — run commands with an AI-powered terminal.",
     icon: <Terminal size={16} />, status: "stopped",
     command: "warp-mcp-server",
     tools: [
-      { name: "run_command", description: "Ejecuta un comando en Warp terminal" },
-      { name: "get_output",  description: "Obtiene el output del último comando" },
+      { name: "run_command", description: "Runs a command in the Warp terminal" },
+      { name: "get_output",  description: "Gets the output of the last command" },
     ],
   },
   {
@@ -146,19 +146,19 @@ const CATALOG: McpServer[] = [
     // MiMo (cerebro de código) puede leer/responder mensajes de WhatsApp/Slack/Telegram/etc. Requiere
     // Hermes instalado (ruta absoluta a esta máquina, mismo criterio que providers.ts). Sus tools de
     // browser/visión/computer-use NO se exponen por acá (viven dentro del agent loop de Hermes).
-    id: "hermes-messaging", name: "Hermes · Mensajería", transport: "stdio", official: false, version: "0.17",
-    description: "Da a MiMo acceso al inbox multi-plataforma de Hermes (WhatsApp, Slack, Telegram…): listar conversaciones, leer/enviar mensajes, adjuntos y eventos. Requiere Hermes instalado.",
+    id: "hermes-messaging", name: "Hermes · Messaging", transport: "stdio", official: false, version: "0.17",
+    description: "Gives MiMo access to Hermes' multi-platform inbox (WhatsApp, Slack, Telegram…): list conversations, read/send messages, attachments and events. Requires Hermes installed.",
     icon: <MessagesSquare size={16} />, status: "stopped",
     // Ruta resuelta en runtime (ver efecto en McpView: hermes_path detecta el binario). Fallback por PATH.
     command: "hermes mcp serve",
     tools: [
-      { name: "conversations_list", description: "Lista las conversaciones activas de todas las plataformas conectadas" },
-      { name: "conversation_get",   description: "Detalle de una conversación por su session key" },
-      { name: "messages_read",      description: "Lee los mensajes recientes de una conversación" },
-      { name: "messages_send",      description: "Envía un mensaje a una conversación (platform:chat_id)" },
-      { name: "channels_list",      description: "Lista canales/targets disponibles en cada plataforma" },
-      { name: "attachments_fetch",  description: "Obtiene los adjuntos (imágenes/media) de un mensaje" },
-      { name: "events_poll",        description: "Consulta eventos nuevos de conversación desde un cursor" },
+      { name: "conversations_list", description: "Lists active conversations across all connected platforms" },
+      { name: "conversation_get",   description: "Details of a conversation by its session key" },
+      { name: "messages_read",      description: "Reads the recent messages of a conversation" },
+      { name: "messages_send",      description: "Sends a message to a conversation (platform:chat_id)" },
+      { name: "channels_list",      description: "Lists available channels/targets on each platform" },
+      { name: "attachments_fetch",  description: "Gets the attachments (images/media) of a message" },
+      { name: "events_poll",        description: "Polls for new conversation events since a cursor" },
     ],
   },
 ];
@@ -169,7 +169,7 @@ function StatusBadge({ status }: { status: McpServer["status"] }) {
     running:    { icon: <CheckCircle size={10} />, label: "Running",     cls: "status-running" },
     stopped:    { icon: <Circle      size={10} />, label: "Stopped",     cls: "status-stopped" },
     error:      { icon: <AlertCircle size={10} />, label: "Error",       cls: "status-error"   },
-    connecting: { icon: <RefreshCw   size={10} className="spin" />, label: "Conectando", cls: "status-connecting" },
+    connecting: { icon: <RefreshCw   size={10} className="spin" />, label: "Connecting", cls: "status-connecting" },
   };
   const { icon, label, cls } = map[status];
   return <span className={`mcp-status-badge ${cls}`}>{icon}{label}</span>;
@@ -184,8 +184,8 @@ function PrereqsBanner({ prereqs }: { prereqs: Prereqs | null }) {
     <div className="mcp-prereqs-banner">
       <AlertCircle size={13} />
       <span>
-        Faltan dependencias: <strong>{missing.join(", ")}</strong>.
-        Instalá Node.js y/o <code>uv</code> para poder ejecutar los servidores.
+        Missing dependencies: <strong>{missing.join(", ")}</strong>.
+        Install Node.js and/or <code>uv</code> to run the servers.
       </span>
     </div>
   );
@@ -224,7 +224,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
         <div className="mcp-detail-info">
           <div className="mcp-detail-name">
             {server.name}
-            {server.official && <span className="mcp-official-badge">oficial</span>}
+            {server.official && <span className="mcp-official-badge">official</span>}
           </div>
           <StatusBadge status={server.status} />
         </div>
@@ -234,9 +234,9 @@ function ServerDetail({ server, onToggle, onRemove }: {
             onClick={() => onToggle(envVals)}
             disabled={server.status === "connecting"}
           >
-            {server.status === "connecting" ? <><RefreshCw size={12} className="spin" /> Conectando...</> :
-             server.status === "running"     ? <><Square size={12} /> Detener</> :
-                                              <><Play size={12} /> Iniciar</>}
+            {server.status === "connecting" ? <><RefreshCw size={12} className="spin" /> Connecting...</> :
+             server.status === "running"     ? <><Square size={12} /> Stop</> :
+                                              <><Play size={12} /> Start</>}
           </button>
           <button className="mcp-action-btn danger" onClick={onRemove}>
             <Trash2 size={12} />
@@ -261,7 +261,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
 
       {server.command && (
         <div className="mcp-section">
-          <div className="mcp-section-label">Comando</div>
+          <div className="mcp-section-label">Command</div>
           <div className="mcp-command-row">
             <code className="mcp-command">{server.command}</code>
             <button className="mcp-copy-btn" onClick={() => copy(server.command!)}>
@@ -275,7 +275,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
         <div className="mcp-section">
           <button className="mcp-env-toggle" onClick={() => setShowEnv((v) => !v)}>
             {showEnv ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-            Variables de entorno ({Object.keys(server.env).length})
+            Environment variables ({Object.keys(server.env).length})
           </button>
           {showEnv && (
             <div className="mcp-env-list">
@@ -286,7 +286,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
                     type="password"
                     className="mcp-env-input"
                     value={v}
-                    placeholder="valor..."
+                    placeholder="value..."
                     onChange={(e) => setEnvVals((prev) => ({ ...prev, [k]: e.target.value }))}
                   />
                 </div>
@@ -297,7 +297,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
       )}
 
       <div className="mcp-section">
-        <div className="mcp-section-label">Herramientas ({server.tools.length})</div>
+        <div className="mcp-section-label">Tools ({server.tools.length})</div>
         <div className="mcp-tools-list">
           {server.tools.map((t) => <ToolRow key={t.name} tool={t} />)}
         </div>
@@ -305,7 +305,7 @@ function ServerDetail({ server, onToggle, onRemove }: {
 
       {server.resources && server.resources.length > 0 && (
         <div className="mcp-section">
-          <div className="mcp-section-label">Recursos</div>
+          <div className="mcp-section-label">Resources</div>
           <div className="mcp-tools-list">
             {server.resources.map((r) => (
               <div key={r.uri} className="mcp-tool-row">
@@ -331,7 +331,7 @@ function AddServerModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Mc
     onAdd({
       id: Math.random().toString(36).slice(2),
       name: name.trim(),
-      description: "Servidor MCP personalizado",
+      description: "Custom MCP server",
       icon: <Server size={16} />,
       transport,
       command: command.trim() || undefined,
@@ -346,15 +346,15 @@ function AddServerModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Mc
     <div className="mcp-modal-overlay" onClick={onClose}>
       <div className="mcp-modal" onClick={(e) => e.stopPropagation()}>
         <div className="mcp-modal-header">
-          <span className="mcp-modal-title">Agregar servidor MCP</span>
+          <span className="mcp-modal-title">Add MCP server</span>
           <button className="fw-btn" onClick={onClose}>
             <Plus size={13} style={{ transform: "rotate(45deg)" }} />
           </button>
         </div>
         <div className="mcp-modal-body">
           <div className="mcp-field">
-            <label className="mcp-field-label">Nombre</label>
-            <input className="mcp-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mi servidor MCP" autoFocus />
+            <label className="mcp-field-label">Name</label>
+            <input className="mcp-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="My MCP server" autoFocus />
           </div>
           <div className="mcp-field">
             <label className="mcp-field-label">Transport</label>
@@ -368,7 +368,7 @@ function AddServerModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Mc
             </div>
           </div>
           <div className="mcp-field">
-            <label className="mcp-field-label">{transport === "stdio" ? "Comando" : "URL"}</label>
+            <label className="mcp-field-label">{transport === "stdio" ? "Command" : "URL"}</label>
             <input
               className="mcp-input mcp-input-mono"
               value={command}
@@ -378,9 +378,9 @@ function AddServerModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Mc
           </div>
         </div>
         <div className="mcp-modal-footer">
-          <button className="mcp-btn-cancel" onClick={onClose}>Cancelar</button>
+          <button className="mcp-btn-cancel" onClick={onClose}>Cancel</button>
           <button className="mcp-btn-add" onClick={handleAdd} disabled={!name.trim()}>
-            <Plus size={13} /> Agregar
+            <Plus size={13} /> Add
           </button>
         </div>
       </div>
@@ -434,13 +434,13 @@ export function McpView() {
       // Browser mode: just toggle UI and show hint
       setServerStatus(id, server.status === "running" ? "stopped" : "running",
         server.status === "stopped"
-          ? "Simulado — ejecutá 'npm run tauri dev' para escribir mimocode.json real"
+          ? "Simulated — run 'npm run tauri dev' to write a real mimocode.json"
           : undefined
       );
       return;
     }
     if (!server.command) {
-      setServerStatus(id, "error", "Este server no tiene comando configurado");
+      setServerStatus(id, "error", "This server has no command configured");
       return;
     }
 
@@ -480,9 +480,9 @@ export function McpView() {
         <div className="mcp-list-header">
           <div className="mcp-list-title">
             <Server size={13} /> MCP Servers
-            {running > 0 && <span className="mcp-run-count">{running} activos</span>}
+            {running > 0 && <span className="mcp-run-count">{running} active</span>}
           </div>
-          <button className="mcp-add-btn" onClick={() => setShowAdd(true)} title="Agregar">
+          <button className="mcp-add-btn" onClick={() => setShowAdd(true)} title="Add">
             <Plus size={14} />
           </button>
         </div>
@@ -491,7 +491,7 @@ export function McpView() {
         {!inTauri && (
           <div className="mcp-mode-banner">
             <MonitorDot size={11} />
-            <span>Modo preview. Ejecutá <code>npm run tauri dev</code> para procesos reales.</span>
+            <span>Preview mode. Run <code>npm run tauri dev</code> for real processes.</span>
           </div>
         )}
 
@@ -514,7 +514,7 @@ export function McpView() {
                 className={`mcp-list-toggle ${s.status === "running" ? "stop" : "start"}`}
                 onClick={(e) => { e.stopPropagation(); toggleServer(s.id, s.env ?? {}); }}
                 disabled={s.status === "connecting"}
-                title={s.status === "running" ? "Detener" : "Iniciar"}
+                title={s.status === "running" ? "Stop" : "Start"}
               >
                 {s.status === "connecting" ? <RefreshCw size={10} className="spin" /> :
                  s.status === "running"    ? <Square size={10} /> : <Play size={10} />}
@@ -526,7 +526,7 @@ export function McpView() {
         <div className="mcp-docs-link">
           <ExternalLink size={11} />
           <a href="https://modelcontextprotocol.io" target="_blank" rel="noreferrer">
-            Docs MCP
+            MCP docs
           </a>
         </div>
       </aside>
@@ -541,7 +541,7 @@ export function McpView() {
         ) : (
           <div className="mcp-empty">
             <Server size={40} opacity={0.15} />
-            <p>Seleccioná un servidor para ver su configuración.</p>
+            <p>Select a server to see its configuration.</p>
           </div>
         )}
       </div>
