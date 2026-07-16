@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
+import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
 import * as acpClient from "../lib/acpClient";
 
 // DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
@@ -123,6 +124,36 @@ function ApiKeysSection() {
   );
 }
 
+// Economía de prompts: cuándo aplicar los recortes de ahorro de tokens (cap del archivo del editor
+// inyectado al prompt, síntesis del equipo más corta). "auto" = solo con modelos remotos.
+function EconomySection() {
+  const mode = useSettingsStore((s) => s.promptEconomy);
+  const setMode = useSettingsStore((s) => s.setPromptEconomy);
+  const OPTIONS: { id: PromptEconomyMode; label: string; desc: string }[] = [
+    { id: "auto", label: "Auto", desc: "Trim only for remote models — local models cost nothing." },
+    { id: "always", label: "Always", desc: "Trim for every model, local included." },
+    { id: "off", label: "Off", desc: "Never trim. Full context every turn (more tokens)." },
+  ];
+  return (
+    <div className="settings-economy">
+      <h3 className="settings-section-title"><Leaf size={14} /> Token economy</h3>
+      <p className="apikeys-subtitle">
+        Saves tokens on metered models: caps the editor file injected into the prompt at {ECONOMY_EDITOR_MAX_LINES} lines
+        and keeps team synthesis prompts short. Attachments are always capped.
+      </p>
+      <div className="economy-options">
+        {OPTIONS.map((o) => (
+          <label key={o.id} className={`economy-option${mode === o.id ? " on" : ""}`}>
+            <input type="radio" name="prompt-economy" checked={mode === o.id} onChange={() => setMode(o.id)} />
+            <span className="economy-option-label">{o.label}</span>
+            <span className="economy-option-desc">{o.desc}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SecuritySection() {
   const autoApprove = useSettingsStore((s) => s.autoApprovePermissions);
   const setAutoApprove = useSettingsStore((s) => s.setAutoApprovePermissions);
@@ -174,6 +205,7 @@ export function SettingsView() {
         </p>
       </div>
       <ApiKeysSection />
+      <EconomySection />
       <SecuritySection />
       <div className="providers-grid">
         {providers.map((p) => (

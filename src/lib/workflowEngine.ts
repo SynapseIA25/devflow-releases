@@ -15,6 +15,7 @@
 import { runShellCommand, readTextFile, writeTextFile, httpRequest, mcpCallTool } from "./tauriApi";
 import * as acpClient from "./acpClient";
 import { DEFAULT_PROVIDERS } from "./providers";
+import { TASK_PROFILES, type TaskProfile } from "./modelRouter";
 import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useSettingsStore } from "../store/settingsStore";
@@ -116,14 +117,25 @@ async function acquireSession(
   sessions: SessionCache,
   key: string,
   provider: string,
-  spawn: acpClient.AcpSpawnConfig
+  spawn: acpClient.AcpSpawnConfig,
+  taskProfile?: TaskProfile
 ): Promise<{ sessionId: string; isNew: boolean }> {
   const existing = sessions.get(key);
   if (existing) return { sessionId: existing, isNew: false };
   const preferredModel = useSettingsStore.getState().modelByProvider[provider];
-  const sessionId = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath, preferredModel);
+  const sessionId = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath, preferredModel, taskProfile);
   sessions.set(key, sessionId);
   return { sessionId, isNew: true };
+}
+
+// Perfil de tarea de un nodo agente/mimo: el del nodo si se eligió en el inspector, si no el del
+// agente. Solo tiene efecto sobre providers multi-modelo (OpenCode): la sesión se abre con el mejor
+// modelo GRATIS para el perfil (modelRouter, cuota-consciente). Nota: la preferencia global de modelo
+// del usuario (modelByProvider) sigue teniendo prioridad sobre el perfil en newSession.
+function nodeTaskProfile(node: WorkflowNode, agentProfile?: TaskProfile): TaskProfile | undefined {
+  const raw = node.data.taskProfile;
+  const valid = TASK_PROFILES.some((p) => p.id === raw);
+  return valid ? (raw as TaskProfile) : agentProfile;
 }
 
 // Manda un prompt a una sesión ACP y acumula el texto de la respuesta de ese turno.
@@ -151,7 +163,8 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 MiMo: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
-  const { sessionId } = await acquireSession(sessions, "mimo", "mimo", mimo.acp);
+  const profile = nodeTaskProfile(node);
+  const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, "mimo", mimo.acp, profile);
   const text = await promptAndCollect("mimo", sessionId, promptText);
   cb.onLog("success", `🤖 MiMo respondió (${text.length} chars)`);
   return { output: text };
@@ -169,7 +182,9 @@ async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, i
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
   // Sesión propia por agente (distintos agentes = distinto system prompt/persona = distinta sesión).
-  const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}`, agent.providerId, provider.acp);
+  // El perfil entra en la key: dos nodos del mismo agente con perfil distinto usan modelos distintos.
+  const profile = nodeTaskProfile(node, agent.taskProfile);
+  const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}:${profile ?? ""}`, agent.providerId, provider.acp, profile);
   // El system prompt del agente se inyecta una sola vez, en el primer turno de su sesión.
   const systemPrompt = agent.systemPrompt?.trim();
   if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;

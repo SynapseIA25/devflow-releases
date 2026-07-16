@@ -9,6 +9,7 @@ import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
 import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
+import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
@@ -264,6 +265,7 @@ export function ChatView() {
   const availableModels = useSettingsStore((s) => s.availableModelsByProvider[activeProviderId] ?? EMPTY_MODELS);
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[activeProviderId]);
   const setModelForProvider = useSettingsStore((s) => s.setModelForProvider);
+  const preferredIsAuto = useSettingsStore((s) => s.modelByProvider[activeProviderId] === AUTO_MODEL);
   const visibleAgents = useMemo(
     () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === ws?.agentId),
     [agents, projectAgentIds, ws?.agentId]
@@ -407,10 +409,12 @@ export function ChatView() {
   }, []);
 
   // Cambia el modelo del agente activo: persiste la elección y, si ya hay sesión abierta en esta
-  // pestaña, la aplica en vivo (si no, se aplica al abrir la próxima sesión).
+  // pestaña, la aplica en vivo (si no, se aplica al abrir la próxima sesión). "Auto" no es un modelo
+  // real: se persiste como preferencia y el router elige por turno (ver runAcp → classifyTask).
   const selectModel = (value: string) => {
     setModelForProvider(activeProviderId, value);
     setShowModelMenu(false);
+    if (value === AUTO_MODEL) return;
     const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === curWsId);
     if (w?.sessionId && w.sessionProvider === activeProviderId) {
       acpClient.setSessionModel(activeProviderId, w.sessionId, value).catch(() => {});
@@ -480,8 +484,23 @@ export function ChatView() {
     const activeTab = ed.tabs.find((t) => t.path === activePathForWs);
     const editorPath = activeTab && !activeTab.loading && !activeTab.error && isInsideProject(activeTab.path) ? activeTab.path : null;
     if (activeTab && editorPath) {
+      // Economía de prompts: con un modelo remoto (o modo "always"), el buffer del editor se capa a
+      // ECONOMY_EDITOR_MAX_LINES — un archivo grande inyectado entero quema tokens en cada cambio.
+      // Los adjuntos del Contexto ya van capados a 400 líneas vía readTextFile.
+      const wsAgent = useAgentsStore.getState().agents.find((a) => a.id === wsForCtx?.agentId);
+      const sessionModel = wsAgent ? acpClient.getSessionModel(wsAgent.providerId, sessionId) : null;
+      const economy = economyActive(useSettingsStore.getState().promptEconomy, sessionModel);
+      let editorContent = activeTab.content;
+      if (economy) {
+        const lines = editorContent.split("\n");
+        if (lines.length > ECONOMY_EDITOR_MAX_LINES) {
+          editorContent =
+            lines.slice(0, ECONOMY_EDITOR_MAX_LINES).join("\n") +
+            `\n… (truncated for token economy: first ${ECONOMY_EDITOR_MAX_LINES} of ${lines.length} lines; ask to read the file for the rest)`;
+        }
+      }
       const key = `@editor:${editorPath}`;
-      const block = `Open file in the editor (the user is editing it right now): ${editorPath}\n\`\`\`\n${activeTab.content}\n\`\`\``;
+      const block = `Open file in the editor (the user is editing it right now): ${editorPath}\n\`\`\`\n${editorContent}\n\`\`\``;
       if (sent.get(key) !== block) {
         sent.set(key, block);
         parts.push(block);
@@ -552,6 +571,21 @@ export function ChatView() {
         fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
       }
       inChars = fullPrompt.length;
+      // Modo Auto del router: si el usuario eligió "Auto" en el selector de modelo, clasificamos el
+      // turno (classifyTask) y elegimos el mejor modelo GRATIS disponible para ese perfil
+      // (cuota-consciente). Solo cambia el modelo de la sesión si difiere del activo; si el router no
+      // encuentra candidato (catálogo sin matches / todo agotado) el turno sigue con el modelo actual.
+      if (useSettingsStore.getState().modelByProvider[provider] === AUTO_MODEL) {
+        const avail = useSettingsStore.getState().availableModelsByProvider[provider] ?? [];
+        const target = pickModel(classifyTask(fullPrompt), avail);
+        const active = acpClient.getSessionModel(provider, sid);
+        if (target && target !== active) {
+          try {
+            await acpClient.setSessionModel(provider, sid, target);
+            useSettingsStore.getState().reportModelOptions(provider, avail, target);
+          } catch { /* si falla el cambio, el turno sigue con el modelo actual */ }
+        }
+      }
       // Si detuvieron el turno mientras se creaba la sesión, no arranquemos el prompt.
       if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
       await acpClient.prompt(provider, sid, fullPrompt);
@@ -749,12 +783,25 @@ export function ChatView() {
               agente activo (persistido por provider), en vivo si ya hay sesión abierta. */}
           {activeAcp && availableModels.length > 0 && (
             <div className="ws-model-selector" onClick={() => setShowModelMenu((v) => !v)} title="Agent model">
-              <span className="ws-model-name">{availableModels.find((m) => m.value === currentModel)?.label ?? currentModel ?? "model"}</span>
+              <span className="ws-model-name">
+                {(() => {
+                  // Con Auto, currentModel puede ser el sentinela "__auto__" hasta el primer turno
+                  // ruteado (setModelForProvider lo setea optimista) — en ese caso mostramos solo "Auto".
+                  const label = availableModels.find((m) => m.value === currentModel)?.label
+                    ?? (currentModel && currentModel !== AUTO_MODEL ? currentModel : null);
+                  if (preferredIsAuto) return `✨ Auto${label ? ` · ${label}` : ""}`;
+                  return label ?? "model";
+                })()}
+              </span>
               <ChevronDown size={10} />
               {showModelMenu && (
                 <div className="agent-dropdown ws-dropdown ws-model-dropdown">
+                  <div className={`agent-option${preferredIsAuto ? " active" : ""}`}
+                    onClick={(e) => { e.stopPropagation(); selectModel(AUTO_MODEL); }}>
+                    <div className="agent-option-name">✨ Auto — free model per task</div>
+                  </div>
                   {availableModels.map((m) => (
-                    <div key={m.value} className={`agent-option${m.value === currentModel ? " active" : ""}`}
+                    <div key={m.value} className={`agent-option${!preferredIsAuto && m.value === currentModel ? " active" : ""}`}
                       onClick={(e) => { e.stopPropagation(); selectModel(m.value); }}>
                       <div className="agent-option-name">{m.label}</div>
                     </div>

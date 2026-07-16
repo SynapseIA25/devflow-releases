@@ -1,3 +1,5 @@
+import { TASK_PROFILES } from "../lib/modelRouter";
+
 // Modelo declarativo de nodos: describe, por tipo, sus metadatos y sus campos configurables. Es la
 // FUENTE ÚNICA que consume el inspector (NodeInspector) para renderizar la config de cualquier nodo.
 // Agregar un tipo de nodo nuevo (HTTP, agente, loop, …) = agregar una entrada acá + su componente de
@@ -26,6 +28,16 @@ export type NodeSchema = {
 
 const LABEL_FIELD: NodeField = { key: "label", label: "Etiqueta", type: "text", placeholder: "Nombre del nodo" };
 
+// Perfil de tarea para el router de modelos (modelRouter): en providers multi-modelo (OpenCode) la
+// sesión del nodo usa el mejor modelo GRATIS para ese perfil, cuota-consciente. Vacío = default del agente.
+const TASK_PROFILE_FIELD: NodeField = {
+  key: "taskProfile", label: "Perfil de modelo", type: "select",
+  options: [
+    { value: "", label: "(default del agente)" },
+    ...TASK_PROFILES.map((p) => ({ value: p.id, label: `${p.label} — ${p.hint}` })),
+  ],
+};
+
 export const NODE_SCHEMAS: Record<string, NodeSchema> = {
   mimo: {
     type: "mimo",
@@ -35,6 +47,7 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
     fields: [
       LABEL_FIELD,
       { key: "prompt", label: "Prompt", type: "textarea", rows: 6, vars: true, placeholder: "Describí qué debe hacer MiMo…" },
+      TASK_PROFILE_FIELD,
     ],
   },
   terminal: {
@@ -70,6 +83,7 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
       LABEL_FIELD,
       { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents" },
       { key: "prompt", label: "Prompt", type: "textarea", rows: 6, vars: true, placeholder: "Describí qué debe hacer el agente…" },
+      TASK_PROFILE_FIELD,
     ],
   },
   http: {

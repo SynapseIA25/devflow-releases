@@ -6,6 +6,7 @@
 import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "./providers";
+import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
 
 export type AcpSpawnConfig = { command: string; args: string[] };
 
@@ -226,13 +227,23 @@ export function onModelOptions(cb: ModelOptionsListener): () => void {
 // Cambia el modelo de una sesión ACP ya abierta (para el selector de modelo en vivo).
 export async function setSessionModel(provider: string, sessionId: string, value: string): Promise<void> {
   await sendRequest(provider, "session/set_config_option", { sessionId, configId: "model", value });
+  modelBySession.set(`${provider}:${sessionId}`, value);
+}
+
+// Modelo activo por sesión (`provider:sessionId` → model id): alimenta el tracking de cuota de los
+// tiers gratis (recordModelUse en prompt) y los reintentos ante rate-limit (getSessionModel).
+const modelBySession = new Map<string, string>();
+
+export function getSessionModel(provider: string, sessionId: string): string | null {
+  return modelBySession.get(`${provider}:${sessionId}`) ?? null;
 }
 
 export async function newSession(
   provider: string,
   spawn: AcpSpawnConfig,
   cwd: string,
-  preferredModel?: string
+  preferredModel?: string,
+  taskProfile?: TaskProfile
 ): Promise<string> {
   await initialize(provider, spawn);
   const result = await sendRequest<{ sessionId: string; configOptions?: ConfigOption[] }>(provider, "session/new", {
@@ -246,10 +257,12 @@ export async function newSession(
       label: o.label ?? o.name ?? o.value,
     }));
     const has = (v?: string | null): v is string => !!v && available.some((o) => o.value === v);
-    // Prioridad: preferencia del usuario → fallback de MiMo (anti-deprecado) → default del agente.
+    // Prioridad: preferencia explícita (usuario/agente) → router por perfil de tarea (elige el mejor
+    // modelo GRATIS disponible, cuota-consciente) → fallback de MiMo (anti-deprecado) → default del agente.
     let target: string | null = null;
     if (has(preferredModel)) target = preferredModel;
-    else if (provider === "mimo" && has(MIMO_DEFAULT_MODEL)) target = MIMO_DEFAULT_MODEL;
+    else if (taskProfile) target = pickModel(taskProfile, available);
+    if (!target && provider === "mimo" && has(MIMO_DEFAULT_MODEL)) target = MIMO_DEFAULT_MODEL;
     if (target && target !== modelOption.value) {
       try {
         await setSessionModel(provider, result.sessionId, target);
@@ -259,12 +272,17 @@ export async function newSession(
       }
     }
     const current = target ?? modelOption.value ?? available[0]?.value ?? null;
+    if (current) modelBySession.set(`${provider}:${result.sessionId}`, current);
     for (const l of modelOptionsListeners) l(provider, result.sessionId, { available, current });
   }
   return result.sessionId;
 }
 
 export async function prompt(provider: string, sessionId: string, text: string): Promise<{ stopReason: string }> {
+  // Un turno = un request contra la cuota diaria del provider de inferencia del modelo de la sesión
+  // (los providers sin budget conocido —mimo, zen, locales— se cuentan igual pero nunca "se agotan").
+  const model = modelBySession.get(`${provider}:${sessionId}`);
+  if (model) recordModelUse(model);
   return sendRequest(provider, "session/prompt", {
     sessionId,
     prompt: [{ type: "text", text }],

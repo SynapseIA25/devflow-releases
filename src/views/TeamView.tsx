@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network, Boxes } from "lucide-react";
+import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network, Boxes, Cpu } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAgentsStore } from "../store/agentsStore";
-import { isExpertAgent, type AgentConfig } from "../lib/providers";
+import { useSettingsStore } from "../store/settingsStore";
+import { DEFAULT_PROVIDERS, isExpertAgent, type AgentConfig } from "../lib/providers";
 import { suggestExperts } from "../lib/expertRouter";
 import { autoDelegate, type DelegateStep } from "../lib/teamDelegate";
 import { createWorktree } from "../lib/environments";
@@ -18,6 +19,16 @@ import { useUiStore } from "../store/uiStore";
 // - Auto-delegar: un líder descompone la tarea, delega a los expertos (ACP) y sintetiza (teamDelegate).
 export function TeamView() {
   const agents = useAgentsStore((s) => s.agents);
+  // Provider sobre el que corre el equipo: "mimo" (histórico) u "opencode" (multi-LLM: cada experto
+  // usa el mejor modelo GRATIS para su taskProfile vía modelRouter, cuota-consciente). El override se
+  // aplica al delegar (providerId + model limpio para que rutee el perfil); los agentes no se tocan.
+  const teamProviderId = useSettingsStore((s) => s.teamProviderId);
+  const setTeamProviderId = useSettingsStore((s) => s.setTeamProviderId);
+  const onTeam = useMemo(
+    () => (a: AgentConfig): AgentConfig =>
+      a.providerId === teamProviderId ? a : { ...a, providerId: teamProviderId, model: "" },
+    [teamProviderId]
+  );
   const experts = useMemo(() => agents.filter(isExpertAgent), [agents]);
   const lead = useMemo(() => agents.find((a) => a.id === "mimo-coder") ?? agents[0], [agents]);
 
@@ -43,11 +54,13 @@ export function TeamView() {
     if (!task.trim() || running || !lead) return;
     setRunning(true); setSteps([]); setEnvName(null); cancelRef.current = false;
     let cwd = useProjectStore.getState().projectPath;
+    const teamLead = onTeam(lead);
+    const teamExperts = experts.map(onTeam);
     try {
       // Reiniciamos el/los proceso(s) ACP de los agentes ANTES de cada corrida: abrir muchas sesiones
       // seguidas puede wedgear el proceso mimo compartido (un turno colgado lo deja sin responder).
       // Arrancar fresco lo evita. Invalida sesiones abiertas de ese provider → resetSessions las limpia.
-      const providers = [...new Set([lead, ...experts].map((a) => a.providerId))];
+      const providers = [...new Set([teamLead, ...teamExperts].map((a) => a.providerId))];
       setSteps([{ kind: "stage", label: "Restarting the agent to start fresh…" }]);
       for (const p of providers) {
         await acpClient.restart(p);
@@ -62,7 +75,7 @@ export function TeamView() {
         cwd = wt.path;
         setEnvName(wt.name);
       }
-      await autoDelegate(task, experts, lead, cwd, (step) => setSteps((prev) => [...prev, step]), () => cancelRef.current);
+      await autoDelegate(task, teamExperts, teamLead, cwd, (step) => setSteps((prev) => [...prev, step]), () => cancelRef.current);
     } catch (e) {
       setSteps((prev) => [...prev, { kind: "error", message: e instanceof Error ? e.message : String(e) }]);
     } finally {
@@ -119,6 +132,16 @@ export function TeamView() {
 
         {mode === "delegate" && (
           <div className="team-delegate">
+            <label className="team-provider">
+              <Cpu size={13} /> Run the team on:
+              <select value={teamProviderId} onChange={(e) => setTeamProviderId(e.target.value)} disabled={running}>
+                {DEFAULT_PROVIDERS.filter((p) => p.acp).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.id === "opencode" ? " — free model per task (quota-aware)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="team-isolate">
               <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} disabled={running} />
               <Boxes size={13} /> Isolate in an environment (worktree) — experts don't touch the real project

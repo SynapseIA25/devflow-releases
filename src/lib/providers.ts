@@ -1,3 +1,5 @@
+import type { TaskProfile } from "./modelRouter";
+
 // DevFlow es un HOST de agentes ACP: no hace inferencia ni guarda credenciales de modelos. Por eso un
 // provider ya NO tiene apiKey/models/defaultModel/enabled (eso lo gestiona el CLI del agente). Si tiene
 // `acp`, ChatView lo spawnea como proceso hijo y habla ACP; los modelos se descubren en runtime
@@ -117,6 +119,10 @@ export type AgentConfig = {
   // un proyecto) para no saturarlo.
   expertArea?: string;
   areaKeywords?: string[];
+  // Perfil de tarea para el router de modelos (modelRouter.ts): cuando el agente corre sobre un
+  // provider multi-modelo (OpenCode), la sesión elige el mejor modelo GRATIS disponible para este
+  // perfil (cuota-consciente). Sin perfil (o sin match) → el default del agente, como siempre.
+  taskProfile?: TaskProfile;
 };
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
@@ -163,11 +169,12 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
 // especialidad (se inyecta al abrir la sesión ACP) y keywords para el router determinista.
 const mkExpert = (
   id: string, name: string, icon: string, color: string, area: string,
-  description: string, systemPrompt: string, skills: string[], areaKeywords: string[]
+  description: string, systemPrompt: string, skills: string[], areaKeywords: string[],
+  taskProfile: TaskProfile
 ): AgentConfig => ({
   id, name, icon, color, providerId: "mimo", model: "mimo-coder",
   description, systemPrompt: `${systemPrompt}\n\nRespondé siempre en español, de forma concreta y accionable.`,
-  skills, expertArea: area, areaKeywords, status: "inactive",
+  skills, expertArea: area, areaKeywords, taskProfile, status: "inactive",
 });
 
 export const EXPERT_AGENTS: AgentConfig[] = [
@@ -175,47 +182,47 @@ export const EXPERT_AGENTS: AgentConfig[] = [
     "Diseño de arquitectura, patrones, refactor y deuda técnica.",
     "Sos un arquitecto de software senior. Te enfocás en arquitectura, separación de responsabilidades, patrones de diseño, refactorización, escalabilidad y reducción de deuda técnica. Pensás en módulos, acoplamiento y dependencias antes de escribir código.",
     ["analysis", "refactor", "search"],
-    ["arquitectura", "patron", "patrones", "refactor", "diseño", "deuda", "escalabilidad", "modulo", "acoplamiento", "dependencias", "estructura", "solid"]),
+    ["arquitectura", "patron", "patrones", "refactor", "diseño", "deuda", "escalabilidad", "modulo", "acoplamiento", "dependencias", "estructura", "solid"], "reasoning"),
   mkExpert("expert-frontend", "Frontend / UI", "🎨", "#38bdf8", "frontend",
     "Interfaces, UX, componentes, accesibilidad y estado del cliente.",
     "Sos un experto en frontend. Te enfocás en UI/UX, componentes (React/Vue/Svelte), accesibilidad, manejo de estado, estilos y performance de render en el cliente.",
     ["file-edit", "search"],
-    ["frontend", "ui", "ux", "react", "vue", "svelte", "componente", "css", "estilos", "accesibilidad", "estado", "render", "browser", "cliente", "responsive"]),
+    ["frontend", "ui", "ux", "react", "vue", "svelte", "componente", "css", "estilos", "accesibilidad", "estado", "render", "browser", "cliente", "responsive"], "code"),
   mkExpert("expert-backend", "Backend / APIs", "🔌", "#22c55e", "backend",
     "APIs, contratos, autenticación e integraciones del servidor.",
     "Sos un experto en backend y APIs. Te enfocás en diseño de APIs (REST/GraphQL), contratos, autenticación/autorización, integraciones, validación y lógica de servidor.",
     ["file-edit", "terminal", "search"],
-    ["backend", "api", "apis", "rest", "graphql", "endpoint", "servidor", "auth", "autenticacion", "integracion", "contrato", "servicio", "middleware"]),
+    ["backend", "api", "apis", "rest", "graphql", "endpoint", "servidor", "auth", "autenticacion", "integracion", "contrato", "servicio", "middleware"], "code"),
   mkExpert("expert-db", "Base de Datos", "🗄️", "#f59e0b", "base-de-datos",
     "Esquema, migraciones, queries e índices.",
     "Sos un experto en bases de datos. Te enfocás en diseño de esquema, migraciones, optimización de queries, índices, modelado de datos y ORMs (SQL y NoSQL).",
     ["file-edit", "terminal"],
-    ["base de datos", "bd", "sql", "query", "consulta", "migracion", "esquema", "indice", "tabla", "orm", "postgres", "sqlite", "mysql", "mongo", "join"]),
+    ["base de datos", "bd", "sql", "query", "consulta", "migracion", "esquema", "indice", "tabla", "orm", "postgres", "sqlite", "mysql", "mongo", "join"], "code"),
   mkExpert("expert-devops", "DevOps / Infra", "⚙️", "#06b6d4", "devops",
     "CI/CD, IaC, contenedores, cloud y despliegue.",
     "Sos un experto en DevOps e infraestructura. Te enfocás en CI/CD, infraestructura como código, contenedores (Docker/Kubernetes), cloud, automatización de despliegues y pipelines.",
     ["terminal", "file-edit"],
-    ["devops", "ci", "cd", "pipeline", "docker", "contenedor", "kubernetes", "k8s", "deploy", "despliegue", "infra", "infraestructura", "terraform", "cloud", "aws", "gcp"]),
+    ["devops", "ci", "cd", "pipeline", "docker", "contenedor", "kubernetes", "k8s", "deploy", "despliegue", "infra", "infraestructura", "terraform", "cloud", "aws", "gcp"], "code"),
   mkExpert("expert-sre", "SRE / Observabilidad", "📡", "#ef4444", "sre",
     "Confiabilidad, monitoreo, incidentes y performance.",
     "Sos un Site Reliability Engineer. Te enfocás en confiabilidad, observabilidad (métricas/logs/traces), monitoreo, alertas, manejo de incidentes, performance, latencia y SLOs.",
     ["terminal", "analysis"],
-    ["sre", "observabilidad", "monitoreo", "metricas", "logs", "trace", "incidente", "performance", "latencia", "disponibilidad", "slo", "alerta", "confiabilidad", "uptime"]),
+    ["sre", "observabilidad", "monitoreo", "metricas", "logs", "trace", "incidente", "performance", "latencia", "disponibilidad", "slo", "alerta", "confiabilidad", "uptime"], "reasoning"),
   mkExpert("expert-seguridad", "Seguridad", "🔒", "#dc2626", "seguridad",
     "Vulnerabilidades, authz, secrets y dependencias.",
     "Sos un experto en seguridad de aplicaciones. Te enfocás en vulnerabilidades (OWASP), autenticación/autorización, manejo de secretos, inyección, XSS/CSRF, cifrado y seguridad de dependencias.",
     ["analysis", "search"],
-    ["seguridad", "vulnerabilidad", "vuln", "autorizacion", "secreto", "secrets", "xss", "csrf", "inyeccion", "cifrado", "dependencia", "cve", "owasp", "token", "permiso"]),
+    ["seguridad", "vulnerabilidad", "vuln", "autorizacion", "secreto", "secrets", "xss", "csrf", "inyeccion", "cifrado", "dependencia", "cve", "owasp", "token", "permiso"], "reasoning"),
   mkExpert("expert-qa", "QA / Testing", "🧪", "#a3e635", "qa",
     "Tests, cobertura y casos borde.",
     "Sos un experto en QA y testing. Te enfocás en tests unitarios/integración/e2e, cobertura, casos borde, mocks/fixtures, y detección de regresiones. Priorizás la robustez.",
     ["file-edit", "terminal"],
-    ["test", "tests", "testing", "prueba", "cobertura", "qa", "unitario", "e2e", "integracion", "caso borde", "mock", "fixture", "regresion", "vitest", "jest"]),
+    ["test", "tests", "testing", "prueba", "cobertura", "qa", "unitario", "e2e", "integracion", "caso borde", "mock", "fixture", "regresion", "vitest", "jest"], "code"),
   mkExpert("expert-producto", "Producto / Negocio", "📋", "#ec4899", "producto",
     "Requisitos, historias, dominio y prioridad.",
     "Sos un experto en producto y modelo de negocio. Te enfocás en requisitos, historias de usuario, modelado del dominio, priorización, alcance de MVP y traducir necesidades de negocio a features.",
     ["analysis", "search"],
-    ["producto", "negocio", "requisito", "historia", "usuario", "prioridad", "roadmap", "feature", "dominio", "stakeholder", "alcance", "mvp", "backlog"]),
+    ["producto", "negocio", "requisito", "historia", "usuario", "prioridad", "roadmap", "feature", "dominio", "stakeholder", "alcance", "mvp", "backlog"], "fast"),
 ];
 
 // Los expertos se agregan a DEFAULT_AGENTS tras su definición (evita el TDZ de referenciarlos en el

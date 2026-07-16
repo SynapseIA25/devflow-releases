@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_PROVIDERS, ProviderConfig } from "../lib/providers";
 import type { ModelOption } from "../lib/acpClient";
+import type { PromptEconomyMode } from "../lib/modelRouter";
 
 // Registro de decisiones automáticas de permisos (cuando no hay UI para aprobar, ej. workflows
 // headless). Transitorio (no se persiste): sirve para auditar qué se auto-aprobó/denegó en la sesión.
@@ -27,8 +28,16 @@ type SettingsStore = {
   providerKeys: Record<string, string>;
   // Wizard de primer arranque: true una vez que el usuario lo cerró.
   onboardingDone: boolean;
+  // Provider ACP sobre el que corre el EQUIPO de expertos (TeamView). "mimo" = comportamiento
+  // histórico; "opencode" = cada experto usa el mejor modelo GRATIS para su perfil (modelRouter).
+  teamProviderId: string;
+  // Economía de prompts (ahorro de tokens): "auto" recorta solo con modelos remotos (default),
+  // "always" siempre, "off" nunca. Ver modelRouter.economyActive.
+  promptEconomy: PromptEconomyMode;
+  setPromptEconomy: (m: PromptEconomyMode) => void;
   setProviderKey: (id: string, key: string) => void;
   setOnboardingDone: (v: boolean) => void;
+  setTeamProviderId: (id: string) => void;
   setAutoApprovePermissions: (v: boolean) => void;
   logPermission: (entry: Omit<PermissionLogEntry, "ts">) => void;
   // Elección explícita del usuario (persistida) — se aplicará en la próxima sesión de ese provider.
@@ -48,6 +57,11 @@ export const useSettingsStore = create<SettingsStore>()(
       currentModelByProvider: {},
       providerKeys: {},
       onboardingDone: false,
+      teamProviderId: "mimo",
+      promptEconomy: "auto",
+
+      setTeamProviderId: (id) => set({ teamProviderId: id }),
+      setPromptEconomy: (m) => set({ promptEconomy: m }),
 
       setProviderKey: (id, key) =>
         set((s) => {
@@ -101,6 +115,8 @@ export const useSettingsStore = create<SettingsStore>()(
         modelByProvider: s.modelByProvider,
         providerKeys: s.providerKeys,
         onboardingDone: s.onboardingDone,
+        teamProviderId: s.teamProviderId,
+        promptEconomy: s.promptEconomy,
       }),
     }
   )

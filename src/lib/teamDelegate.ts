@@ -1,5 +1,7 @@
 import { DEFAULT_PROVIDERS, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
+import { isQuotaError, reportQuotaError } from "./modelRouter";
+import { useSettingsStore } from "../store/settingsStore";
 
 // Auto-delegación (pilar 1, etapa 2): un agente LÍDER descompone la tarea en sub-tareas por área,
 // delega cada una a su experto (sesión ACP propia con el system prompt del experto), y sintetiza los
@@ -30,10 +32,14 @@ class TurnTimeoutError extends Error {
 
 // Corre UN turno con un agente en una sesión ACP fresca y devuelve el texto completo de la respuesta.
 // Si timeoutMs > 0 y el turno no termina a tiempo, cancela la sesión y lanza TurnTimeoutError.
-async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0): Promise<string> {
+// La sesión se abre con el taskProfile del agente: sobre un provider multi-modelo (OpenCode) el router
+// elige el mejor modelo GRATIS para el rol (cuota-consciente). Si el turno muere por rate-limit, se
+// marca el provider de inferencia en cooldown y se REINTENTA UNA VEZ en sesión nueva — el router ya
+// saltea al agotado y cae al siguiente candidato del perfil.
+async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, retried = false): Promise<string> {
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
   if (!provider?.acp) throw new Error(`El agente ${agent.name} no tiene ACP configurado`);
-  const sessionId = await acpClient.newSession(agent.providerId, provider.acp, cwd);
+  const sessionId = await acpClient.newSession(agent.providerId, provider.acp, cwd, agent.model || undefined, agent.taskProfile);
   let text = "";
   const unsub = acpClient.onUpdate((prov, sid, update) => {
     if (prov !== agent.providerId || sid !== sessionId) return;
@@ -59,6 +65,16 @@ async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string,
     } else {
       await promptP;
     }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!retried && !(e instanceof TurnTimeoutError) && isQuotaError(msg)) {
+      const model = acpClient.getSessionModel(agent.providerId, sessionId);
+      if (model) reportQuotaError(model, msg);
+      if (timer) clearTimeout(timer);
+      unsub();
+      return runAgentTurn(agent, promptText, cwd, timeoutMs, true);
+    }
+    throw e;
   } finally {
     if (timer) clearTimeout(timer);
     unsub();
@@ -142,9 +158,10 @@ export async function autoDelegate(
   if (isCancelled()) return;
 
   // 3. Sintetizar (el líder consolida). Truncamos cada aporte para acotar el contexto del turno de
-  // síntesis: sin cap, juntar varias respuestas largas hace el prompt enorme (lento y caro).
+  // síntesis: sin cap, juntar varias respuestas largas hace el prompt enorme (lento y caro). Con la
+  // economía de prompts apagada en Settings el cap se relaja (el usuario prefirió fidelidad a tokens).
   emit({ kind: "stage", label: "El líder consolida los aportes…" });
-  const CAP = 1200;
+  const CAP = useSettingsStore.getState().promptEconomy === "off" ? 3000 : 1200;
   const synthPrompt =
     `Sos el líder del equipo. La tarea era: "${task}".\n\nCada experto aportó lo suyo (resumido):\n\n` +
     results.map((r) => `### ${r.name}\n${r.text.length > CAP ? r.text.slice(0, CAP) + "…" : r.text}`).join("\n\n") +
