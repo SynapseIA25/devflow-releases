@@ -9,6 +9,8 @@ import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
 import { EditorWatcher } from "./components/EditorWatcher";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { OnboardingModal } from "./components/OnboardingModal";
+import { useSettingsStore } from "./store/settingsStore";
 import { FloatingWindow } from "./components/FloatingWindow";
 import { CodeFlowPanel } from "./components/panel/CodeFlowPanel";
 import { ChatView } from "./views/ChatView";
@@ -51,6 +53,7 @@ const SHOW_RIGHT_PANEL: ViewId[] = ["agents"];
 export default function App() {
   const view                            = useUiStore((s) => s.view);
   const setView                         = useUiStore((s) => s.setView);
+  const onboardingDone                  = useSettingsStore((s) => s.onboardingDone);
   const [chatDock, setChatDock]         = useState(false);
   const [dockWidth, setDockWidth]       = useState(420);
   const [showCodeFlow, setShowCodeFlow] = useState(false);
@@ -94,6 +97,7 @@ export default function App() {
       <TriggerRunner />
       <EditorWatcher />
       <UpdateBanner />
+      {!onboardingDone && <OnboardingModal />}
       <NavBar
         active={view}
         onChange={setView}

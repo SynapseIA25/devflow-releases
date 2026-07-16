@@ -122,6 +122,33 @@ fn check_prerequisites() -> serde_json::Value {
     })
 }
 
+// Detecta qué CLIs de agentes están instalados (onboarding). Cada nombre se prueba con
+// `<cli> --version` — mismo mecanismo que check_prerequisites (cmd /C resuelve shims .cmd de npm).
+// Nota: `--version` puede tardar ~1-2s por CLI de Node; el frontend lo llama async y muestra spinner.
+#[tauri::command]
+async fn check_cli(names: Vec<String>) -> HashMap<String, bool> {
+    let check = |prog: &str| -> bool {
+        if cfg!(target_os = "windows") {
+            Command::new("cmd")
+                .args(["/C", &format!("{} --version", prog)])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        } else {
+            Command::new(prog)
+                .arg("--version")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        }
+    };
+    names.into_iter().map(|n| { let ok = check(&n); (n, ok) }).collect()
+}
+
 // ── ACP (Agent Client Protocol) — spawns an agent CLI (mimo, hermes, ...) as a
 // JSON-RPC-over-stdio peer. Un proceso hijo por provider, así se puede tener más de un
 // agente ACP corriendo a la vez (ej. una pestaña con MiMo y otra con Hermes).
@@ -132,12 +159,22 @@ fn acp_start(
     provider: String,
     command: String,
     args: Vec<String>,
+    env: Option<HashMap<String, String>>,
     state: State<AcpProcesses>,
 ) -> Result<(), String> {
     let mut processes = state.0.lock().map_err(|e| e.to_string())?;
     if processes.contains_key(&provider) {
         return Ok(());
     }
+
+    // API keys de providers de inferencia (OpenRouter/Google/Groq/...) cargadas en Settings: se
+    // inyectan como env vars y el agente ACP las detecta solo (mismo patrón que filtered_env de
+    // start_mcp_server). Las vacías se omiten — una var vacía pisa la del sistema.
+    let extra_env: HashMap<String, String> = env
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
 
     let spawn_result = if cfg!(target_os = "windows") {
         // Muchos CLIs de agentes (ej. `mimo`) se instalan como shim .cmd de npm en Windows;
@@ -152,6 +189,7 @@ fn acp_start(
             // de Claude Code; la quitamos del hijo para que el adaptador funcione igual. Inofensivo
             // para mimo/hermes (no la usan).
             .env_remove("CLAUDECODE")
+            .envs(&extra_env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -160,6 +198,7 @@ fn acp_start(
         Command::new(&command)
             .args(&args)
             .env_remove("CLAUDECODE")
+            .envs(&extra_env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -800,6 +839,7 @@ pub fn run() {
             stop_mcp_server,
             get_running_servers,
             check_prerequisites,
+            check_cli,
             acp_start,
             acp_send,
             acp_stop,

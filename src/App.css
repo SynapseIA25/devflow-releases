@@ -1183,6 +1183,84 @@ html, body, #root {
 .security-log-provider { color: var(--text-3); }
 .security-log-time { color: var(--text-3); }
 
+/* ── Settings · API keys de providers de inferencia (se inyectan al agente OpenCode) ── */
+.settings-apikeys {
+  margin: 4px 0 20px; padding: 14px 16px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg-card);
+}
+.apikeys-subtitle { font-size: 11px; color: var(--text-2); margin: 0 0 4px; line-height: 1.5; }
+.apikeys-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.apikeys-row:last-of-type { border-bottom: none; }
+.apikeys-info { width: 250px; flex-shrink: 0; min-width: 0; }
+.apikeys-label { font-size: 12px; font-weight: 600; color: var(--text-1); margin-right: 8px; }
+.apikeys-link { font-size: 10px; color: var(--accent-2, var(--accent)); text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+.apikeys-link:hover { text-decoration: underline; }
+.apikeys-free { font-size: 10px; color: var(--text-3); margin-top: 3px; line-height: 1.4; }
+.apikeys-input {
+  flex: 1; min-width: 0; background: var(--bg-2, #0d1117); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; color: var(--text-1);
+  font-family: 'Cascadia Code','Consolas',monospace;
+}
+.apikeys-input:focus { outline: none; border-color: var(--accent); }
+.apikeys-status { flex-shrink: 0; min-width: 74px; text-align: right; font-size: 10px; color: var(--text-3); }
+.apikeys-status.on { color: #4ade80; }
+.apikeys-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.apikeys-save {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 11px; cursor: pointer;
+}
+.apikeys-save:disabled { opacity: 0.5; cursor: not-allowed; }
+.apikeys-applied { font-size: 11px; color: #4ade80; }
+
+/* ── Onboarding (wizard de primer arranque: detección de CLIs + key opcional) ── */
+.onb-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex;
+  align-items: center; justify-content: center; z-index: 200;
+}
+.onb-modal {
+  width: 560px; max-width: 94vw; max-height: 90vh; overflow-y: auto;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 22px 24px; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+}
+.onb-title { font-size: 17px; color: var(--text-1); margin: 0 0 6px; }
+.onb-sub { font-size: 12px; color: var(--text-2); margin: 0 0 14px; line-height: 1.5; }
+.onb-agents { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.onb-agent { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.onb-agent:last-child { border-bottom: none; }
+.onb-agent-icon { font-size: 16px; line-height: 1.2; flex-shrink: 0; }
+.onb-agent-info { flex: 1; min-width: 0; }
+.onb-agent-name { font-size: 12px; font-weight: 600; color: var(--text-1); display: flex; align-items: center; gap: 8px; }
+.onb-agent-docs { font-size: 10px; font-weight: 400; color: var(--accent-2, var(--accent)); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; }
+.onb-agent-docs:hover { text-decoration: underline; }
+.onb-agent-note { font-size: 10px; color: var(--text-3); margin-top: 2px; line-height: 1.45; }
+.onb-install {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 3px 8px;
+  background: var(--bg-2, #0d1117); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 10px; color: var(--text-1); font-family: 'Cascadia Code','Consolas',monospace;
+}
+.onb-copy { background: none; border: none; color: var(--text-3); cursor: pointer; display: flex; padding: 1px; }
+.onb-copy:hover { color: var(--text-1); }
+.onb-agent-status { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.onb-agent-status.ok { color: #4ade80; }
+.onb-key { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.onb-key-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 4px; }
+.onb-optional { font-size: 9px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.onb-key-note { font-size: 10px; color: var(--text-3); margin: 0 0 8px; line-height: 1.45; }
+.onb-key-note a { color: var(--accent-2, var(--accent)); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; }
+.onb-key-note a:hover { text-decoration: underline; }
+.onb-key .apikeys-input { width: 100%; }
+.onb-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
+.onb-recheck {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 11px; cursor: pointer;
+}
+.onb-recheck:hover { color: var(--text-1); border-color: var(--text-3); }
+.onb-start {
+  padding: 7px 16px; border-radius: 6px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.onb-start:hover { filter: brightness(1.1); }
+
 /* Webhook trigger: checkbox opt-in para pasar el body externo como {{input}} */
 .trg-config--webhook { flex-wrap: wrap; }
 .trg-ext-input { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-2); cursor: pointer; }

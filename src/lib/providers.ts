@@ -36,6 +36,68 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     docsUrl: "https://docs.anthropic.com",
     acp: { command: "npx", args: ["-y", "@zed-industries/claude-code-acp"] },
   },
+  {
+    // OpenCode upstream (el mismo proyecto del que MiMo es fork, pero moderno: v1.x). Es la vía
+    // multi-LLM de DevFlow: sin configurar nada trae los modelos gratuitos de OpenCode Zen, y con
+    // las API keys de Settings (OpenRouter/Google/Groq/Mistral, ver PROVIDER_KEY_SPECS) expone los
+    // modelos de esos providers en el selector del chat. Requiere `npm i -g opencode-ai`.
+    id: "opencode",
+    name: "OpenCode",
+    description: "Multi-LLM agent. Free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
+    color: "#10b981",
+    icon: "◎",
+    docsUrl: "https://opencode.ai/docs",
+    acp: { command: "opencode", args: ["acp"] },
+  },
+];
+
+// Providers de inferencia cuya API key se carga en Settings y se inyecta como env var al proceso
+// del agente OpenCode (acp_start → envs). OpenCode los detecta solo por la presencia de la var
+// (verificado con `opencode acp` 1.18.3: los modelos del provider aparecen en configOptions).
+// keyed por id estable — settingsStore.providerKeys usa estos ids.
+export type ProviderKeySpec = {
+  id: string;
+  label: string;
+  envVar: string;
+  placeholder: string;
+  // Dónde conseguir la key (y si tiene tier gratuito, mencionarlo en el label de la UI).
+  keyUrl: string;
+  freeTier: string;
+};
+
+export const PROVIDER_KEY_SPECS: ProviderKeySpec[] = [
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    envVar: "OPENROUTER_API_KEY",
+    placeholder: "sk-or-v1-…",
+    keyUrl: "https://openrouter.ai/keys",
+    freeTier: "One key, 300+ models — includes free models (\":free\" and the Free Models Router).",
+  },
+  {
+    id: "google",
+    label: "Google Gemini",
+    envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
+    placeholder: "AIza…",
+    keyUrl: "https://aistudio.google.com/apikey",
+    freeTier: "Free tier available (Gemini Flash) with generous daily quota.",
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    envVar: "GROQ_API_KEY",
+    placeholder: "gsk_…",
+    keyUrl: "https://console.groq.com/keys",
+    freeTier: "Free tier available — very fast Llama/Qwen inference.",
+  },
+  {
+    id: "mistral",
+    label: "Mistral",
+    envVar: "MISTRAL_API_KEY",
+    placeholder: "…",
+    keyUrl: "https://console.mistral.ai/api-keys",
+    freeTier: "Free tier available (La Plateforme experiment plan).",
+  },
 ];
 
 export type AgentConfig = {
@@ -80,6 +142,18 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     model: "claude-sonnet-4-6",
     systemPrompt: "You are Claude, an AI assistant made by Anthropic.",
     skills: ["file-edit", "terminal", "search", "analysis"],
+    status: "inactive",
+  },
+  {
+    id: "opencode-agent",
+    name: "OpenCode",
+    description: "Multi-LLM agent: free models included, plus any provider you add a key for (OpenRouter, Gemini, Groq…).",
+    icon: "◎",
+    color: "#10b981",
+    providerId: "opencode",
+    model: "",
+    systemPrompt: "",
+    skills: ["file-edit", "terminal", "git", "search"],
     status: "inactive",
   },
 ];

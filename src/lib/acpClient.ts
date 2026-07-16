@@ -5,6 +5,7 @@
 // correlación de ids y protocolo vive acá.
 import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
+import { PROVIDER_KEY_SPECS } from "./providers";
 
 export type AcpSpawnConfig = { command: string; args: string[] };
 
@@ -70,12 +71,26 @@ async function attachListener(provider: string) {
   });
 }
 
+// Env vars con las API keys de inferencia cargadas en Settings (PROVIDER_KEY_SPECS.envVar).
+// Se pasan a TODOS los agentes ACP al spawnearlos: OpenCode las detecta y expone los modelos de
+// esos providers; para mimo/claude son inofensivas. Se capturan al spawn — cambiar una key
+// requiere reiniciar el proceso (SettingsView llama restart("opencode") al guardar).
+function providerKeysEnv(): Record<string, string> {
+  const keys = useSettingsStore.getState().providerKeys;
+  const env: Record<string, string> = {};
+  for (const spec of PROVIDER_KEY_SPECS) {
+    const k = keys[spec.id];
+    if (k) env[spec.envVar] = k;
+  }
+  return env;
+}
+
 async function ensureStarted(provider: string, spawn: AcpSpawnConfig): Promise<void> {
   const s = stateFor(provider);
   if (s.started) return;
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   await attachListener(provider);
-  await acpStart(provider, spawn.command, spawn.args);
+  await acpStart(provider, spawn.command, spawn.args, providerKeysEnv());
   s.started = true;
 }
 

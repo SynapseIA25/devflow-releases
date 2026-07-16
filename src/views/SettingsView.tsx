@@ -1,6 +1,9 @@
-import { CheckCircle, AlertCircle, ShieldAlert } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
-import { ProviderConfig } from "../lib/providers";
+import { useWorkspaceStore } from "../store/workspaceStore";
+import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
+import * as acpClient from "../lib/acpClient";
 
 // DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
 // del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
@@ -38,6 +41,84 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
           <div className="provider-note">Requires an ACP adapter to connect (not implemented yet).</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// API keys de providers de inferencia: se inyectan como env vars al agente OpenCode al spawnearlo
+// (acpClient.providerKeysEnv). Guardar reinicia el proceso de OpenCode para que los modelos del
+// provider nuevo aparezcan en el selector del chat en la próxima sesión.
+function ApiKeysSection() {
+  const providerKeys = useSettingsStore((s) => s.providerKeys);
+  const setProviderKey = useSettingsStore((s) => s.setProviderKey);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [applying, setApplying] = useState(false);
+  const [appliedAt, setAppliedAt] = useState<number | null>(null);
+
+  const dirty = PROVIDER_KEY_SPECS.some(
+    (spec) => drafts[spec.id] !== undefined && drafts[spec.id] !== (providerKeys[spec.id] ?? "")
+  );
+
+  const apply = async () => {
+    setApplying(true);
+    try {
+      for (const spec of PROVIDER_KEY_SPECS) {
+        if (drafts[spec.id] !== undefined) setProviderKey(spec.id, drafts[spec.id]);
+      }
+      setDrafts({});
+      // El proceso de OpenCode captura el env al spawnear: lo reiniciamos para que tome las keys
+      // nuevas. Las sesiones de chat viejas de ese provider quedan huérfanas → se recrean solas.
+      await acpClient.restart("opencode");
+      useWorkspaceStore.getState().resetSessions("opencode");
+      setAppliedAt(Date.now());
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="settings-apikeys">
+      <h3 className="settings-section-title"><KeyRound size={14} /> Inference providers · API keys</h3>
+      <p className="apikeys-subtitle">
+        Add a key to unlock that provider's models in the OpenCode agent (chat model selector).
+        No key at all? OpenCode still includes free models out of the box. Keys are stored locally
+        on this machine.
+      </p>
+      {PROVIDER_KEY_SPECS.map((spec) => {
+        const saved = providerKeys[spec.id] ?? "";
+        const value = drafts[spec.id] ?? saved;
+        return (
+          <div key={spec.id} className="apikeys-row">
+            <div className="apikeys-info">
+              <span className="apikeys-label">{spec.label}</span>
+              <a className="apikeys-link" href={spec.keyUrl} target="_blank" rel="noreferrer">
+                Get a key <ExternalLink size={10} />
+              </a>
+              <div className="apikeys-free">{spec.freeTier}</div>
+            </div>
+            <input
+              type="password"
+              className="apikeys-input"
+              placeholder={spec.placeholder}
+              value={value}
+              autoComplete="off"
+              onChange={(e) => setDrafts((d) => ({ ...d, [spec.id]: e.target.value }))}
+            />
+            <span className={`apikeys-status ${saved ? "on" : ""}`}>
+              {saved ? "configured" : "not set"}
+            </span>
+          </div>
+        );
+      })}
+      <div className="apikeys-actions">
+        <button className="apikeys-save" disabled={!dirty || applying} onClick={apply}>
+          {applying ? <RotateCw size={12} className="spin" /> : null}
+          {applying ? "Applying…" : "Save & restart OpenCode"}
+        </button>
+        {appliedAt && !dirty && (
+          <span className="apikeys-applied">✓ Applied — new models appear on the next chat session.</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -92,6 +173,7 @@ export function SettingsView() {
           model is chosen from the chat.
         </p>
       </div>
+      <ApiKeysSection />
       <SecuritySection />
       <div className="providers-grid">
         {providers.map((p) => (

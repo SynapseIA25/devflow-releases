@@ -21,6 +21,14 @@ type SettingsStore = {
   // NO se persisten: se repueblan en cada sesión.
   availableModelsByProvider: Record<string, ModelOption[]>;
   currentModelByProvider: Record<string, string>;
+  // API keys de providers de inferencia (keyed por PROVIDER_KEY_SPECS.id, ej. "openrouter").
+  // Se inyectan como env vars al agente OpenCode al spawnearlo (acpClient.ensureStarted).
+  // Persistidas en localStorage (texto plano — mismo trade-off que ~/.config de cualquier CLI).
+  providerKeys: Record<string, string>;
+  // Wizard de primer arranque: true una vez que el usuario lo cerró.
+  onboardingDone: boolean;
+  setProviderKey: (id: string, key: string) => void;
+  setOnboardingDone: (v: boolean) => void;
   setAutoApprovePermissions: (v: boolean) => void;
   logPermission: (entry: Omit<PermissionLogEntry, "ts">) => void;
   // Elección explícita del usuario (persistida) — se aplicará en la próxima sesión de ese provider.
@@ -38,6 +46,18 @@ export const useSettingsStore = create<SettingsStore>()(
       modelByProvider: {},
       availableModelsByProvider: {},
       currentModelByProvider: {},
+      providerKeys: {},
+      onboardingDone: false,
+
+      setProviderKey: (id, key) =>
+        set((s) => {
+          const next = { ...s.providerKeys };
+          if (key.trim()) next[id] = key.trim();
+          else delete next[id];
+          return { providerKeys: next };
+        }),
+
+      setOnboardingDone: (v) => set({ onboardingDone: v }),
 
       setModelForProvider: (provider, model) =>
         set((s) => ({
@@ -79,6 +99,8 @@ export const useSettingsStore = create<SettingsStore>()(
       partialize: (s) => ({
         autoApprovePermissions: s.autoApprovePermissions,
         modelByProvider: s.modelByProvider,
+        providerKeys: s.providerKeys,
+        onboardingDone: s.onboardingDone,
       }),
     }
   )

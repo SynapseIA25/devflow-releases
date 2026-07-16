@@ -33,9 +33,20 @@ export async function checkPrerequisites(): Promise<Prereqs> {
   return invoke<Prereqs>("check_prerequisites");
 }
 
-export async function acpStart(provider: string, command: string, args: string[]): Promise<void> {
+export async function acpStart(
+  provider: string,
+  command: string,
+  args: string[],
+  env?: Record<string, string>
+): Promise<void> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
-  return invoke<void>("acp_start", { provider, command, args });
+  return invoke<void>("acp_start", { provider, command, args, env: env ?? null });
+}
+
+// Detección de CLIs de agentes instalados (onboarding): { mimo: true, opencode: false, ... }
+export async function checkCli(names: string[]): Promise<Record<string, boolean>> {
+  if (!isTauri()) return Object.fromEntries(names.map((n) => [n, false]));
+  return invoke<Record<string, boolean>>("check_cli", { names });
 }
 
 export async function acpSend(provider: string, line: string): Promise<void> {
