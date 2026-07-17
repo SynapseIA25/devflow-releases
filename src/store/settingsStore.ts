@@ -31,6 +31,9 @@ type SettingsStore = {
   // Provider ACP sobre el que corre el EQUIPO de expertos (TeamView). "mimo" = comportamiento
   // histórico; "opencode" = cada experto usa el mejor modelo GRATIS para su perfil (modelRouter).
   teamProviderId: string;
+  // Timeout por turno del equipo (segundos). El default de 240s queda corto para sub-tareas tipo QA
+  // (npm install + escribir tests) con modelos gratis — subirlo si los expertos cortan a mitad de trabajo.
+  teamTurnTimeoutSecs: number;
   // Economía de prompts (ahorro de tokens): "auto" recorta solo con modelos remotos (default),
   // "always" siempre, "off" nunca. Ver modelRouter.economyActive.
   promptEconomy: PromptEconomyMode;
@@ -38,6 +41,7 @@ type SettingsStore = {
   setProviderKey: (id: string, key: string) => void;
   setOnboardingDone: (v: boolean) => void;
   setTeamProviderId: (id: string) => void;
+  setTeamTurnTimeoutSecs: (secs: number) => void;
   setAutoApprovePermissions: (v: boolean) => void;
   logPermission: (entry: Omit<PermissionLogEntry, "ts">) => void;
   // Elección explícita del usuario (persistida) — se aplicará en la próxima sesión de ese provider.
@@ -58,9 +62,12 @@ export const useSettingsStore = create<SettingsStore>()(
       providerKeys: {},
       onboardingDone: false,
       teamProviderId: "mimo",
+      teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
 
       setTeamProviderId: (id) => set({ teamProviderId: id }),
+      // Clamp defensivo: mínimo 30s (menos corta turnos sanos), máximo 30 min; NaN → default.
+      setTeamTurnTimeoutSecs: (secs) => set({ teamTurnTimeoutSecs: Number.isFinite(secs) ? Math.min(Math.max(Math.round(secs), 30), 1800) : 240 }),
       setPromptEconomy: (m) => set({ promptEconomy: m }),
 
       setProviderKey: (id, key) =>
@@ -116,6 +123,7 @@ export const useSettingsStore = create<SettingsStore>()(
         providerKeys: s.providerKeys,
         onboardingDone: s.onboardingDone,
         teamProviderId: s.teamProviderId,
+        teamTurnTimeoutSecs: s.teamTurnTimeoutSecs,
         promptEconomy: s.promptEconomy,
       }),
     }

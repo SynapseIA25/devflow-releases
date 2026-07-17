@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network, Boxes, Cpu } from "lucide-react";
+import { Users, MessageSquare, Sparkles, Play, Square, Loader, Network, Boxes, Cpu, Timer } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAgentsStore } from "../store/agentsStore";
@@ -24,6 +24,8 @@ export function TeamView() {
   // aplica al delegar (providerId + model limpio para que rutee el perfil); los agentes no se tocan.
   const teamProviderId = useSettingsStore((s) => s.teamProviderId);
   const setTeamProviderId = useSettingsStore((s) => s.setTeamProviderId);
+  const teamTurnTimeoutSecs = useSettingsStore((s) => s.teamTurnTimeoutSecs);
+  const setTeamTurnTimeoutSecs = useSettingsStore((s) => s.setTeamTurnTimeoutSecs);
   const onTeam = useMemo(
     () => (a: AgentConfig): AgentConfig =>
       a.providerId === teamProviderId ? a : { ...a, providerId: teamProviderId, model: "" },
@@ -75,7 +77,12 @@ export function TeamView() {
         cwd = wt.path;
         setEnvName(wt.name);
       }
-      await autoDelegate(task, teamExperts, teamLead, cwd, (step) => setSteps((prev) => [...prev, step]), () => cancelRef.current);
+      await autoDelegate(
+        task, teamExperts, teamLead, cwd,
+        (step) => setSteps((prev) => [...prev, step]),
+        () => cancelRef.current,
+        useSettingsStore.getState().teamTurnTimeoutSecs * 1000
+      );
     } catch (e) {
       setSteps((prev) => [...prev, { kind: "error", message: e instanceof Error ? e.message : String(e) }]);
     } finally {
@@ -142,6 +149,19 @@ export function TeamView() {
                 ))}
               </select>
             </label>
+            <label className="team-provider" title="Per-turn time limit. Raise it if experts get cut off mid-work (e.g. installing deps + writing tests).">
+              <Timer size={13} /> Turn timeout:
+              <input
+                type="number"
+                className="team-timeout-input"
+                min={30}
+                max={1800}
+                step={30}
+                value={teamTurnTimeoutSecs}
+                onChange={(e) => setTeamTurnTimeoutSecs(e.target.valueAsNumber)}
+                disabled={running}
+              /> s
+            </label>
             <label className="team-isolate">
               <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} disabled={running} />
               <Boxes size={13} /> Isolate in an environment (worktree) — experts don't touch the real project
@@ -190,10 +210,21 @@ export function TeamView() {
   );
 }
 
+// Chip con el modelo real de la sesión (id sin el segmento del provider ACP; el id completo va en title).
+// Hace visible qué modelo eligió el router para cada rol — y delata si alguno cayó en uno pago.
+function ModelChip({ model }: { model?: string }) {
+  if (!model) return null;
+  const short = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;
+  return <span className="team-model-chip" title={model}>{short}</span>;
+}
+
 function DelegateResults({ steps, running }: { steps: DelegateStep[]; running: boolean }) {
   const plan = steps.find((s) => s.kind === "plan") as Extract<DelegateStep, { kind: "plan" }> | undefined;
   const done = steps.filter((s): s is Extract<DelegateStep, { kind: "expert-done" }> => s.kind === "expert-done");
   const starts = steps.filter((s): s is Extract<DelegateStep, { kind: "expert-start" }> => s.kind === "expert-start");
+  // Modelo por experto (por index): el último expert-model gana (un reintento por cuota puede cambiarlo).
+  const modelByIndex = new Map<number, string>();
+  for (const s of steps) if (s.kind === "expert-model") modelByIndex.set(s.index, s.model);
   const synthesis = steps.find((s) => s.kind === "synthesis") as Extract<DelegateStep, { kind: "synthesis" }> | undefined;
   const error = steps.find((s) => s.kind === "error") as Extract<DelegateStep, { kind: "error" }> | undefined;
   const stage = [...steps].reverse().find((s) => s.kind === "stage") as Extract<DelegateStep, { kind: "stage" }> | undefined;
@@ -204,7 +235,7 @@ function DelegateResults({ steps, running }: { steps: DelegateStep[]; running: b
 
       {plan && (
         <div className="team-plan">
-          <div className="team-plan-title">Lead's plan ({plan.items.length} sub-task{plan.items.length === 1 ? "" : "s"})</div>
+          <div className="team-plan-title">Lead's plan ({plan.items.length} sub-task{plan.items.length === 1 ? "" : "s"}) <ModelChip model={plan.model} /></div>
           {plan.items.map((it, i) => (
             <div key={i} className="team-plan-item"><span className="team-plan-area">{it.area}</span> {it.subtask}</div>
           ))}
@@ -221,6 +252,7 @@ function DelegateResults({ steps, running }: { steps: DelegateStep[]; running: b
             <div className="team-expert-head">
               <span style={{ color: st.color }}>{st.icon}</span>
               <span className="team-expert-name">{st.name}</span>
+              <ModelChip model={modelByIndex.get(st.index)} />
               {!result && running
                 ? <Loader size={11} className="spin" />
                 : result?.timedOut
@@ -234,7 +266,7 @@ function DelegateResults({ steps, running }: { steps: DelegateStep[]; running: b
 
       {synthesis && (
         <div className="team-synthesis">
-          <div className="team-synthesis-title">🧩 Lead's synthesis</div>
+          <div className="team-synthesis-title">🧩 Lead's synthesis <ModelChip model={synthesis.model} /></div>
           <div className="team-synthesis-body proj-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{synthesis.text}</ReactMarkdown></div>
         </div>
       )}

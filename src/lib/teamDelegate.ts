@@ -1,6 +1,6 @@
 import { DEFAULT_PROVIDERS, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
-import { isQuotaError, reportQuotaError } from "./modelRouter";
+import { isQuotaError, reportQuotaError, type TaskProfile } from "./modelRouter";
 import { useSettingsStore } from "../store/settingsStore";
 
 // Auto-delegación (pilar 1, etapa 2): un agente LÍDER descompone la tarea en sub-tareas por área,
@@ -12,10 +12,13 @@ import { useSettingsStore } from "../store/settingsStore";
 // cancel selectivo del Frente 1 no toca las otras) y se sigue con los demás, marcándolo "sin respuesta".
 export type DelegateStep =
   | { kind: "stage"; label: string }
-  | { kind: "plan"; items: { area: string; subtask: string }[] }
+  | { kind: "plan"; items: { area: string; subtask: string }[]; model?: string }
   | { kind: "expert-start"; index: number; area: string; name: string; icon: string; color: string; subtask: string }
+  // Modelo real de la sesión del experto (se conoce al abrirla, antes de que termine el turno; un
+  // reintento por rate-limit puede re-emitirlo con otro modelo — vale el último).
+  | { kind: "expert-model"; index: number; model: string }
   | { kind: "expert-done"; index: number; area: string; name: string; text: string; timedOut?: boolean }
-  | { kind: "synthesis"; text: string }
+  | { kind: "synthesis"; text: string; model?: string }
   | { kind: "error"; message: string };
 
 // Timeout por turno (ms). Generoso: la latencia normal es ~40-60s/experto y en paralelo hay contención
@@ -36,10 +39,12 @@ class TurnTimeoutError extends Error {
 // elige el mejor modelo GRATIS para el rol (cuota-consciente). Si el turno muere por rate-limit, se
 // marca el provider de inferencia en cooldown y se REINTENTA UNA VEZ en sesión nueva — el router ya
 // saltea al agotado y cae al siguiente candidato del perfil.
-async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, retried = false): Promise<string> {
+async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, onModel?: (model: string) => void, retried = false): Promise<string> {
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
   if (!provider?.acp) throw new Error(`El agente ${agent.name} no tiene ACP configurado`);
   const sessionId = await acpClient.newSession(agent.providerId, provider.acp, cwd, agent.model || undefined, agent.taskProfile);
+  const sessionModel = acpClient.getSessionModel(agent.providerId, sessionId);
+  if (sessionModel && onModel) onModel(sessionModel);
   let text = "";
   const unsub = acpClient.onUpdate((prov, sid, update) => {
     if (prov !== agent.providerId || sid !== sessionId) return;
@@ -72,7 +77,7 @@ async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string,
       if (model) reportQuotaError(model, msg);
       if (timer) clearTimeout(timer);
       unsub();
-      return runAgentTurn(agent, promptText, cwd, timeoutMs, true);
+      return runAgentTurn(agent, promptText, cwd, timeoutMs, onModel, true);
     }
     throw e;
   } finally {
@@ -108,6 +113,11 @@ export async function autoDelegate(
 ): Promise<void> {
   const areaList = experts.map((e) => `- ${e.expertArea}: ${e.name} (${e.description})`).join("\n");
 
+  // El líder (mimo-coder) no trae taskProfile: overrideado a un provider multi-modelo (OpenCode) sin
+  // perfil, newSession no rutea y cae al modelo DEFAULT del agente — que con key de OpenRouter es PAGO.
+  // Le damos perfil por turno: el plan es corto y estructurado (fast), la síntesis pide criterio (reasoning).
+  const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
+
   // 1. Descomponer (el líder arma el plan)
   emit({ kind: "stage", label: "El líder descompone la tarea…" });
   const planPrompt =
@@ -115,8 +125,9 @@ export async function autoDelegate(
     `Tarea: "${task}"\n\n` +
     `Respondé SOLO con un array JSON, sin texto extra ni explicación, con la forma: [{"area":"<area>","subtask":"<sub-tarea concreta>"}]. Máximo 4 items, un área por item (no repitas áreas), solo las realmente relevantes.`;
   let planRaw: string;
+  let planModel: string | undefined;
   try {
-    planRaw = await runAgentTurn(lead, planPrompt, cwd, timeoutMs);
+    planRaw = await runAgentTurn(withProfile(lead, "fast"), planPrompt, cwd, timeoutMs, (m) => { planModel = m; });
   } catch (e) {
     emit({ kind: "error", message: e instanceof TurnTimeoutError ? `El líder no respondió a tiempo al armar el plan (${Math.round(timeoutMs / 1000)}s).` : (e instanceof Error ? e.message : String(e)) });
     return;
@@ -131,7 +142,7 @@ export async function autoDelegate(
     emit({ kind: "error", message: `El líder no devolvió un plan válido:\n${planRaw.slice(0, 400)}` });
     return;
   }
-  emit({ kind: "plan", items: plan.map((p) => ({ area: p.area, subtask: p.subtask })) });
+  emit({ kind: "plan", items: plan.map((p) => ({ area: p.area, subtask: p.subtask })), model: planModel });
 
   // 2. Delegar a cada experto EN PARALELO, con timeout por turno. Emitimos todos los expert-start (en
   // orden del plan) y luego cada expert-done APENAS termina su experto (la vista los paea por `index`,
@@ -146,7 +157,13 @@ export async function autoDelegate(
       let text: string;
       let timedOut = false;
       try {
-        text = await runAgentTurn(item.expert, `Tarea general: ${task}\n\nTu sub-tarea (${item.expert.name}): ${item.subtask}`, cwd, timeoutMs);
+        text = await runAgentTurn(
+          item.expert,
+          `Tarea general: ${task}\n\nTu sub-tarea (${item.expert.name}): ${item.subtask}`,
+          cwd,
+          timeoutMs,
+          (m) => emit({ kind: "expert-model", index: i, model: m })
+        );
       } catch (e) {
         timedOut = e instanceof TurnTimeoutError;
         text = timedOut ? `⏱ ${e instanceof Error ? e.message : ""}` : `(error del experto: ${e instanceof Error ? e.message : String(e)})`;
@@ -167,11 +184,12 @@ export async function autoDelegate(
     results.map((r) => `### ${r.name}\n${r.text.length > CAP ? r.text.slice(0, CAP) + "…" : r.text}`).join("\n\n") +
     `\n\nConsolidá todo en una respuesta final coherente y accionable para el usuario, en español. Sé conciso.`;
   let final: string;
+  let synthModel: string | undefined;
   try {
-    final = await runAgentTurn(lead, synthPrompt, cwd, timeoutMs);
+    final = await runAgentTurn(withProfile(lead, "reasoning"), synthPrompt, cwd, timeoutMs, (m) => { synthModel = m; });
   } catch (e) {
     emit({ kind: "error", message: e instanceof TurnTimeoutError ? `El líder no pudo sintetizar a tiempo (${Math.round(timeoutMs / 1000)}s); arriba quedan los aportes de cada experto.` : (e instanceof Error ? e.message : String(e)) });
     return;
   }
-  emit({ kind: "synthesis", text: final });
+  emit({ kind: "synthesis", text: final, model: synthModel });
 }
