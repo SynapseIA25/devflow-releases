@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
+import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
 import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
@@ -154,6 +155,86 @@ function EconomySection() {
   );
 }
 
+// Uso de hoy contra los tiers gratis + budgets diarios editables. Los contadores son la aproximación
+// LOCAL del quotaStore (los providers no exponen la cuota restante por ACP): se resetean a medianoche
+// y el router deja de elegir un provider cuando llega a su budget. Budget vacío = default; sin default
+// (zen/local) = sin límite.
+function QuotaSection() {
+  const day = useQuotaStore((s) => s.day);
+  const counts = useQuotaStore((s) => s.counts);
+  const overrides = useQuotaStore((s) => s.budgetOverrides);
+  const cooldownUntil = useQuotaStore((s) => s.cooldownUntil);
+  const setBudgetOverride = useQuotaStore((s) => s.setBudgetOverride);
+  const resetToday = useQuotaStore((s) => s.resetToday);
+
+  const isToday = day === new Date().toISOString().slice(0, 10);
+  const known = Object.keys(DAILY_BUDGETS);
+  const extras = [...new Set([...Object.keys(counts), ...Object.keys(overrides)])]
+    .filter((p) => !known.includes(p))
+    .sort();
+  const rows = [...known, ...extras];
+  const anyUse = rows.some((p) => isToday && (counts[p] ?? 0) > 0);
+
+  return (
+    <div className="settings-quota">
+      <h3 className="settings-section-title"><Gauge size={14} /> Free-tier quotas · today's usage & budgets</h3>
+      <p className="apikeys-subtitle">
+        Requests counted locally per inference provider (providers don't expose remaining quota over ACP).
+        The model router skips a provider once it hits its daily budget. Counters reset at local midnight.
+        Leave a budget empty to use the default — no default means no limit.
+      </p>
+      {rows.map((p) => {
+        const used = isToday ? counts[p] ?? 0 : 0;
+        const budget = overrides[p] ?? DAILY_BUDGETS[p];
+        const pct = budget ? Math.min(100, (used / budget) * 100) : 0;
+        const cooling = (cooldownUntil[p] ?? 0) > Date.now();
+        return (
+          <div key={p} className="quota-row">
+            <span className="quota-name">{p}</span>
+            <div className="quota-bar" title={budget !== undefined ? `${used} / ${budget} requests today` : `${used} requests today (no limit)`}>
+              {budget !== undefined && (
+                <div
+                  className={`quota-bar-fill${pct >= 100 ? " full" : pct >= 80 ? " warn" : ""}`}
+                  style={{ width: `${pct}%` }}
+                />
+              )}
+            </div>
+            <span className="quota-used">{used}{budget !== undefined ? ` / ${budget}` : " · no limit"}</span>
+            <input
+              type="number"
+              min={0}
+              className="quota-input"
+              placeholder={DAILY_BUDGETS[p] !== undefined ? String(DAILY_BUDGETS[p]) : "∞"}
+              value={overrides[p] ?? ""}
+              onChange={(e) => setBudgetOverride(p, e.target.value === "" ? null : Number(e.target.value))}
+              title="Daily request budget for this provider (empty = default)"
+            />
+            {cooling && (
+              <span className="quota-cooldown" title="Rate-limited recently — the router skips it until then">
+                cooldown · {new Date(cooldownUntil[p]).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+            {p === "openrouter" && overrides[p] === undefined && (
+              <button
+                className="quota-hint-btn"
+                title="If your OpenRouter account ever bought $10 in credits, the free tier is 1000 req/day — raise the budget to 900."
+                onClick={() => setBudgetOverride(p, 900)}
+              >
+                paid tier? → 900
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <div className="quota-actions">
+        <button className="quota-reset" disabled={!anyUse} onClick={resetToday}>
+          Reset today's counters
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SecuritySection() {
   const autoApprove = useSettingsStore((s) => s.autoApprovePermissions);
   const setAutoApprove = useSettingsStore((s) => s.setAutoApprovePermissions);
@@ -205,6 +286,7 @@ export function SettingsView() {
         </p>
       </div>
       <ApiKeysSection />
+      <QuotaSection />
       <EconomySection />
       <SecuritySection />
       <div className="providers-grid">

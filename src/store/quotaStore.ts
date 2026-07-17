@@ -27,8 +27,17 @@ type QuotaStore = {
   day: string;
   counts: Record<string, number>; // requests de hoy por provider de inferencia
   cooldownUntil: Record<string, number>; // epoch ms; transitorio (no se persiste)
+  // Budgets editados por el usuario en Settings (persistidos). Ausente = usar DAILY_BUDGETS.
+  // Permite p.ej. subir openrouter a 900 si la cuenta tiene el tier de 1000/día (cargó US$10).
+  budgetOverrides: Record<string, number>;
   recordUse: (infProvider: string) => void;
   setCooldown: (infProvider: string, untilMs: number) => void;
+  // n = override; null = volver al default de DAILY_BUDGETS.
+  setBudgetOverride: (infProvider: string, n: number | null) => void;
+  // Budget efectivo (override → default); undefined = sin límite conocido (zen/local/mimo).
+  effectiveBudget: (infProvider: string) => number | undefined;
+  // Vuelve los contadores de hoy a cero (los cooldowns activos se respetan igual).
+  resetToday: () => void;
   // true si el provider está en cooldown o gastó su presupuesto de hoy.
   isExhausted: (infProvider: string) => boolean;
 };
@@ -39,6 +48,7 @@ export const useQuotaStore = create<QuotaStore>()(
       day: todayKey(),
       counts: {},
       cooldownUntil: {},
+      budgetOverrides: {},
 
       recordUse: (p) =>
         set((s) => {
@@ -51,10 +61,22 @@ export const useQuotaStore = create<QuotaStore>()(
       setCooldown: (p, untilMs) =>
         set((s) => ({ cooldownUntil: { ...s.cooldownUntil, [p]: untilMs } })),
 
+      setBudgetOverride: (p, n) =>
+        set((s) => {
+          const next = { ...s.budgetOverrides };
+          if (n === null || !Number.isFinite(n)) delete next[p];
+          else next[p] = Math.max(0, Math.round(n));
+          return { budgetOverrides: next };
+        }),
+
+      effectiveBudget: (p) => get().budgetOverrides[p] ?? DAILY_BUDGETS[p],
+
+      resetToday: () => set({ day: todayKey(), counts: {} }),
+
       isExhausted: (p) => {
         const s = get();
         if ((s.cooldownUntil[p] ?? 0) > Date.now()) return true;
-        const budget = DAILY_BUDGETS[p];
+        const budget = s.effectiveBudget(p);
         if (budget === undefined) return false; // sin budget conocido = sin límite (zen/local/mimo)
         const used = s.day === todayKey() ? (s.counts[p] ?? 0) : 0;
         return used >= budget;
@@ -64,7 +86,7 @@ export const useQuotaStore = create<QuotaStore>()(
       name: "devflow-quota",
       version: 1,
       // cooldowns no se persisten: son por-proceso (un rate limit por minuto no sobrevive un reinicio útilmente).
-      partialize: (s) => ({ day: s.day, counts: s.counts }),
+      partialize: (s) => ({ day: s.day, counts: s.counts, budgetOverrides: s.budgetOverrides }),
     }
   )
 );

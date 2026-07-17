@@ -24,7 +24,7 @@ const FULL: ModelOption[] = [
 const MIMO: ModelOption[] = ["mimo/mimo-auto", "mimo/mimo-v2.5-pro"].map(opt);
 
 beforeEach(() => {
-  useQuotaStore.setState({ day: new Date().toISOString().slice(0, 10), counts: {}, cooldownUntil: {} });
+  useQuotaStore.setState({ day: new Date().toISOString().slice(0, 10), counts: {}, cooldownUntil: {}, budgetOverrides: {} });
 });
 
 describe("inferenceProviderOf / isLocalModel", () => {
@@ -121,5 +121,39 @@ describe("cuota: errores y cooldown", () => {
     q.setCooldown("openrouter", Date.now() + 60_000);
     expect(useQuotaStore.getState().isExhausted("openrouter")).toBe(true);
     expect(useQuotaStore.getState().isExhausted("opencode")).toBe(false); // sin budget = nunca agotado
+  });
+});
+
+describe("cuota: budgets configurables y reset", () => {
+  it("el override reemplaza al default y vaciarlo lo restaura", () => {
+    const q = useQuotaStore.getState();
+    expect(q.effectiveBudget("openrouter")).toBe(45); // default de DAILY_BUDGETS
+    q.setBudgetOverride("openrouter", 900); // tier de 1000/día
+    expect(useQuotaStore.getState().effectiveBudget("openrouter")).toBe(900);
+    useQuotaStore.getState().setBudgetOverride("openrouter", null);
+    expect(useQuotaStore.getState().effectiveBudget("openrouter")).toBe(45);
+  });
+  it("un override le pone límite a un provider sin default (y afecta isExhausted)", () => {
+    const q = useQuotaStore.getState();
+    expect(q.effectiveBudget("opencode")).toBeUndefined();
+    q.setBudgetOverride("opencode", 2);
+    useQuotaStore.getState().recordUse("opencode");
+    expect(useQuotaStore.getState().isExhausted("opencode")).toBe(false);
+    useQuotaStore.getState().recordUse("opencode");
+    expect(useQuotaStore.getState().isExhausted("opencode")).toBe(true);
+  });
+  it("valores inválidos o negativos no dejan basura", () => {
+    useQuotaStore.getState().setBudgetOverride("openrouter", NaN);
+    expect(useQuotaStore.getState().budgetOverrides["openrouter"]).toBeUndefined();
+    useQuotaStore.getState().setBudgetOverride("openrouter", -5);
+    expect(useQuotaStore.getState().budgetOverrides["openrouter"]).toBe(0); // 0 = provider deshabilitado
+  });
+  it("resetToday limpia contadores y desagota el provider (sin tocar overrides)", () => {
+    useQuotaStore.getState().setBudgetOverride("groq", 1);
+    useQuotaStore.getState().recordUse("groq");
+    expect(useQuotaStore.getState().isExhausted("groq")).toBe(true);
+    useQuotaStore.getState().resetToday();
+    expect(useQuotaStore.getState().isExhausted("groq")).toBe(false);
+    expect(useQuotaStore.getState().effectiveBudget("groq")).toBe(1);
   });
 });

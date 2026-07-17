@@ -1212,6 +1212,44 @@ html, body, #root {
 .apikeys-save:disabled { opacity: 0.5; cursor: not-allowed; }
 .apikeys-applied { font-size: 11px; color: #4ade80; }
 
+/* Settings · Cuotas de tiers gratis (uso de hoy + budgets editables) */
+.settings-quota {
+  margin: 4px 0 20px; padding: 14px 16px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg-card);
+}
+.quota-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.quota-name {
+  width: 90px; flex-shrink: 0; font-size: 12px; color: var(--text-1);
+  font-family: 'Cascadia Code','Consolas',monospace;
+}
+.quota-bar {
+  flex: 1; min-width: 60px; height: 6px; border-radius: 3px;
+  background: var(--bg-2, #0d1117); border: 1px solid var(--border); overflow: hidden;
+}
+.quota-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+.quota-bar-fill.warn { background: #fbbf24; }
+.quota-bar-fill.full { background: #ef4444; }
+.quota-used { flex-shrink: 0; min-width: 78px; text-align: right; font-size: 11px; color: var(--text-3); }
+.quota-input {
+  width: 68px; flex-shrink: 0; background: var(--bg-2, #0d1117); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font-size: 11px; color: var(--text-1); text-align: right;
+  font-family: 'Cascadia Code','Consolas',monospace;
+}
+.quota-input:focus { outline: none; border-color: var(--accent); }
+.quota-cooldown { flex-shrink: 0; font-size: 10px; color: #fbbf24; }
+.quota-hint-btn {
+  flex-shrink: 0; font-size: 10px; color: var(--text-3); background: none;
+  border: 1px dashed var(--border); border-radius: 6px; padding: 3px 7px; cursor: pointer;
+}
+.quota-hint-btn:hover { color: var(--text-1); border-color: var(--accent); }
+.quota-actions { margin-top: 10px; }
+.quota-reset {
+  font-size: 11px; color: var(--text-2); background: none; border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+.quota-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--text-1); }
+.quota-reset:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Settings · Economía de prompts (ahorro de tokens) */
 .settings-economy {
   margin: 4px 0 20px; padding: 14px 16px; border: 1px solid var(--border);
