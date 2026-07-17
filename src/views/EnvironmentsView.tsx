@@ -93,7 +93,17 @@ export function EnvironmentsView() {
     try {
       await git("git add -A", env.path);
       // Si no hay cambios, el commit falla con exit≠0 — no es error fatal, seguimos al merge.
-      await git(`git commit -m "devflow: changes from environment ${env.name}"`, env.path);
+      const c = await git(`git commit -m "devflow: changes from environment ${env.name}"`, env.path);
+      if (c.exitCode !== 0) {
+        // Pero si falló CON cambios pendientes (p.ej. sin identidad git configurada, o un hook),
+        // seguir sería fatal: el merge daría "already up to date" con exit 0 y el descarte de abajo
+        // borraría el trabajo sin mergear. Abortamos y el ambiente queda intacto.
+        const pending = await git("git status --porcelain", env.path);
+        if (pending.output.trim().length > 0) {
+          setError(`Committing the environment's changes failed — nothing was merged and the environment was NOT discarded.\n${c.output.slice(-500)}`);
+          return;
+        }
+      }
       const m = await git(`git merge --no-ff "${env.branch}" -m "devflow: promote environment ${env.name}"`, projectPath);
       if (m.exitCode !== 0) {
         // ¿Falló por conflictos? Listamos los archivos en conflicto (diff-filter=U) para resolverlos.
