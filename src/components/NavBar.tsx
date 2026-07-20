@@ -4,29 +4,42 @@ import { useProjectStore } from "../store/projectStore";
 
 export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "terminals" | "team" | "skills" | "agents" | "mcp" | "services" | "settings";
 
-type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string };
+type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
+type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
 
-// El NavBar es project-centric: arriba un selector del proyecto activo, y debajo dos tiers.
-// ── Tier "Proyecto": todo lo que opera sobre el proyecto activo y retargetea al cambiarlo
-//    (código/mapa/servicios/ambientes ya siguen a projectPath; chat/terminales por ahora siguen el
-//    cwd del proyecto activo). Cambiar el proyecto arriba cambia el contexto de todos estos.
-const PROJECT_ITEMS: NavItem[] = [
-  { id: "chat",         icon: MessageSquare,  label: "Chat" },
-  { id: "editor",       icon: FileCode,       label: "Code" },
-  { id: "terminals",    icon: SquareTerminal, label: "Terminals" },
-  { id: "map",          icon: Network,        label: "Map" },
-  { id: "services",     icon: TerminalSquare, label: "Services" },
-  { id: "environments", icon: Boxes,          label: "Environments" },
-];
-// ── Tier "General": herramientas/bibliotecas transversales, no atadas a un proyecto (catálogo de
-//    agentes, equipo de expertos, biblioteca de workflows, servidores MCP, ajustes de la app).
-const GENERAL_ITEMS: NavItem[] = [
-  { id: "team",     icon: Users,     label: "Team" },
-  { id: "skills",   icon: Sparkles,  label: "Skills" },
-  { id: "workflow", icon: GitBranch, label: "Workflows" },
-  { id: "agents",   icon: Bot,       label: "Agents" },
-  { id: "mcp",      icon: Server,    label: "MCP" },
-  { id: "settings", icon: Settings,  label: "Settings" },
+// El NavBar es project-centric: arriba un selector del proyecto activo, debajo el rail.
+// Solo dos vistas quedan pineadas sueltas (Chat: la que se abre primero siempre; Settings: convención
+// universal, siempre última y sola). El resto se agrupa en 3 categorías por propósito, cada una
+// desplegada como flyout — mismo popover ya usado para el selector de proyecto (navbar-projmenu).
+const CHAT_ITEM: NavItem = { id: "chat", icon: MessageSquare, label: "Chat" };
+const SETTINGS_ITEM: NavItem = { id: "settings", icon: Settings, label: "Settings" };
+
+const GROUPS: NavGroup[] = [
+  {
+    key: "build", icon: FileCode, label: "Build",
+    items: [
+      { id: "editor",   icon: FileCode, label: "Code",      hint: "editor" },
+      { id: "map",      icon: Network,  label: "Map",       hint: "codebase" },
+      { id: "workflow", icon: GitBranch, label: "Workflows", hint: "automation" },
+    ],
+  },
+  {
+    key: "run", icon: SquareTerminal, label: "Run",
+    items: [
+      { id: "terminals",    icon: SquareTerminal, label: "Terminals",    hint: "shells" },
+      { id: "services",     icon: TerminalSquare, label: "Services",     hint: "processes" },
+      { id: "environments", icon: Boxes,          label: "Environments", hint: "worktrees" },
+    ],
+  },
+  {
+    key: "agents", icon: Users, label: "Agents",
+    items: [
+      { id: "team",   icon: Users,    label: "Team",          hint: "experts" },
+      { id: "agents", icon: Bot,      label: "Agent catalog", hint: "config" },
+      { id: "skills", icon: Sparkles, label: "Skills",        hint: "library" },
+      { id: "mcp",    icon: Server,   label: "MCP servers",   hint: "tools" },
+    ],
+  },
 ];
 
 type Props = {
@@ -45,6 +58,7 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   // Cerrar el popover de proyectos al clickear afuera.
   useEffect(() => {
@@ -56,10 +70,20 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
     return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
-  const renderItem = ({ id, icon: Icon, label }: NavItem) => (
+  // Cerrar el flyout de categoría al clickear afuera de su botón+panel.
+  useEffect(() => {
+    if (!openGroup) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".navbar-rail-group")) setOpenGroup(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openGroup]);
+
+  const renderItem = ({ id, icon: Icon, label }: NavItem, extraClass = "") => (
     <button
       key={id}
-      className={`navbar-item${active === id ? " active" : ""}`}
+      className={`navbar-item${active === id ? " active" : ""}${extraClass ? ` ${extraClass}` : ""}`}
       onClick={() => onChange(id)}
       title={label}
     >
@@ -67,6 +91,39 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
       <span className="navbar-label">{label}</span>
     </button>
   );
+
+  const renderGroup = (g: NavGroup) => {
+    const hasActive = g.items.some((it) => it.id === active);
+    const isOpen = openGroup === g.key;
+    return (
+      <div className="navbar-rail-group" key={g.key}>
+        <button
+          className={`navbar-item navbar-item--group${isOpen ? " open" : ""}${hasActive ? " has-active" : ""}`}
+          onClick={() => setOpenGroup((k) => (k === g.key ? null : g.key))}
+          title={g.label}
+        >
+          <g.icon size={18} />
+          <span className="navbar-label">{g.label}</span>
+        </button>
+        {isOpen && (
+          <div className="navbar-flyout">
+            <div className="navbar-flyout-head">{g.label}</div>
+            {g.items.map((it) => (
+              <button
+                key={it.id}
+                className={`navbar-flyout-item${active === it.id ? " active" : ""}`}
+                onClick={() => { onChange(it.id); setOpenGroup(null); }}
+              >
+                <it.icon size={15} />
+                <span className="fi-label">{it.label}</span>
+                {it.hint && <span className="fi-hint">{it.hint}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <nav className="navbar">
@@ -119,11 +176,9 @@ export function NavBar({ active, onChange, chatDockOpen, onToggleChatDock }: Pro
       </div>
 
       <div className="navbar-items">
-        <div className="navbar-section-label">Project</div>
-        {PROJECT_ITEMS.map(renderItem)}
-
-        <div className="navbar-section-label navbar-section-label--gap">General</div>
-        {GENERAL_ITEMS.map(renderItem)}
+        {renderItem(CHAT_ITEM)}
+        {GROUPS.map(renderGroup)}
+        {renderItem(SETTINGS_ITEM, "navbar-item--pinned-end")}
       </div>
 
       {/* Toggle del chat lateral (dock). Solo tiene sentido fuera de la vista Chat, que ya es el

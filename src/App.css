@@ -45,7 +45,8 @@ html, body, #root {
   display: flex; justify-content: center;
 }
 .navbar-logo-icon { line-height: 1; }
-.navbar-items { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 0 6px; }
+.navbar-items { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 0 6px; flex: 1; min-height: 0; }
+.navbar-item--pinned-end { margin-top: auto; }
 .navbar-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 8px 4px; border-radius: var(--radius); border: none; cursor: pointer;
@@ -100,12 +101,31 @@ html, body, #root {
 }
 .navbar-projmenu-manage:hover { background: var(--bg-hover); color: var(--text); }
 
-/* ── Secciones del rail (Proyecto / General) ── */
-.navbar-section-label {
-  font-size: 7.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-  color: var(--text-2); opacity: 0.6; text-align: center; padding: 2px 0 3px;
+/* ── Categorías del rail (flyout, mismo popover que el selector de proyecto) ── */
+.navbar-rail-group { position: relative; width: 100%; }
+.navbar-item--group.open,
+.navbar-item--group.has-active { background: rgba(124,58,237,0.16); color: var(--accent-2); }
+
+.navbar-flyout {
+  position: absolute; top: -1px; left: calc(100% + 6px); width: 208px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45); z-index: 200; padding: 6px; text-align: left;
 }
-.navbar-section-label--gap { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.navbar-flyout-head {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-2); padding: 4px 8px 6px;
+}
+.navbar-flyout-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px;
+  border: none; border-radius: 6px; cursor: pointer; background: transparent;
+  color: var(--text); font-size: 12.5px; font-weight: 500; text-align: left; transition: background 0.1s;
+}
+.navbar-flyout-item:hover { background: var(--bg-hover); }
+.navbar-flyout-item.active { background: rgba(124,58,237,0.15); color: var(--accent-2); }
+.navbar-flyout-item svg { color: var(--text-2); flex-shrink: 0; }
+.navbar-flyout-item:hover svg, .navbar-flyout-item.active svg { color: var(--accent-2); }
+.navbar-flyout-item .fi-label { flex: 1; }
+.navbar-flyout-item .fi-hint { font-size: 10px; color: var(--text-3); }
 
 /* ── Layout additions ────────────────────────────────── */
 .view-area { flex: 1; display: flex; overflow: hidden; min-width: 0; }
