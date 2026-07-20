@@ -39,7 +39,7 @@ class TurnTimeoutError extends Error {
 // elige el mejor modelo GRATIS para el rol (cuota-consciente). Si el turno muere por rate-limit, se
 // marca el provider de inferencia en cooldown y se REINTENTA UNA VEZ en sesión nueva — el router ya
 // saltea al agotado y cae al siguiente candidato del perfil.
-async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, onModel?: (model: string) => void, retried = false): Promise<string> {
+export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, onModel?: (model: string) => void, retried = false): Promise<string> {
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
   if (!provider?.acp) throw new Error(`El agente ${agent.name} no tiene ACP configurado`);
   const sessionId = await acpClient.newSession(agent.providerId, provider.acp, cwd, agent.model || undefined, agent.taskProfile);

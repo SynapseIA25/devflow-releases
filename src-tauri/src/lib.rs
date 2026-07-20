@@ -548,7 +548,9 @@ fn read_dir(path: String) -> Result<Vec<FsEntry>, String> {
 
 #[tauri::command]
 fn create_dir(path: String) -> Result<(), String> {
-    std::fs::create_dir(&path).map_err(|e| e.to_string())
+    // create_dir_all: crea padres intermedios (p.ej. ~/.devflow/skills/<name> en un perfil nuevo)
+    // y no falla si el directorio ya existe.
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())
 }
 
 // Abre el diálogo nativo del SO para elegir una carpeta de proyecto (estilo "Abrir carpeta"

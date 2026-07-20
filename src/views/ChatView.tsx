@@ -20,6 +20,9 @@ const EMPTY_MODELS: acpClient.ModelOption[] = [];
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
 import { TerminalPane } from "../components/TerminalPane";
+import { useSkillsStore } from "../store/skillsStore";
+import { buildSkillsPreamble, detectSkillUse, skillsRoot } from "../lib/skills";
+import { maybeMineWorkspace } from "../lib/skillMiner";
 
 type SpeechRecognitionLike = {
   lang: string; continuous: boolean; interimResults: boolean;
@@ -368,6 +371,13 @@ export function ChatView() {
         if (status === "done" && exitCode !== undefined && exitCode !== 0) status = "failed";
         const rawContent = (update as any).content;
         const items = Array.isArray(rawContent) ? rawContent.map(mapContentItem) : undefined;
+        // Tracking de uso de skills: si el tool call refiere al SKILL.md de una skill (el agente
+        // la está leyendo/siguiendo), contabilizamos el uso — alimenta el curator (stale/stats).
+        if (kind === "tool_call") {
+          const rawInput = (update as any).rawInput;
+          const used = detectSkillUse(`${title} ${command ?? ""} ${rawInput ? JSON.stringify(rawInput) : ""}`);
+          if (used) useSkillsStore.getState().recordUse(used);
+        }
         updateWsSteps(turn.wsId, (prev) => {
           const idx = prev.findIndex((s) => s.id === toolCallId);
           if (idx === -1) return [...prev, { id: toolCallId, label: title, status }];
@@ -570,6 +580,16 @@ export function ChatView() {
       if (isNewSession && systemPrompt) {
         fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
       }
+      // Índice de skills (divulgación progresiva): en la sesión nueva va solo nombre+descripción+path
+      // de cada skill habilitada; el agente lee el SKILL.md con su propio tool si la tarea matchea.
+      if (isNewSession) {
+        try {
+          const sstate = useSkillsStore.getState();
+          const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
+          const preamble = buildSkillsPreamble(skillsList, await skillsRoot());
+          if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
+        } catch { /* sin índice el turno sigue igual */ }
+      }
       inChars = fullPrompt.length;
       // Modo Auto del router: si el usuario eligió "Auto" en el selector de modelo, clasificamos el
       // turno (classifyTask) y elegimos el mejor modelo GRATIS disponible para ese perfil
@@ -604,6 +624,9 @@ export function ChatView() {
       });
       if (turnKey) activeTurnsRef.current.delete(turnKey);
       finishTurn(wsId);
+      // Minería de skills post-turno (background, gratis vía router, sugerencia con aprobación):
+      // solo para turnos ACP reales — los turnos de workflow/equipo tienen su propio flujo.
+      maybeMineWorkspace(wsId);
     }
   };
 

@@ -24,7 +24,10 @@ import { ProjectsView } from "./views/ProjectsView";
 import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
 import { TeamView } from "./views/TeamView";
+import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
+import { useSkillsStore } from "./store/skillsStore";
+import { syncSkillsToDisk } from "./lib/skills";
 import { GitBranch, Activity } from "lucide-react";
 import { useUiStore } from "./store/uiStore";
 
@@ -40,6 +43,7 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   environments: <EnvironmentsView />,
   terminals: <TerminalsView />,
   team: <TeamView />,
+  skills: <SkillsView />,
   services: <ServicesView />,
   agents:   <AgentsView />,
   mcp:      <McpView />,
@@ -72,6 +76,14 @@ export default function App() {
         }
       });
     }
+  }, []);
+
+  // Skills: pasada del curator-lite (marca stale, 1 vez/día máx.) + proyección al disco para que
+  // los agentes puedan leer los SKILL.md referenciados en el índice inyectado.
+  useEffect(() => {
+    const st = useSkillsStore.getState();
+    st.curatorPass();
+    void syncSkillsToDisk(Object.values(st.skills));
   }, []);
 
   const isChatFull = view === "chat";

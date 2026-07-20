@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
-export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "terminals" | "team" | "agents" | "mcp" | "services" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "terminals" | "team" | "skills" | "agents" | "mcp" | "services" | "settings";
 
 type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string };
 
@@ -22,6 +22,7 @@ const PROJECT_ITEMS: NavItem[] = [
 //    agentes, equipo de expertos, biblioteca de workflows, servidores MCP, ajustes de la app).
 const GENERAL_ITEMS: NavItem[] = [
   { id: "team",     icon: Users,     label: "Team" },
+  { id: "skills",   icon: Sparkles,  label: "Skills" },
   { id: "workflow", icon: GitBranch, label: "Workflows" },
   { id: "agents",   icon: Bot,       label: "Agents" },
   { id: "mcp",      icon: Server,    label: "MCP" },
