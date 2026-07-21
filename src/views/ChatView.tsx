@@ -767,19 +767,21 @@ export function ChatView() {
       <div className="hterm-main">
         {/* Workspace tabs — solo las del proyecto activo (scope por proyecto) */}
         <div className="ws-tabs">
-          {projectWorkspaces.map((w) => (
-            <div key={w.id} className={`ws-tab${w.id === curWsId ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Isolated environment: ${w.envName}` : undefined}>
-              <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
-              {w.envName && <GitBranch size={10} className="ws-tab-env" />}
-              <span className="ws-tab-title">{w.title}</span>
-              {projectWorkspaces.length > 1 && (
-                <button className="ws-tab-close" onClick={(e) => { e.stopPropagation(); closeWorkspace(w.id); }}>
-                  <X size={10} />
-                </button>
-              )}
-            </div>
-          ))}
-          <button className="ws-tab-add" onClick={newWorkspace}><Plus size={13} /></button>
+          <div className="ws-tabs-scroll">
+            {projectWorkspaces.map((w) => (
+              <div key={w.id} className={`ws-tab${w.id === curWsId ? " active" : ""}`} onClick={() => setActiveWs(w.id)} title={w.envName ? `Isolated environment: ${w.envName}` : undefined}>
+                <span className="ws-tab-dot" style={{ background: agents.find((a) => a.id === w.agentId)?.color ?? "#a78bfa" }} />
+                {w.envName && <GitBranch size={10} className="ws-tab-env" />}
+                <span className="ws-tab-title">{w.title}</span>
+                {projectWorkspaces.length > 1 && (
+                  <button className="ws-tab-close" onClick={(e) => { e.stopPropagation(); closeWorkspace(w.id); }}>
+                    <X size={10} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button className="ws-tab-add" onClick={newWorkspace}><Plus size={13} /></button>
+          </div>
 
           {/* Agent selector — cambia el agente de la PESTAÑA activa (por-workspace) y el default global */}
           <div className="ws-agent-selector" onClick={() => setShowAgentMenu((v) => !v)}>
