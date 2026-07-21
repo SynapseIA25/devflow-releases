@@ -14,9 +14,10 @@ export type SessionUpdate = { sessionUpdate: string } & Record<string, unknown>;
 type UpdateListener = (provider: string, sessionId: string, update: SessionUpdate) => void;
 
 export type PermissionOption = { optionId: string; name?: string; kind?: string };
+// id: number para ACP (JSON-RPC request id) | string para el path opencode nativo (permission "per_...").
 export type PermissionRequest = {
   provider: string;
-  id: number;
+  id: number | string;
   sessionId: string;
   toolCall?: Record<string, unknown>;
   options: PermissionOption[];
@@ -76,7 +77,9 @@ async function attachListener(provider: string) {
 // Se pasan a TODOS los agentes ACP al spawnearlos: OpenCode las detecta y expone los modelos de
 // esos providers; para mimo/claude son inofensivas. Se capturan al spawn — cambiar una key
 // requiere reiniciar el proceso (SettingsView llama restart("opencode") al guardar).
-function providerKeysEnv(): Record<string, string> {
+// Exportada: opencodeClient.ts la reusa para el spawn de `opencode serve` y para filtrar qué
+// providers de inferencia mostrar en el selector de modelos (mismo criterio: hay key cargada).
+export function providerKeysEnv(): Record<string, string> {
   const keys = useSettingsStore.getState().providerKeys;
   const env: Record<string, string> = {};
   for (const spec of PROVIDER_KEY_SPECS) {
@@ -302,12 +305,15 @@ export function onPermissionRequest(cb: PermissionListener): () => void {
   return () => permissionListeners.delete(cb);
 }
 
-export function resolvePermission(provider: string, id: number, optionId: string) {
-  respond(provider, id, { outcome: { outcome: "selected", optionId } });
+// sessionId: sin uso acá (ACP responde por id de request JSON-RPC, no necesita la sesión) — solo
+// existe en la firma para que ChatView pueda llamar a este cliente y a opencodeClient con la misma
+// forma de argumentos (el path REST de OpenCode sí necesita sessionId para la URL de respuesta).
+export function resolvePermission(provider: string, id: number | string, optionId: string, _sessionId?: string) {
+  respond(provider, id as number, { outcome: { outcome: "selected", optionId } });
 }
 
-export function cancelPermission(provider: string, id: number) {
-  respond(provider, id, { outcome: { outcome: "cancelled" } });
+export function cancelPermission(provider: string, id: number | string, _sessionId?: string) {
+  respond(provider, id as number, { outcome: { outcome: "cancelled" } });
 }
 
 // Detener el turno en curso de una sesión. Manda la notificación ACP `session/cancel` (best-effort:

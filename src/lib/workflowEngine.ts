@@ -14,7 +14,8 @@
 //   listener → acpClient cae al fail-safe allow-first-option ya existente.
 import { runShellCommand, readTextFile, writeTextFile, httpRequest, mcpCallTool } from "./tauriApi";
 import * as acpClient from "./acpClient";
-import { DEFAULT_PROVIDERS } from "./providers";
+import * as opencodeClient from "./opencodeClient";
+import { DEFAULT_PROVIDERS, type ProviderConfig } from "./providers";
 import { TASK_PROFILES, type TaskProfile } from "./modelRouter";
 import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
@@ -116,14 +117,16 @@ type SessionCache = Map<string, string>; // key -> sessionId
 async function acquireSession(
   sessions: SessionCache,
   key: string,
-  provider: string,
-  spawn: acpClient.AcpSpawnConfig,
+  provider: ProviderConfig,
   taskProfile?: TaskProfile
 ): Promise<{ sessionId: string; isNew: boolean }> {
   const existing = sessions.get(key);
   if (existing) return { sessionId: existing, isNew: false };
-  const preferredModel = useSettingsStore.getState().modelByProvider[provider];
-  const sessionId = await acpClient.newSession(provider, spawn, useProjectStore.getState().projectPath, preferredModel, taskProfile);
+  const preferredModel = useSettingsStore.getState().modelByProvider[provider.id];
+  const cwd = useProjectStore.getState().projectPath;
+  const sessionId = provider.nativeHttp
+    ? await opencodeClient.newSession(provider.id, cwd, preferredModel, taskProfile)
+    : await acpClient.newSession(provider.id, provider.acp!, cwd, preferredModel, taskProfile);
   sessions.set(key, sessionId);
   return { sessionId, isNew: true };
 }
@@ -138,11 +141,13 @@ function nodeTaskProfile(node: WorkflowNode, agentProfile?: TaskProfile): TaskPr
   return valid ? (raw as TaskProfile) : agentProfile;
 }
 
-// Manda un prompt a una sesión ACP y acumula el texto de la respuesta de ese turno.
-async function promptAndCollect(provider: string, sessionId: string, promptText: string): Promise<string> {
+// Manda un prompt a una sesión (ACP o el servidor nativo de OpenCode) y acumula el texto de la
+// respuesta de ese turno. opencodeClient emite el mismo shape de SessionUpdate que acpClient.
+async function promptAndCollect(provider: ProviderConfig, sessionId: string, promptText: string): Promise<string> {
   let text = "";
-  const unsub = acpClient.onUpdate((prov, sid, update) => {
-    if (prov !== provider || sid !== sessionId) return;
+  const client = provider.nativeHttp ? opencodeClient : acpClient;
+  const unsub = client.onUpdate((prov, sid, update) => {
+    if (prov !== provider.id || sid !== sessionId) return;
     if (update.sessionUpdate === "agent_message_chunk") {
       const content = update.content as { type?: string; text?: string } | string | undefined;
       if (typeof content === "string") text += content;
@@ -150,7 +155,11 @@ async function promptAndCollect(provider: string, sessionId: string, promptText:
     }
   });
   try {
-    await acpClient.prompt(provider, sessionId, promptText);
+    if (provider.nativeHttp) {
+      await opencodeClient.prompt(provider.id, sessionId, useProjectStore.getState().projectPath, promptText);
+    } else {
+      await acpClient.prompt(provider.id, sessionId, promptText);
+    }
   } finally {
     unsub();
   }
@@ -164,8 +173,8 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 MiMo: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
   const profile = nodeTaskProfile(node);
-  const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, "mimo", mimo.acp, profile);
-  const text = await promptAndCollect("mimo", sessionId, promptText);
+  const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, mimo, profile);
+  const text = await promptAndCollect(mimo, sessionId, promptText);
   cb.onLog("success", `🤖 MiMo respondió (${text.length} chars)`);
   return { output: text };
 }
@@ -177,18 +186,18 @@ async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, i
   const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
   if (!agent) throw new Error("Nodo agente sin agente seleccionado (o el agente ya no existe)");
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
-  if (!provider?.acp) throw new Error(`El agente "${agent.name}" no tiene backend ACP — elegí uno con motor real (ej. MiMo)`);
+  if (!provider?.acp && !provider?.nativeHttp) throw new Error(`El agente "${agent.name}" no tiene backend ACP ni nativo — elegí uno con motor real (ej. MiMo)`);
   let promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
   // Sesión propia por agente (distintos agentes = distinto system prompt/persona = distinta sesión).
   // El perfil entra en la key: dos nodos del mismo agente con perfil distinto usan modelos distintos.
   const profile = nodeTaskProfile(node, agent.taskProfile);
-  const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}:${profile ?? ""}`, agent.providerId, provider.acp, profile);
+  const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}:${profile ?? ""}`, provider, profile);
   // El system prompt del agente se inyecta una sola vez, en el primer turno de su sesión.
   const systemPrompt = agent.systemPrompt?.trim();
   if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;
-  const text = await promptAndCollect(agent.providerId, sessionId, promptText);
+  const text = await promptAndCollect(provider, sessionId, promptText);
   cb.onLog("success", `🤖 ${agent.name} respondió (${text.length} chars)`);
   return { output: text };
 }

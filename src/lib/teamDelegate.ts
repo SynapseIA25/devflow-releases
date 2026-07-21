@@ -1,5 +1,6 @@
 import { DEFAULT_PROVIDERS, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
+import * as opencodeClient from "./opencodeClient";
 import { isQuotaError, reportQuotaError, type TaskProfile } from "./modelRouter";
 import { useSettingsStore } from "../store/settingsStore";
 
@@ -41,12 +42,19 @@ class TurnTimeoutError extends Error {
 // saltea al agotado y cae al siguiente candidato del perfil.
 export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: string, timeoutMs = 0, onModel?: (model: string) => void, retried = false): Promise<string> {
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
-  if (!provider?.acp) throw new Error(`El agente ${agent.name} no tiene ACP configurado`);
-  const sessionId = await acpClient.newSession(agent.providerId, provider.acp, cwd, agent.model || undefined, agent.taskProfile);
-  const sessionModel = acpClient.getSessionModel(agent.providerId, sessionId);
+  const isNative = !!provider?.nativeHttp;
+  if (!provider?.acp && !isNative) throw new Error(`El agente ${agent.name} no tiene ACP ni servidor nativo configurado`);
+  // opencodeClient emite el mismo shape de SessionUpdate que acpClient (ver opencodeClient.ts) —
+  // getSessionModel/onUpdate/cancel comparten firma entre los dos, así que se puede delegar a uno u
+  // otro según el transporte del provider sin duplicar el resto de esta función.
+  const client = isNative ? opencodeClient : acpClient;
+  const sessionId = isNative
+    ? await opencodeClient.newSession(agent.providerId, cwd, agent.model || undefined, agent.taskProfile)
+    : await acpClient.newSession(agent.providerId, provider!.acp!, cwd, agent.model || undefined, agent.taskProfile);
+  const sessionModel = client.getSessionModel(agent.providerId, sessionId);
   if (sessionModel && onModel) onModel(sessionModel);
   let text = "";
-  const unsub = acpClient.onUpdate((prov, sid, update) => {
+  const unsub = client.onUpdate((prov, sid, update) => {
     if (prov !== agent.providerId || sid !== sessionId) return;
     if (update.sessionUpdate === "agent_message_chunk") {
       const content = update.content as { type?: string; text?: string } | string | undefined;
@@ -57,12 +65,13 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const sys = agent.systemPrompt?.trim();
-    const promptP = acpClient.prompt(agent.providerId, sessionId, sys ? `[System]\n${sys}\n\n${promptText}` : promptText);
+    const fullText = sys ? `[System]\n${sys}\n\n${promptText}` : promptText;
+    const promptP = isNative ? opencodeClient.prompt(agent.providerId, sessionId, cwd, fullText) : acpClient.prompt(agent.providerId, sessionId, fullText);
     if (timeoutMs > 0) {
       const timeoutP = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           // Cancelar SOLO esta sesión (el cancel del Frente 1 es selectivo) → los otros expertos siguen.
-          acpClient.cancel(agent.providerId, sessionId);
+          client.cancel(agent.providerId, sessionId);
           reject(new TurnTimeoutError(timeoutMs));
         }, timeoutMs);
       });
@@ -73,7 +82,7 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!retried && !(e instanceof TurnTimeoutError) && isQuotaError(msg)) {
-      const model = acpClient.getSessionModel(agent.providerId, sessionId);
+      const model = client.getSessionModel(agent.providerId, sessionId);
       if (model) reportQuotaError(model, msg);
       if (timer) clearTimeout(timer);
       unsub();

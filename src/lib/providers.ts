@@ -15,6 +15,11 @@ export type ProviderConfig = {
   // sidecar: true = "command" es un nombre lógico bundleado por Tauri (externalBin), no algo en PATH;
   // se resuelve a una ruta absoluta en runtime (ver acpClient.ensureStarted).
   acp?: { command: string; args: string[]; sidecar?: boolean };
+  // true = este provider se habla por el servidor HTTP+SSE nativo de OpenCode (opencodeClient.ts,
+  // `opencode serve`) en vez de ACP-por-stdio — mutuamente excluyente con `acp` para un mismo
+  // provider (hoy solo "opencode" lo usa; es el primer paso hacia una herramienta de codificación
+  // propia de DevFlow, ver docs/o el roadmap en memoria del proyecto).
+  nativeHttp?: boolean;
 };
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
@@ -46,14 +51,16 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     // las API keys de Settings (OpenRouter/Google/Groq/Mistral, ver PROVIDER_KEY_SPECS) expone los
     // modelos de esos providers en el selector del chat. Bundleado como sidecar de Tauri (binario
     // nativo de `opencode-ai`, ver scripts/fetch-opencode-sidecar.mjs) — no requiere instalación
-    // aparte, DevFlow lo trae adentro.
+    // aparte, DevFlow lo trae adentro. `nativeHttp: true`: se habla por el servidor HTTP+SSE propio
+    // del binario (opencodeClient.ts, `opencode serve`), no por ACP-sobre-stdio como el resto —
+    // primer paso hacia una herramienta de codificación nativa de DevFlow (ver roadmap en memoria).
     id: "opencode",
     name: "OpenCode",
     description: "Multi-LLM agent, built in — free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
     color: "#10b981",
     icon: "◎",
     docsUrl: "https://opencode.ai/docs",
-    acp: { command: "opencode", args: ["acp"], sidecar: true },
+    nativeHttp: true,
   },
 ];
 

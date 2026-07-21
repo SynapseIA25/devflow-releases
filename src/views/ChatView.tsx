@@ -9,6 +9,7 @@ import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
 import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
+import * as opencodeClient from "../lib/opencodeClient";
 import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
@@ -20,6 +21,7 @@ const EMPTY_MODELS: acpClient.ModelOption[] = [];
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
 import { TerminalPane } from "../components/TerminalPane";
+import { AddModelModal } from "../components/AddModelModal";
 import { useSkillsStore } from "../store/skillsStore";
 import { buildSkillsPreamble, detectSkillUse, skillsRoot } from "../lib/skills";
 import { maybeMineWorkspace } from "../lib/skillMiner";
@@ -222,6 +224,7 @@ export function ChatView() {
   }, [pendingPrompt, setPendingPrompt]);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showAddModelModal, setShowAddModelModal] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<acpClient.PermissionRequest | null>(null);
   const [recording, setRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -265,6 +268,9 @@ export function ChatView() {
   // sesión; currentModel es el activo; la elección del usuario (modelByProvider) se persiste.
   const activeProviderId = activeAgent?.providerId ?? "";
   const activeAcp = activeAgent ? DEFAULT_PROVIDERS.find((p) => p.id === activeProviderId)?.acp : undefined;
+  // OpenCode se habla por su servidor HTTP+SSE nativo (opencodeClient.ts), no por ACP-sobre-stdio —
+  // ver los puntos donde se despacha a uno u otro cliente según cuál de los dos esté seteado.
+  const activeNativeHttp = activeAgent ? DEFAULT_PROVIDERS.find((p) => p.id === activeProviderId)?.nativeHttp : undefined;
   const availableModels = useSettingsStore((s) => s.availableModelsByProvider[activeProviderId] ?? EMPTY_MODELS);
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[activeProviderId]);
   const setModelForProvider = useSettingsStore((s) => s.setModelForProvider);
@@ -338,9 +344,11 @@ export function ChatView() {
   // en cada turno si no cambió desde la última vez (ver buildPromptWithContext más abajo).
   const sentContextRef = useRef(new Map<string, Map<string, string>>());
 
-  // Suscripción única a las notificaciones session/update de cualquier agente ACP (mimo, hermes, ...).
+  // Suscripción única a las notificaciones de turno de cualquier agente — tanto ACP (mimo, hermes,
+  // claude...) como el path nativo de OpenCode (opencodeClient emite el mismo shape de SessionUpdate,
+  // ver su comentario de cabecera), así este handler no necesita saber de cuál vino cada evento.
   useEffect(() => {
-    const unsub = acpClient.onUpdate((provider, sessionId, update) => {
+    const handleUpdate = (provider: string, sessionId: string, update: acpClient.SessionUpdate) => {
       const turn = activeTurnsRef.current.get(`${provider}:${sessionId}`);
       if (!turn) return;
       const kind = update.sessionUpdate;
@@ -388,34 +396,43 @@ export function ChatView() {
         upsertToolBlock(turn.wsId, toolCallId, { title, kind: toolKind, command, exitCode, status, items });
       }
       // otras variantes (plan, etc.): sin UI todavía, no-op explícito.
-    });
-    return unsub;
+    };
+    const unsub1 = acpClient.onUpdate(handleUpdate);
+    const unsub2 = opencodeClient.onUpdate(handleUpdate);
+    return () => { unsub1(); unsub2(); };
   }, [appendAiChunk, appendTextChunk, updateWsSteps, upsertToolBlock]);
 
-  // Suscripción a session/request_permission: muestra el modal y deja la decisión al usuario.
+  // Suscripción a las solicitudes de permiso (ACP session/request_permission u OpenCode
+  // permission.asked, ver arriba): muestra el modal y deja la decisión al usuario.
   const pendingPermissionRef = useRef<acpClient.PermissionRequest | null>(null);
   useEffect(() => {
-    const unsub = acpClient.onPermissionRequest((req) => {
+    const onReq = (req: acpClient.PermissionRequest) => {
       pendingPermissionRef.current = req;
       setPendingPermission(req);
-    });
+    };
+    const unsub1 = acpClient.onPermissionRequest(onReq);
+    const unsub2 = opencodeClient.onPermissionRequest(onReq);
     return () => {
-      unsub();
+      unsub1();
+      unsub2();
       // si el componente se desmonta con un permiso sin resolver, no dejamos al agente colgado.
       if (pendingPermissionRef.current) {
         const p = pendingPermissionRef.current;
-        acpClient.cancelPermission(p.provider, p.id);
+        const client = p.provider === "opencode" ? opencodeClient : acpClient;
+        client.cancelPermission(p.provider, p.id, p.sessionId);
       }
     };
   }, []);
 
   // Suscripción a los modelos que el agente ofrece al abrir sesión → los volcamos al settingsStore
-  // para poblar el selector de modelo (ver acpClient.newSession).
+  // para poblar el selector de modelo (ver acpClient.newSession / opencodeClient.newSession).
   useEffect(() => {
-    const unsub = acpClient.onModelOptions((provider, _sid, info) => {
+    const onOptions = (provider: string, _sid: string, info: acpClient.ModelInfo) => {
       useSettingsStore.getState().reportModelOptions(provider, info.available, info.current);
-    });
-    return unsub;
+    };
+    const unsub1 = acpClient.onModelOptions(onOptions);
+    const unsub2 = opencodeClient.onModelOptions(onOptions);
+    return () => { unsub1(); unsub2(); };
   }, []);
 
   // Cambia el modelo del agente activo: persiste la elección y, si ya hay sesión abierta en esta
@@ -427,13 +444,15 @@ export function ChatView() {
     if (value === AUTO_MODEL) return;
     const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === curWsId);
     if (w?.sessionId && w.sessionProvider === activeProviderId) {
-      acpClient.setSessionModel(activeProviderId, w.sessionId, value).catch(() => {});
+      const client = activeNativeHttp ? opencodeClient : acpClient;
+      client.setSessionModel(activeProviderId, w.sessionId, value).catch(() => {});
     }
   };
 
   const resolvePermission = (optionId: string) => {
     if (!pendingPermission) return;
-    acpClient.resolvePermission(pendingPermission.provider, pendingPermission.id, optionId);
+    const client = pendingPermission.provider === "opencode" ? opencodeClient : acpClient;
+    client.resolvePermission(pendingPermission.provider, pendingPermission.id, optionId, pendingPermission.sessionId);
     pendingPermissionRef.current = null;
     setPendingPermission(null);
   };
@@ -498,7 +517,10 @@ export function ChatView() {
       // ECONOMY_EDITOR_MAX_LINES — un archivo grande inyectado entero quema tokens en cada cambio.
       // Los adjuntos del Contexto ya van capados a 400 líneas vía readTextFile.
       const wsAgent = useAgentsStore.getState().agents.find((a) => a.id === wsForCtx?.agentId);
-      const sessionModel = wsAgent ? acpClient.getSessionModel(wsAgent.providerId, sessionId) : null;
+      const wsProvider = wsAgent ? DEFAULT_PROVIDERS.find((p) => p.id === wsAgent.providerId) : undefined;
+      const sessionModel = wsAgent
+        ? (wsProvider?.nativeHttp ? opencodeClient : acpClient).getSessionModel(wsAgent.providerId, sessionId)
+        : null;
       const economy = economyActive(useSettingsStore.getState().promptEconomy, sessionModel);
       let editorContent = activeTab.content;
       if (economy) {
@@ -630,8 +652,80 @@ export function ChatView() {
     }
   };
 
+  // Mismo flujo que runAcp (sesión reusada por workspace, contexto, system prompt, índice de skills,
+  // router "Auto", cancelación) pero contra el servidor HTTP+SSE nativo de OpenCode en vez de ACP. Se
+  // separó de runAcp en vez de generalizarla porque newSession/prompt tienen firmas distintas (acá
+  // hace falta pasar cwd explícito en cada prompt — el server no es stateful por proceso como ACP).
+  const runOpenCodeHttp = async (wsId: string, text: string, provider: string) => {
+    const aiBlockId = makeId();
+    updateWsSteps(wsId, () => []);
+    for (const key of thoughtBlockIdsRef.current.keys()) {
+      if (key.startsWith(`${wsId}:`)) thoughtBlockIdsRef.current.delete(key);
+    }
+    const startedAt = performance.now();
+    let inChars = text.length;
+    let turnKey: string | null = null;
+    try {
+      const wsNow = useWorkspaceStore.getState().workspaces.find((w) => w.id === wsId);
+      let sid = wsNow?.sessionProvider === provider ? wsNow?.sessionId : undefined;
+      const isNewSession = !sid;
+      const pstate = useProjectStore.getState();
+      const sessionCwd = wsNow?.cwd ?? pstate.projects[wsNow?.projectId ?? ""]?.path ?? pstate.projectPath;
+      if (!sid) {
+        const preferredModel = useSettingsStore.getState().modelByProvider[provider];
+        sid = await opencodeClient.newSession(provider, sessionCwd, preferredModel);
+        setSession(wsId, sid, provider);
+      }
+      turnKey = `${provider}:${sid}`;
+      activeTurnsRef.current.set(turnKey, { wsId, aiBlockId, outChars: 0 });
+      let fullPrompt = await buildPromptWithContext(wsId, sid, text);
+      const systemPrompt = agentForWs(wsId)?.systemPrompt?.trim();
+      if (isNewSession && systemPrompt) {
+        fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
+      }
+      if (isNewSession) {
+        try {
+          const sstate = useSkillsStore.getState();
+          const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
+          const preamble = buildSkillsPreamble(skillsList, await skillsRoot());
+          if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
+        } catch { /* sin índice el turno sigue igual */ }
+      }
+      inChars = fullPrompt.length;
+      if (useSettingsStore.getState().modelByProvider[provider] === AUTO_MODEL) {
+        const avail = useSettingsStore.getState().availableModelsByProvider[provider] ?? [];
+        const target = pickModel(classifyTask(fullPrompt), avail);
+        const active = opencodeClient.getSessionModel(provider, sid);
+        if (target && target !== active) {
+          try {
+            await opencodeClient.setSessionModel(provider, sid, target);
+            useSettingsStore.getState().reportModelOptions(provider, avail, target);
+          } catch { /* si falla el cambio, el turno sigue con el modelo actual */ }
+        }
+      }
+      if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
+      await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg !== "__turn_cancelled__") {
+        appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${msg}`);
+      }
+    } finally {
+      recordChat({
+        provider,
+        latencyMs: performance.now() - startedAt,
+        inChars,
+        outChars: turnKey ? (activeTurnsRef.current.get(turnKey)?.outChars ?? 0) : 0,
+      });
+      if (turnKey) activeTurnsRef.current.delete(turnKey);
+      finishTurn(wsId);
+      maybeMineWorkspace(wsId);
+    }
+  };
+
   const runAI = (wsId: string, text: string) => {
     const provider = DEFAULT_PROVIDERS.find((p) => p.id === agentForWs(wsId)?.providerId);
+    if (provider?.nativeHttp) return runOpenCodeHttp(wsId, text, provider.id);
     return provider?.acp ? runAcp(wsId, text, provider.id, provider.acp) : runNoAdapter(wsId);
   };
 
@@ -702,7 +796,8 @@ export function ChatView() {
     if (!wsId) return;
     const w = ws;
     if (w?.sessionProvider && w?.sessionId) {
-      acpClient.cancel(w.sessionProvider, w.sessionId);
+      const client = w.sessionProvider === "opencode" ? opencodeClient : acpClient;
+      client.cancel(w.sessionProvider, w.sessionId);
       activeTurnsRef.current.delete(`${w.sessionProvider}:${w.sessionId}`);
     }
     cancelledRef.current.set(wsId, true);
@@ -806,7 +901,7 @@ export function ChatView() {
 
           {/* Model selector — solo para agentes ACP con modelos descubiertos. Cambia el modelo del
               agente activo (persistido por provider), en vivo si ya hay sesión abierta. */}
-          {activeAcp && availableModels.length > 0 && (
+          {(activeAcp || activeNativeHttp) && availableModels.length > 0 && (
             <div className="ws-model-selector" onClick={() => setShowModelMenu((v) => !v)} title="Agent model">
               <span className="ws-model-name">
                 {(() => {
@@ -831,11 +926,23 @@ export function ChatView() {
                       <div className="agent-option-name">{m.label}</div>
                     </div>
                   ))}
+                  {activeProviderId === "opencode" && (
+                    <div className="agent-option agent-option--action"
+                      onClick={(e) => { e.stopPropagation(); setShowModelMenu(false); setShowAddModelModal(true); }}>
+                      <div className="agent-option-name">🔍 Buscar más modelos…</div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
+        {showAddModelModal && (
+          <AddModelModal
+            onClose={() => setShowAddModelModal(false)}
+            onAdded={() => {}}
+          />
+        )}
 
         {/* Steps bar */}
         {steps.length > 0 && (

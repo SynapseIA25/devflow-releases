@@ -63,7 +63,10 @@ export function NodeInspector() {
                 ? order.filter((fid) => fid !== activeId).map((fid) => ({ value: fid, label: workflows[fid].name }))
                 : f.dynamicOptions === "agents"
                 ? agents
-                    .filter((a) => DEFAULT_PROVIDERS.find((p) => p.id === a.providerId)?.acp)
+                    .filter((a) => {
+                      const p = DEFAULT_PROVIDERS.find((p) => p.id === a.providerId);
+                      return !!p?.acp || !!p?.nativeHttp;
+                    })
                     .map((a) => ({ value: a.id, label: a.name }))
                 : f.options ?? [];
             return (

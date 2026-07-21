@@ -9,6 +9,7 @@ import { suggestExperts } from "../lib/expertRouter";
 import { autoDelegate, type DelegateStep } from "../lib/teamDelegate";
 import { createWorktree } from "../lib/environments";
 import * as acpClient from "../lib/acpClient";
+import * as opencodeClient from "../lib/opencodeClient";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useProjectStore } from "../store/projectStore";
@@ -65,7 +66,7 @@ export function TeamView() {
       const providers = [...new Set([teamLead, ...teamExperts].map((a) => a.providerId))];
       setSteps([{ kind: "stage", label: "Restarting the agent to start fresh…" }]);
       for (const p of providers) {
-        await acpClient.restart(p);
+        await (p === "opencode" ? opencodeClient.restart(p) : acpClient.restart(p));
         useWorkspaceStore.getState().resetSessions(p);
       }
       if (isolate) {
@@ -142,7 +143,7 @@ export function TeamView() {
             <label className="team-provider">
               <Cpu size={13} /> Run the team on:
               <select value={teamProviderId} onChange={(e) => setTeamProviderId(e.target.value)} disabled={running}>
-                {DEFAULT_PROVIDERS.filter((p) => p.acp).map((p) => (
+                {DEFAULT_PROVIDERS.filter((p) => p.acp || p.nativeHttp).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}{p.id === "opencode" ? " — free model per task (quota-aware)" : ""}
                   </option>

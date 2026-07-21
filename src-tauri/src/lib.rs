@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -13,6 +14,16 @@ pub struct AcpProcesses(pub Mutex<HashMap<String, Child>>);
 pub struct WebhookState(pub Mutex<Option<u16>>);
 // Trigger on-file-change: un watcher de notify por trigger, keyed por su id.
 pub struct WatchState(pub Mutex<HashMap<String, notify::RecommendedWatcher>>);
+// Un `opencode serve` (servidor HTTP+SSE nativo, no ACP-por-stdio) — un solo proceso por provider,
+// igual que AcpProcesses. El cwd/directory se elige por sesión desde el frontend (ver comentario
+// en opencode_serve_ensure), no queda atado al proceso. Valor = (proceso, puerto asignado).
+pub struct HttpServeProcesses(pub Mutex<HashMap<String, (Child, u16)>>);
+// Hilos que leen el SSE /event de un `opencode serve` y lo reenvían como evento de Tauri — ver
+// opencode_events_start. Key = "{provider}:{directory}" (el stream de eventos está scopeado por
+// directory, igual que /session — un proceso puede tener sesiones de varios directorios activos).
+// Valor = flag para pedirle al hilo que corte en el próximo chequeo (el read() bloqueante en curso
+// puede tardar hasta el próximo heartbeat/dato en notarlo).
+pub struct OpenCodeEventStreams(pub Mutex<HashMap<String, Arc<AtomicBool>>>);
 
 #[tauri::command]
 fn start_mcp_server(
@@ -289,6 +300,172 @@ fn acp_stop(provider: String, state: State<AcpProcesses>) -> Result<(), String> 
     let mut processes = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = processes.remove(&provider) {
         child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ── OpenCode nativo — spawnea `opencode serve` (servidor HTTP+SSE propio del binario, no ACP) y
+// devuelve el puerto para que el frontend le hable directo con el SDK oficial (@opencode-ai/sdk).
+// UN SOLO proceso por provider (igual que AcpProcesses hoy) — a diferencia de lo que parecía por la
+// doc pública, el cwd NO queda atado al proceso: `SessionCreateData.query.directory` (verificado
+// leyendo node_modules/@opencode-ai/sdk/dist/gen/types.gen.d.ts) deja elegir el directory por
+// sesión al crearla, así que un solo servidor sirve todos los proyectos/worktrees de la app.
+
+fn pick_free_port() -> Result<u16, String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    drop(listener);
+    Ok(port)
+}
+
+#[tauri::command]
+fn opencode_serve_ensure(
+    provider: String,
+    env: Option<HashMap<String, String>>,
+    state: State<HttpServeProcesses>,
+) -> Result<u16, String> {
+    let mut processes = state.0.lock().map_err(|e| e.to_string())?;
+
+    if let Some((child, port)) = processes.get_mut(&provider) {
+        if matches!(child.try_wait(), Ok(None)) {
+            return Ok(*port);
+        }
+    }
+    processes.remove(&provider);
+
+    let sidecar = resolve_sidecar_path("opencode".to_string())?;
+    let port = pick_free_port()?;
+
+    // Mismo filtrado que acp_start: las API keys de Settings (OpenRouter/Google/Groq/...) se
+    // inyectan como env vars y opencode las detecta solo.
+    let extra_env: HashMap<String, String> = env
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
+
+    let mut child = Command::new(&sidecar)
+        .args([
+            "serve",
+            "--port",
+            &port.to_string(),
+            "--hostname",
+            "127.0.0.1",
+            // Orígenes del webview de Tauri: dev (Vite) + prod (custom protocol, distinto entre
+            // Windows/WebView2 y macOS-Linux/wry) — se pasan los tres, de más no molesta.
+            "--cors",
+            "http://localhost:1420",
+            "--cors",
+            "tauri://localhost",
+            "--cors",
+            "http://tauri.localhost",
+        ])
+        .envs(&extra_env)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("No se pudo iniciar 'opencode serve': {}", e))?;
+
+    // No hay framing JSON-RPC que leer acá (la comunicación real es HTTP/SSE desde el frontend) —
+    // el stderr solo se drena a log de debug, mismo patrón que acp_start.
+    let stderr = child.stderr.take().ok_or("No se pudo capturar stderr de opencode serve")?;
+    let log_provider = provider.clone();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().flatten() {
+            eprintln!("[opencode serve {}] {}", log_provider, line);
+        }
+    });
+
+    processes.insert(provider, (child, port));
+    Ok(port)
+}
+
+#[tauri::command]
+fn opencode_serve_stop(provider: String, state: State<HttpServeProcesses>) -> Result<(), String> {
+    let mut processes = state.0.lock().map_err(|e| e.to_string())?;
+    if let Some((mut child, _)) = processes.remove(&provider) {
+        child.kill().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Puente SSE → evento de Tauri para /event de opencode serve. Verificado empíricamente que
+// WebView2 NO entrega el body de un fetch()/EventSource de streaming de forma incremental (con
+// fetch()+reader manual y con EventSource nativo, disparando el turno desde un proceso externo:
+// solo llegaba el primer evento "server.connected", nunca los de mensajes/tool-calls, aunque el
+// server sí los emitía — confirmado con curl concurrente). El cliente bloqueante de reqwest no
+// tiene ese problema (no pasa por el stack de red del webview), así que Rust lee la línea "data: "
+// de cada evento SSE en un hilo aparte (mismo idiom que el resto del archivo: BufReader sobre un
+// stream) y lo reenvía tal cual (el JSON crudo) al canal `opencode-event:{provider}`.
+//
+// `directory` es OBLIGATORIO acá y no es cosmético: /event sin `directory` queda scopeado al cwd
+// con el que arrancó el proceso opencode serve (en este caso el cwd de `cargo run`, casi nunca el
+// proyecto real que se está usando) y NUNCA emite eventos de sesiones de otro directorio — verificado
+// empíricamente (sesiones creadas y prompteadas con éxito en un directory distinto, pero /event sin
+// directory solo entregaba server.connected/heartbeat; con ?directory=<mismo path> sí llegó todo:
+// message.part.delta, tool calls, etc.). Como una sola app puede tener sesiones en varios directorios
+// (distintos proyectos, worktrees de Ambientes), hace falta un hilo/conexión por (provider, directory)
+// — todos reenvían al MISMO canal `opencode-event:{provider}` (los eventos ya traen sessionID, que es
+// global y suficiente para rutear del lado del frontend).
+#[tauri::command]
+fn opencode_events_start(
+    app: AppHandle,
+    provider: String,
+    directory: String,
+    port: u16,
+    state: State<OpenCodeEventStreams>,
+) -> Result<(), String> {
+    let key = format!("{}:{}", provider, directory);
+    let mut streams = state.0.lock().map_err(|e| e.to_string())?;
+    if streams.contains_key(&key) {
+        return Ok(());
+    }
+    let running = Arc::new(AtomicBool::new(true));
+    let running_for_thread = running.clone();
+    let event_name = format!("opencode-event:{}", provider);
+    let mut url = reqwest::Url::parse(&format!("http://127.0.0.1:{}/event", port))
+        .map_err(|e| e.to_string())?;
+    url.query_pairs_mut().append_pair("directory", &directory);
+    std::thread::spawn(move || {
+        while running_for_thread.load(Ordering::Relaxed) {
+            let resp = match reqwest::blocking::get(url.clone()) {
+                Ok(r) => r,
+                Err(_) => {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    continue;
+                }
+            };
+            let reader = BufReader::new(resp);
+            for line in reader.lines().flatten() {
+                if !running_for_thread.load(Ordering::Relaxed) {
+                    break;
+                }
+                if let Some(data) = line.strip_prefix("data:") {
+                    let _ = app.emit(&event_name, data.trim().to_string());
+                }
+            }
+            if !running_for_thread.load(Ordering::Relaxed) {
+                break;
+            }
+            // el server cerró la conexión (ej. se reinició) — reintenta tras una pausa breve.
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        }
+    });
+    streams.insert(key, running);
+    Ok(())
+}
+
+// Corta TODOS los hilos de eventos de un provider (todos los directorios) — se usa en restart().
+#[tauri::command]
+fn opencode_events_stop(provider: String, state: State<OpenCodeEventStreams>) -> Result<(), String> {
+    let prefix = format!("{}:", provider);
+    let mut streams = state.0.lock().map_err(|e| e.to_string())?;
+    let keys: Vec<String> = streams.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
+    for key in keys {
+        if let Some(flag) = streams.remove(&key) {
+            flag.store(false, Ordering::Relaxed);
+        }
     }
     Ok(())
 }
@@ -871,6 +1048,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(McpProcesses(Mutex::new(HashMap::new())))
         .manage(AcpProcesses(Mutex::new(HashMap::new())))
+        .manage(HttpServeProcesses(Mutex::new(HashMap::new())))
+        .manage(OpenCodeEventStreams(Mutex::new(HashMap::new())))
         .manage(PtySessions(Mutex::new(HashMap::new())))
         .manage(WebhookState(Mutex::new(None)))
         .manage(WatchState(Mutex::new(HashMap::new())))
@@ -885,6 +1064,10 @@ pub fn run() {
             acp_start,
             acp_send,
             acp_stop,
+            opencode_serve_ensure,
+            opencode_serve_stop,
+            opencode_events_start,
+            opencode_events_stop,
             read_text_file,
             write_text_file,
             http_request,

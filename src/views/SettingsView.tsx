@@ -5,14 +5,14 @@ import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
 import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
-import * as acpClient from "../lib/acpClient";
+import * as opencodeClient from "../lib/opencodeClient";
 
 // DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
 // del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
 function ProviderCard({ provider }: { provider: ProviderConfig }) {
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[provider.id]);
-  const connected = !!provider.acp;
-  const cliName = provider.acp?.command.split(/[\\/]/).pop();
+  const connected = !!provider.acp || !!provider.nativeHttp;
+  const cliName = provider.acp?.command.split(/[\\/]/).pop() ?? (provider.nativeHttp ? provider.id : undefined);
 
   return (
     <div className="provider-card">
@@ -23,7 +23,7 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
           <div className="provider-card-desc">{provider.description}</div>
         </div>
         <div className={`provider-status ${connected ? "enabled" : "disabled"}`}>
-          {connected ? <><CheckCircle size={12} /> ACP</> : <><AlertCircle size={12} /> Not connected</>}
+          {connected ? <><CheckCircle size={12} /> {provider.nativeHttp ? "Native" : "ACP"}</> : <><AlertCircle size={12} /> Not connected</>}
         </div>
       </div>
 
@@ -34,8 +34,9 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
             <span className="provider-meta-val">{currentModel ?? "— (set in the chat)"}</span>
           </div>
           <div className="provider-note">
-            Authentication and models are managed by the <code>{cliName}</code> CLI. The model is
-            switched from the chat selector.
+            {provider.nativeHttp
+              ? <>Runs via DevFlow's native OpenCode integration (<code>{cliName}</code>). The model is switched from the chat selector.</>
+              : <>Authentication and models are managed by the <code>{cliName}</code> CLI. The model is switched from the chat selector.</>}
           </div>
         </div>
       ) : (
@@ -70,7 +71,7 @@ function ApiKeysSection() {
       setDrafts({});
       // El proceso de OpenCode captura el env al spawnear: lo reiniciamos para que tome las keys
       // nuevas. Las sesiones de chat viejas de ese provider quedan huérfanas → se recrean solas.
-      await acpClient.restart("opencode");
+      await opencodeClient.restart("opencode");
       useWorkspaceStore.getState().resetSessions("opencode");
       setAppliedAt(Date.now());
     } finally {

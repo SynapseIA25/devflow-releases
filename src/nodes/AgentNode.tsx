@@ -17,7 +17,10 @@ export function AgentNode({ id, data, selected }: NodeProps) {
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData);
   const agents = useAgentsStore((s) => s.agents);
   const status = d.status ?? "idle";
-  const acpAgents = agents.filter((a) => DEFAULT_PROVIDERS.find((p) => p.id === a.providerId)?.acp);
+  const acpAgents = agents.filter((a) => {
+    const p = DEFAULT_PROVIDERS.find((p) => p.id === a.providerId);
+    return !!p?.acp || !!p?.nativeHttp;
+  });
 
   return (
     <div className={`rf-node agent-node rf-node--${status}${selected ? " selected" : ""}`}>

@@ -68,7 +68,7 @@ export function AgentDetail({ agent }: { agent: AgentConfig }) {
             <span className="provider-dot" style={{ background: provider?.color ?? "#666" }} />
             {provider?.name ?? agent.providerId}
           </span>
-          {!provider?.acp && (
+          {!provider?.acp && !provider?.nativeHttp && (
             <span className="agent-provider-warn">Provider without an ACP adapter — not runnable yet</span>
           )}
         </div>
@@ -119,7 +119,7 @@ export function NewAgentForm({ onClose, onCreated }: { onClose: () => void; onCr
   const providers = useSettingsStore((s) => s.providers);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [providerId, setProviderId] = useState(providers.find((p) => p.acp)?.id ?? providers[0]?.id ?? "mimo");
+  const [providerId, setProviderId] = useState(providers.find((p) => p.acp || p.nativeHttp)?.id ?? providers[0]?.id ?? "mimo");
   const [systemPrompt, setSystemPrompt] = useState("");
 
   const save = () => {

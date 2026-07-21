@@ -72,6 +72,37 @@ export async function acpStop(provider: string): Promise<void> {
   return invoke<void>("acp_stop", { provider });
 }
 
+// Arranca (o reusa, si ya está vivo) un `opencode serve` — servidor HTTP+SSE nativo, no
+// ACP-por-stdio — y devuelve el puerto local para hablarle con @opencode-ai/sdk. Un solo proceso
+// para toda la app (el directory/cwd se elige por sesión, ver opencodeClient.ts).
+export async function opencodeServeEnsure(
+  provider: string,
+  env?: Record<string, string>
+): Promise<number> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<number>("opencode_serve_ensure", { provider, env: env ?? null });
+}
+
+export async function opencodeServeStop(provider: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("opencode_serve_stop", { provider });
+}
+
+// Puente SSE→evento de Tauri para /event de opencode serve — WebView2 no entrega bien un
+// fetch()/EventSource de streaming (verificado empíricamente), así que Rust lee el stream con un
+// cliente HTTP bloqueante y reenvía cada evento por el canal `opencode-event:{provider}`. `directory`
+// es obligatorio: /event sin directory queda scopeado al cwd del proceso, no del proyecto en uso
+// (verificado empíricamente — ver comentario en opencode_events_start del lado de Rust).
+export async function opencodeEventsStart(provider: string, directory: string, port: number): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("opencode_events_start", { provider, directory, port });
+}
+
+export async function opencodeEventsStop(provider: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("opencode_events_stop", { provider });
+}
+
 export async function readTextFile(path: string, line?: number, limit?: number): Promise<string> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri).");
   return invoke<string>("read_text_file", { path, line, limit });
