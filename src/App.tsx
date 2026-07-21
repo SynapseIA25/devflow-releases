@@ -11,8 +11,6 @@ import { EditorWatcher } from "./components/EditorWatcher";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { OnboardingModal } from "./components/OnboardingModal";
 import { useSettingsStore } from "./store/settingsStore";
-import { FloatingWindow } from "./components/FloatingWindow";
-import { CodeFlowPanel } from "./components/panel/CodeFlowPanel";
 import { ChatView } from "./views/ChatView";
 import { WorkflowView } from "./views/WorkflowView";
 import { EditorView } from "./views/EditorView";
@@ -28,7 +26,6 @@ import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
 import { useSkillsStore } from "./store/skillsStore";
 import { syncSkillsToDisk } from "./lib/skills";
-import { GitBranch, Activity } from "lucide-react";
 import { useUiStore } from "./store/uiStore";
 
 // El chat NO es una vista más: es un panel único (ChatView) montado UNA sola vez y siempre presente
@@ -60,8 +57,6 @@ export default function App() {
   const onboardingDone                  = useSettingsStore((s) => s.onboardingDone);
   const [chatDock, setChatDock]         = useState(false);
   const [dockWidth, setDockWidth]       = useState(420);
-  const [showCodeFlow, setShowCodeFlow] = useState(false);
-  const [showDataFlow, setShowDataFlow] = useState(false);
 
   // Fresh install: si el único proyecto sigue siendo la semilla hardcodeada (PROJECT_CWD), lo re-apuntamos
   // al home real del usuario — así DevFlow no arranca clavado a la ruta del repo de otra máquina.
@@ -128,40 +123,8 @@ export default function App() {
           <ChatView />
         </div>
 
-        {showRightPanel && (
-          <RightPanel
-            onOpenCodeFlow={() => setShowCodeFlow(true)}
-            onOpenDataFlow={() => setShowDataFlow(true)}
-          />
-        )}
+        {showRightPanel && <RightPanel />}
       </div>
-
-      {showCodeFlow && (
-        <FloatingWindow
-          title="Code Flow"
-          icon={<GitBranch size={13} />}
-          onClose={() => setShowCodeFlow(false)}
-          initialPos={{ x: 100, y: 60 }}
-          initialSize={{ w: 580, h: 420 }}
-        >
-          <CodeFlowPanel />
-        </FloatingWindow>
-      )}
-
-      {showDataFlow && (
-        <FloatingWindow
-          title="Data Flow"
-          icon={<Activity size={13} />}
-          onClose={() => setShowDataFlow(false)}
-          initialPos={{ x: 160, y: 100 }}
-          initialSize={{ w: 520, h: 380 }}
-        >
-          <div className="rp-data-placeholder" style={{ height: "100%" }}>
-            <Activity size={36} opacity={0.2} />
-            <p>Select a file in the explorer to visualize the data flow between its functions.</p>
-          </div>
-        </FloatingWindow>
-      )}
     </div>
   );
 }
