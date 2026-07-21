@@ -15,6 +15,10 @@ dist-ssr
 # Rust build output
 src-tauri/target
 
+# Sidecar binaries (OpenCode, ~166MB/platform) — fetched at build time by
+# scripts/fetch-opencode-sidecar.mjs, never committed (exceeds GitHub's 100MB limit)
+src-tauri/binaries/
+
 # Ad-hoc debug scripts
 .acp-raw-test*.cjs
 

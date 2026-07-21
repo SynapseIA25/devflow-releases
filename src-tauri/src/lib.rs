@@ -149,6 +149,44 @@ async fn check_cli(names: Vec<String>) -> HashMap<String, bool> {
     names.into_iter().map(|n| { let ok = check(&n); (n, ok) }).collect()
 }
 
+// Resuelve la ruta absoluta de un sidecar bundleado por Tauri (externalBin) — hoy solo "opencode",
+// empaquetado en el instalador para que el agente ande sin instalación aparte. El binario FUENTE en
+// src-tauri/binaries/ lleva el target triple en el nombre (así el bundler distingue qué archivo usar
+// por plataforma al buildear), pero Tauri lo copia junto al ejecutable con el triple YA STRIPEADO
+// (verificado corriendo `npm run tauri dev`: aparece como target\debug\opencode.exe, no
+// opencode-<triple>.exe) — no hace falta calcular el triple en runtime. Se resuelve vía
+// current_exe(), no depende de PATH.
+#[tauri::command]
+fn resolve_sidecar_path(name: String) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let dir = exe.parent().ok_or_else(|| "no parent dir".to_string())?;
+    let filename = if cfg!(windows) { format!("{name}.exe") } else { name };
+    let path = dir.join(&filename);
+    if !path.exists() {
+        return Err(format!("Sidecar not found: {}", path.display()));
+    }
+    Ok(path.to_string_lossy().to_string())
+}
+
+// Instala un CLI de agente globalmente vía npm (onboarding: botón "Install" en vez de solo mostrar
+// el comando). Requiere que el usuario ya tenga Node/npm — si falta, el stderr de npm lo explica y
+// el frontend cae al comando copiable existente como fallback.
+#[tauri::command]
+fn install_cli(package: String) -> Result<String, String> {
+    let output = if cfg!(target_os = "windows") {
+        Command::new("cmd").args(["/C", "npm", "install", "-g", &package]).output()
+    } else {
+        Command::new("npm").args(["install", "-g", &package]).output()
+    }
+    .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 // ── ACP (Agent Client Protocol) — spawns an agent CLI (mimo, hermes, ...) as a
 // JSON-RPC-over-stdio peer. Un proceso hijo por provider, así se puede tener más de un
 // agente ACP corriendo a la vez (ej. una pestaña con MiMo y otra con Hermes).
@@ -842,6 +880,8 @@ pub fn run() {
             get_running_servers,
             check_prerequisites,
             check_cli,
+            resolve_sidecar_path,
+            install_cli,
             acp_start,
             acp_send,
             acp_stop,

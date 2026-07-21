@@ -12,7 +12,9 @@ export type ProviderConfig = {
   icon: string;
   docsUrl?: string;
   // Comando del agente ACP. Su ausencia = provider "directo" aún NO implementado (requiere adaptador).
-  acp?: { command: string; args: string[] };
+  // sidecar: true = "command" es un nombre lógico bundleado por Tauri (externalBin), no algo en PATH;
+  // se resuelve a una ruta absoluta en runtime (ver acpClient.ensureStarted).
+  acp?: { command: string; args: string[]; sidecar?: boolean };
 };
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
@@ -42,14 +44,16 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     // OpenCode upstream (el mismo proyecto del que MiMo es fork, pero moderno: v1.x). Es la vía
     // multi-LLM de DevFlow: sin configurar nada trae los modelos gratuitos de OpenCode Zen, y con
     // las API keys de Settings (OpenRouter/Google/Groq/Mistral, ver PROVIDER_KEY_SPECS) expone los
-    // modelos de esos providers en el selector del chat. Requiere `npm i -g opencode-ai`.
+    // modelos de esos providers en el selector del chat. Bundleado como sidecar de Tauri (binario
+    // nativo de `opencode-ai`, ver scripts/fetch-opencode-sidecar.mjs) — no requiere instalación
+    // aparte, DevFlow lo trae adentro.
     id: "opencode",
     name: "OpenCode",
-    description: "Multi-LLM agent. Free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
+    description: "Multi-LLM agent, built in — free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
     color: "#10b981",
     icon: "◎",
     docsUrl: "https://opencode.ai/docs",
-    acp: { command: "opencode", args: ["acp"] },
+    acp: { command: "opencode", args: ["acp"], sidecar: true },
   },
 ];
 

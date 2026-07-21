@@ -49,6 +49,19 @@ export async function checkCli(names: string[]): Promise<Record<string, boolean>
   return invoke<Record<string, boolean>>("check_cli", { names });
 }
 
+// Ruta absoluta de un sidecar bundleado (externalBin) por su nombre lógico, ej. "opencode".
+export async function resolveSidecarPath(name: string): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("resolve_sidecar_path", { name });
+}
+
+// Instala un CLI de agente globalmente vía npm (onboarding, botón "Install"). Tira si npm falla
+// o no está disponible — el caller debe ofrecer el comando manual como fallback.
+export async function installCli(pkg: string): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("install_cli", { package: pkg });
+}
+
 export async function acpSend(provider: string, line: string): Promise<void> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri).");
   return invoke<void>("acp_send", { provider, line });

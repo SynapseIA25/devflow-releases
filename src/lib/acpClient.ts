@@ -3,12 +3,12 @@
 // cada provider tiene su propio child process, su propio espacio de ids JSON-RPC y su
 // propio listener de eventos. Rust solo pipea líneas crudas — toda la lógica de framing,
 // correlación de ids y protocolo vive acá.
-import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri } from "./tauriApi";
+import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri, resolveSidecarPath } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "./providers";
 import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
 
-export type AcpSpawnConfig = { command: string; args: string[] };
+export type AcpSpawnConfig = { command: string; args: string[]; sidecar?: boolean };
 
 export type SessionUpdate = { sessionUpdate: string } & Record<string, unknown>;
 type UpdateListener = (provider: string, sessionId: string, update: SessionUpdate) => void;
@@ -91,7 +91,10 @@ async function ensureStarted(provider: string, spawn: AcpSpawnConfig): Promise<v
   if (s.started) return;
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   await attachListener(provider);
-  await acpStart(provider, spawn.command, spawn.args, providerKeysEnv());
+  // spawn.command es un nombre lógico bundleado (ej. "opencode") — resolver la ruta absoluta del
+  // sidecar antes de spawnear en vez de depender de PATH (no está instalado, viene con DevFlow).
+  const command = spawn.sidecar ? await resolveSidecarPath(spawn.command) : spawn.command;
+  await acpStart(provider, command, spawn.args, providerKeysEnv());
   s.started = true;
 }
 

@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, XCircle, RotateCw, KeyRound, ExternalLink, Copy, Check } from "lucide-react";
-import { checkCli } from "../lib/tauriApi";
+import { CheckCircle, XCircle, RotateCw, KeyRound, ExternalLink, Copy, Check, Download } from "lucide-react";
+import { checkCli, installCli } from "../lib/tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "../lib/providers";
 
-// Wizard de primer arranque (se muestra hasta que settingsStore.onboardingDone). DevFlow es un host
-// de agentes ACP: sin al menos un CLI de agente instalado el chat no funciona. El wizard detecta qué
-// CLIs hay (check_cli en Rust, `<cli> --version`), muestra cómo instalar los que faltan, y deja pegar
-// una API key de OpenRouter (se guarda en providerKeys y se inyecta a OpenCode al spawnearlo).
+// Wizard de primer arranque (se muestra hasta que settingsStore.onboardingDone). OpenCode viene
+// bundleado como sidecar de Tauri (ver providers.ts, scripts/fetch-opencode-sidecar.mjs) — siempre
+// disponible, no se detecta ni se lista acá. Este wizard solo cubre los agentes OPCIONALES que
+// requieren cuenta propia (Claude Code, MiMo): detecta qué hay instalado (check_cli, `<cli>
+// --version`), y deja instalar Claude Code con un click (install_cli → `npm install -g <pkg>`) o
+// copiar el comando a mano; MiMo no tiene instalador npm, solo link a docs. También deja pegar una
+// API key de OpenRouter (se guarda en providerKeys y se inyecta a OpenCode al spawnearlo).
 type AgentRow = {
   cli: string;
   name: string;
@@ -15,19 +18,11 @@ type AgentRow = {
   color: string;
   note: string;
   install?: string; // comando de instalación copiable; ausente = solo link a docs
+  npmPackage?: string; // nombre de paquete npm para el botón "Install"; ausente = sin auto-install
   docsUrl: string;
 };
 
 const AGENT_ROWS: AgentRow[] = [
-  {
-    cli: "opencode",
-    name: "OpenCode",
-    icon: "◎",
-    color: "#10b981",
-    note: "Recommended to start — free models out of the box, and multi-LLM with an API key (OpenRouter, Gemini, Groq…).",
-    install: "npm install -g opencode-ai",
-    docsUrl: "https://opencode.ai/docs",
-  },
   {
     cli: "claude",
     name: "Claude Code",
@@ -35,6 +30,7 @@ const AGENT_ROWS: AgentRow[] = [
     color: "#d4a574",
     note: "Anthropic's agent. After installing, sign in once with `claude /login`.",
     install: "npm install -g @anthropic-ai/claude-code",
+    npmPackage: "@anthropic-ai/claude-code",
     docsUrl: "https://docs.anthropic.com",
   },
   {
@@ -71,6 +67,8 @@ export function OnboardingModal() {
   const [status, setStatus] = useState<Record<string, boolean> | null>(null);
   const [checking, setChecking] = useState(false);
   const [orKey, setOrKey] = useState("");
+  const [installing, setInstalling] = useState<string | null>(null); // cli en curso de instalación
+  const [installError, setInstallError] = useState<Record<string, string>>({});
 
   const runDetection = async () => {
     setChecking(true);
@@ -86,7 +84,20 @@ export function OnboardingModal() {
   }, []);
 
   const openrouter = PROVIDER_KEY_SPECS.find((s) => s.id === "openrouter")!;
-  const anyAgent = status !== null && AGENT_ROWS.some((a) => status[a.cli]);
+
+  const doInstall = async (a: AgentRow) => {
+    if (!a.npmPackage) return;
+    setInstalling(a.cli);
+    setInstallError((e) => ({ ...e, [a.cli]: "" }));
+    try {
+      await installCli(a.npmPackage);
+      await runDetection();
+    } catch (err) {
+      setInstallError((e) => ({ ...e, [a.cli]: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setInstalling(null);
+    }
+  };
 
   const finish = () => {
     if (orKey.trim()) setProviderKey("openrouter", orKey);
@@ -98,13 +109,14 @@ export function OnboardingModal() {
       <div className="onb-modal">
         <h2 className="onb-title">Welcome to DevFlow</h2>
         <p className="onb-sub">
-          DevFlow orchestrates coding agents (chat, workflows, expert team). It needs at least one
-          agent CLI installed on this machine — here's what we found:
+          DevFlow comes with a coding agent (OpenCode) built in — nothing to install, just start
+          chatting. Optionally, add these agents too if you have your own account:
         </p>
 
         <div className="onb-agents">
           {AGENT_ROWS.map((a) => {
             const found = status?.[a.cli];
+            const isInstalling = installing === a.cli;
             return (
               <div key={a.cli} className="onb-agent">
                 <span className="onb-agent-icon" style={{ color: a.color }}>{a.icon}</span>
@@ -116,7 +128,18 @@ export function OnboardingModal() {
                     </a>
                   </div>
                   <div className="onb-agent-note">{a.note}</div>
-                  {status !== null && !found && a.install && <InstallCmd cmd={a.install} />}
+                  {status !== null && !found && a.install && (
+                    <div className="onb-install-row">
+                      <InstallCmd cmd={a.install} />
+                      {a.npmPackage && (
+                        <button className="onb-install-btn" disabled={isInstalling} onClick={() => doInstall(a)}>
+                          {isInstalling ? <RotateCw size={11} className="spin" /> : <Download size={11} />}
+                          {isInstalling ? "Installing…" : "Install"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {installError[a.cli] && <div className="onb-install-error">{installError[a.cli]}</div>}
                 </div>
                 <span className={`onb-agent-status ${found ? "ok" : ""}`}>
                   {status === null ? (
@@ -154,7 +177,7 @@ export function OnboardingModal() {
             <RotateCw size={12} className={checking ? "spin" : ""} /> Re-check
           </button>
           <button className="onb-start" onClick={finish}>
-            {anyAgent ? "Start using DevFlow" : "Continue anyway"}
+            Start using DevFlow
           </button>
         </div>
       </div>
