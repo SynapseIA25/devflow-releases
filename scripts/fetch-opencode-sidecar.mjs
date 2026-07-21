@@ -51,12 +51,19 @@ function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-sidecar-"));
   try {
     console.log(`Descargando ${pkg}@${OPENCODE_VERSION}...`);
-    const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+    // --force: el paquete de plataforma casi siempre difiere del host real (ej. CI cross-compila
+    // x86_64-apple-darwin en un runner macos-latest que hoy es hardware arm64) — el check EBADPLATFORM
+    // de npm rechazaría la instalación aunque el binario en sí no necesita "correr" acá, solo copiarse.
+    // shell:true en Windows es necesario para invocar el shim .cmd de npm (spawnSync no lo resuelve
+    // directo); los args son todos internos (mapa fijo + constante de versión), sin input externo.
     const result = spawnSync(
-      npmBin,
-      ["install", "--ignore-scripts", "--no-save", "--loglevel=error", "--prefix", tmp, `${pkg}@${OPENCODE_VERSION}`],
-      { stdio: "inherit" }
+      "npm",
+      ["install", "--force", "--ignore-scripts", "--no-save", "--loglevel=error", "--prefix", tmp, `${pkg}@${OPENCODE_VERSION}`],
+      { stdio: "inherit", shell: process.platform === "win32" }
     );
+    if (result.error) {
+      throw new Error(`No se pudo spawnear npm: ${result.error.message}`);
+    }
     if (result.status !== 0) {
       throw new Error(`npm install falló (exit ${result.status})`);
     }
