@@ -31,6 +31,7 @@ import { providerKeysEnv } from "./acpClient";
 import type { SessionUpdate, PermissionRequest, PermissionOption, ModelOption, ModelInfo } from "./acpClient";
 import { ensureNativeExpertAgent } from "./opencodeAgents";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { ensureDevflowBridgeRegistered } from "./mcpBridge";
 
 type OpencodeClient = ReturnType<typeof createOpencodeClient>;
 type UpdateListener = (provider: string, sessionId: string, update: SessionUpdate) => void;
@@ -311,6 +312,9 @@ export async function ensureExpertAgent(provider: string, agent: AgentConfig): P
 }
 
 export async function newSession(provider: string, cwd: string, preferredModel?: string, taskProfile?: TaskProfile): Promise<string> {
+  // Le da al agente de esta sesión acceso al motor de Workflows real (crear/correr hablando) — ver
+  // mcpBridge.ts. No-op rápido si este proyecto ya tiene la entrada registrada (fast-path por Set).
+  await ensureDevflowBridgeRegistered(cwd);
   const client = await ensureServer(provider, cwd);
   const session = await client.session.create({ body: {}, query: { directory: cwd } });
   const sessionId = (session.data as any).id as string;

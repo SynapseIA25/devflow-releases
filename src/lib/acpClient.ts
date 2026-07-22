@@ -7,6 +7,8 @@ import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri, resol
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "./providers";
 import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
+import { readMcpServers } from "./mcpConfig";
+import { ensureBridgeEntryWritten } from "./mcpBridge";
 
 export type AcpSpawnConfig = { command: string; args: string[]; sidecar?: boolean };
 
@@ -237,6 +239,29 @@ export function getSessionModel(provider: string, sessionId: string): string | n
   return modelBySession.get(`${provider}:${sessionId}`) ?? null;
 }
 
+// Fix de un gap real: session/new mandaba `mcpServers: []` hardcodeado — a diferencia de OpenCode
+// nativo (que lee opencode.json del proyecto por su cuenta al arrancar `opencode serve`), un agente
+// ACP como Claude Code SOLO recibe los MCP servers que se le pasen acá, inline, en cada sesión nueva.
+// Shape verificado contra el paquete instalado `@zed-industries/claude-code-acp` (dist/acp-agent.js):
+// para un server "stdio" espera `{name, command, args, env?}` (SIN campo "type" — su presencia es lo
+// que distingue un entry remoto de uno local) con `env` como array de `{name,value}`, no un objeto.
+async function buildAcpMcpServers(cwd: string): Promise<Array<{ name: string; command: string; args: string[]; env?: { name: string; value: string }[] }>> {
+  try {
+    await ensureBridgeEntryWritten(cwd);
+    const servers = await readMcpServers(cwd);
+    return Object.entries(servers)
+      .filter(([, e]) => e.enabled && e.command.length > 0)
+      .map(([id, e]) => ({
+        name: id,
+        command: e.command[0],
+        args: e.command.slice(1),
+        env: e.environment ? Object.entries(e.environment).map(([name, value]) => ({ name, value })) : undefined,
+      }));
+  } catch {
+    return []; // sin opencode.json en este proyecto todavía, o ilegible — sesión sin MCP servers, no bloquea
+  }
+}
+
 export async function newSession(
   provider: string,
   spawn: AcpSpawnConfig,
@@ -247,7 +272,7 @@ export async function newSession(
   await initialize(provider, spawn);
   const result = await sendRequest<{ sessionId: string; configOptions?: ConfigOption[] }>(provider, "session/new", {
     cwd,
-    mcpServers: [],
+    mcpServers: await buildAcpMcpServers(cwd),
   });
   const modelOption = result.configOptions?.find((o) => o.id === "model");
   if (modelOption) {

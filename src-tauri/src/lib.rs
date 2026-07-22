@@ -546,23 +546,43 @@ fn extract_mcp_text(result: &serde_json::Value) -> String {
 // server exige negociar otra, habría que leer la que devuelve su `initialize` y reintentar con esa.
 const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
-// Cliente MCP one-shot para el nodo "mcp" de los workflows: spawnea el server, hace el handshake
-// JSON-RPC (initialize → notifications/initialized → tools/call) y devuelve el texto del resultado.
-// No mantiene el server vivo entre llamadas (cold start por ejecución) — simple y determinista para
-// un nodo. Timeout de 30s por respuesta vía un hilo lector + channel, así un server colgado no bloquea
-// para siempre. En Windows va por `cmd /C` (igual que start_mcp_server) para resolver shims de npx/uvx.
-#[tauri::command]
-fn mcp_call_tool(
-    command: String,
-    env_vars: HashMap<String, String>,
-    tool: String,
-    arguments: serde_json::Value,
-) -> Result<String, String> {
+fn mcp_send_msg(stdin: &mut std::process::ChildStdin, v: &serde_json::Value) -> Result<(), String> {
+    let line = serde_json::to_string(v).map_err(|e| e.to_string())?;
+    stdin.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    stdin.write_all(b"\n").map_err(|e| e.to_string())?;
+    stdin.flush().map_err(|e| e.to_string())
+}
+
+fn mcp_recv_id(rx: &std::sync::mpsc::Receiver<serde_json::Value>, id: i64, timeout: std::time::Duration) -> Result<serde_json::Value, String> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline
+            .checked_duration_since(std::time::Instant::now())
+            .ok_or("timeout esperando respuesta del MCP server")?;
+        match rx.recv_timeout(remaining) {
+            Ok(msg) => {
+                if msg.get("id").and_then(|v| v.as_i64()) == Some(id) {
+                    return Ok(msg);
+                }
+            }
+            Err(_) => return Err("timeout esperando respuesta del MCP server".into()),
+        }
+    }
+}
+
+// Spawnea un MCP server one-shot y hace la mitad común del handshake (initialize →
+// notifications/initialized). Devuelve el child (para matarlo al terminar) + su stdin (para mandar
+// el siguiente request, tools/call o tools/list) + el receiver del hilo lector de stdout. En Windows
+// va por `cmd /C` (igual que start_mcp_server) para resolver shims de npx/uvx.
+fn mcp_spawn_and_handshake(
+    command: &str,
+    env_vars: &HashMap<String, String>,
+) -> Result<(Child, std::process::ChildStdin, std::sync::mpsc::Receiver<serde_json::Value>), String> {
     let filtered_env: HashMap<_, _> = env_vars.iter().filter(|(_, v)| !v.is_empty()).collect();
 
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
-        c.args(["/C", &command]);
+        c.args(["/C", command]);
         c
     } else {
         let mut parts = command.split_whitespace();
@@ -608,45 +628,45 @@ fn mcp_call_tool(
         }
     });
 
-    fn send_msg(stdin: &mut std::process::ChildStdin, v: &serde_json::Value) -> Result<(), String> {
-        let line = serde_json::to_string(v).map_err(|e| e.to_string())?;
-        stdin.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
-        stdin.write_all(b"\n").map_err(|e| e.to_string())?;
-        stdin.flush().map_err(|e| e.to_string())
-    }
-    fn recv_id(rx: &std::sync::mpsc::Receiver<serde_json::Value>, id: i64) -> Result<serde_json::Value, String> {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        loop {
-            let remaining = deadline
-                .checked_duration_since(std::time::Instant::now())
-                .ok_or("timeout esperando respuesta del MCP server")?;
-            match rx.recv_timeout(remaining) {
-                Ok(msg) => {
-                    if msg.get("id").and_then(|v| v.as_i64()) == Some(id) {
-                        return Ok(msg);
-                    }
-                }
-                Err(_) => return Err("timeout esperando respuesta del MCP server".into()),
-            }
-        }
-    }
-
-    // Envuelto para poder matar el child pase lo que pase (éxito, error o timeout).
-    let mut run = || -> Result<String, String> {
-        send_msg(&mut stdin, &serde_json::json!({
+    let timeout = std::time::Duration::from_secs(30);
+    let mut handshake = || -> Result<(), String> {
+        mcp_send_msg(&mut stdin, &serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": { "protocolVersion": MCP_PROTOCOL_VERSION, "capabilities": {}, "clientInfo": { "name": "DevFlow", "version": "0.1" } }
         }))?;
-        let init = recv_id(&rx, 1)?;
+        let init = mcp_recv_id(&rx, 1, timeout)?;
         if let Some(err) = init.get("error") {
             return Err(format!("initialize falló: {err}"));
         }
-        send_msg(&mut stdin, &serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))?;
-        send_msg(&mut stdin, &serde_json::json!({
+        mcp_send_msg(&mut stdin, &serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))?;
+        Ok(())
+    };
+    if let Err(e) = handshake() {
+        let _ = child.kill();
+        return Err(e);
+    }
+    Ok((child, stdin, rx))
+}
+
+// Cliente MCP one-shot para el nodo "mcp" de los workflows: spawnea el server, hace el handshake
+// JSON-RPC y llama tools/call. No mantiene el server vivo entre llamadas (cold start por ejecución)
+// — simple y determinista para un nodo. Timeout de 30s por respuesta vía un hilo lector + channel,
+// así un server colgado no bloquea para siempre.
+#[tauri::command]
+fn mcp_call_tool(
+    command: String,
+    env_vars: HashMap<String, String>,
+    tool: String,
+    arguments: serde_json::Value,
+) -> Result<String, String> {
+    let (mut child, mut stdin, rx) = mcp_spawn_and_handshake(&command, &env_vars)?;
+    let timeout = std::time::Duration::from_secs(30);
+    let mut run = || -> Result<String, String> {
+        mcp_send_msg(&mut stdin, &serde_json::json!({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": { "name": tool, "arguments": arguments }
         }))?;
-        let resp = recv_id(&rx, 2)?;
+        let resp = mcp_recv_id(&rx, 2, timeout)?;
         if let Some(err) = resp.get("error") {
             return Err(format!("tools/call falló: {err}"));
         }
@@ -657,7 +677,29 @@ fn mcp_call_tool(
         }
         Ok(text)
     };
+    let out = run();
+    let _ = child.kill();
+    out
+}
 
+// Introspecta las tools que expone un MCP server (para que el bridge de DevFlow — ver
+// devflow_mcp_bridge_start — no tenga que adivinar nombres). Mismo handshake one-shot que
+// mcp_call_tool, pero manda tools/list y devuelve el JSON crudo del result (array `tools`).
+#[tauri::command]
+fn mcp_list_tools(command: String, env_vars: HashMap<String, String>) -> Result<String, String> {
+    let (mut child, mut stdin, rx) = mcp_spawn_and_handshake(&command, &env_vars)?;
+    let timeout = std::time::Duration::from_secs(30);
+    let mut run = || -> Result<String, String> {
+        mcp_send_msg(&mut stdin, &serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}
+        }))?;
+        let resp = mcp_recv_id(&rx, 2, timeout)?;
+        if let Some(err) = resp.get("error") {
+            return Err(format!("tools/list falló: {err}"));
+        }
+        let result = resp.get("result").ok_or("respuesta del MCP server sin 'result'")?;
+        serde_json::to_string(result).map_err(|e| e.to_string())
+    };
     let out = run();
     let _ = child.kill();
     out
@@ -725,6 +767,148 @@ fn watch_start(app: AppHandle, id: String, path: String, state: State<WatchState
 #[tauri::command]
 fn watch_stop(id: String, state: State<WatchState>) -> Result<(), String> {
     state.0.lock().map_err(|e| e.to_string())?.remove(&id);
+    Ok(())
+}
+
+// Respuesta que el frontend manda de vuelta para una tool call del MCP bridge en curso — ver
+// devflow_mcp_bridge_start/devflow_mcp_respond.
+struct BridgeReply {
+    result: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+#[derive(Default)]
+pub struct BridgeState {
+    port: Mutex<Option<u16>>,
+    token: Mutex<Option<String>>,
+    pending: Mutex<HashMap<u64, std::sync::mpsc::Sender<BridgeReply>>>,
+    next_id: std::sync::atomic::AtomicU64,
+}
+
+// Arranca (una sola vez por proceso) el servidor HTTP local del MCP bridge de DevFlow: el canal por
+// el que devflow-mcp-bridge.js (proceso Node stdio, registrado como MCP server en opencode.json de
+// cada proyecto — ver mcpBridge.ts) le habla al motor de Workflows REAL de esta app viva. A
+// diferencia de webhook_start (fire-and-forget), acá cada request ESPERA una respuesta real: bloquea
+// el hilo hasta que el frontend resuelva la tool (devflow_mcp_respond) o hasta el timeout.
+// Idempotente: si ya está arriba, devuelve el mismo puerto (mismo criterio que webhook_start).
+#[tauri::command]
+fn devflow_mcp_bridge_start(app: AppHandle, token: String, state: State<BridgeState>) -> Result<u16, String> {
+    {
+        let port_guard = state.port.lock().map_err(|e| e.to_string())?;
+        if let Some(p) = *port_guard {
+            return Ok(p);
+        }
+    }
+    // Rango chico de reintento por si el puerto preferido está ocupado (mismo espíritu que el resto
+    // del archivo prefiere fallar rápido y claro antes que un puerto mágico sin fallback).
+    let mut server = None;
+    let mut bound_port = 0u16;
+    for candidate in 8790..8800u16 {
+        if let Ok(s) = tiny_http::Server::http(format!("127.0.0.1:{candidate}")) {
+            server = Some(s);
+            bound_port = candidate;
+            break;
+        }
+    }
+    let server = server.ok_or("no se pudo bindear el MCP bridge de DevFlow (puertos 8790-8799 ocupados)")?;
+
+    *state.port.lock().map_err(|e| e.to_string())? = Some(bound_port);
+    *state.token.lock().map_err(|e| e.to_string())? = Some(token.clone());
+
+    // El estado gestionado por Tauri (BridgeState.pending) ya es compartible entre hilos vía
+    // `app.state::<BridgeState>()` — no hace falta un Arc propio, cada hilo de request accede al
+    // mismo Mutex a través del AppHandle clonado.
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        for mut req in server.incoming_requests() {
+            let app = app_for_thread.clone();
+            std::thread::spawn(move || {
+                let state = app.state::<BridgeState>();
+                let expected_token = state.token.lock().ok().and_then(|g| g.clone());
+
+                let auth_ok = req
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("authorization"))
+                    .map(|h| h.value.as_str())
+                    .map(|v| Some(v.trim_start_matches("Bearer ").trim().to_string()) == expected_token)
+                    .unwrap_or(false);
+                if !auth_ok {
+                    let _ = req.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
+                    return;
+                }
+                let project_path = req
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("x-devflow-project"))
+                    .map(|h| h.value.as_str().to_string())
+                    .unwrap_or_default();
+
+                let mut body = String::new();
+                if req.as_reader().read_to_string(&mut body).is_err() {
+                    let _ = req.respond(tiny_http::Response::from_string("bad request").with_status_code(400));
+                    return;
+                }
+                let parsed: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        let _ = req.respond(tiny_http::Response::from_string("invalid json").with_status_code(400));
+                        return;
+                    }
+                };
+                let tool = parsed.get("tool").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let arguments = parsed.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+
+                let id = state.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let (tx, rx) = std::sync::mpsc::channel::<BridgeReply>();
+                if let Ok(mut p) = state.pending.lock() {
+                    p.insert(id, tx);
+                }
+                let _ = app.emit("devflow-bridge-call", serde_json::json!({
+                    "id": id, "tool": tool, "arguments": arguments, "projectPath": project_path
+                }));
+
+                // Timeout largo: nodos "agent"/loops de un workflow pueden tardar minutos; casi todas
+                // las demás tools (listar/definir/validar) responden en milisegundos.
+                match rx.recv_timeout(std::time::Duration::from_secs(600)) {
+                    Ok(reply) => {
+                        if let Some(err) = reply.error {
+                            let body = serde_json::json!({ "error": err }).to_string();
+                            let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(500));
+                        } else {
+                            let body = serde_json::json!({ "result": reply.result.unwrap_or(serde_json::Value::Null) }).to_string();
+                            let _ = req.respond(tiny_http::Response::from_string(body));
+                        }
+                    }
+                    Err(_) => {
+                        if let Ok(mut p) = state.pending.lock() {
+                            p.remove(&id);
+                        }
+                        let body = serde_json::json!({ "error": "timeout esperando a DevFlow" }).to_string();
+                        let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(504));
+                    }
+                }
+            });
+        }
+    });
+
+    Ok(bound_port)
+}
+
+// El frontend llama esto para resolver (con éxito o error) una tool call del MCP bridge que está
+// bloqueada esperando en devflow_mcp_bridge_start. No-op silencioso si el id ya no existe (ya expiró
+// por timeout) — mismo criterio best-effort que el resto de los comandos fire-and-forget del archivo.
+#[tauri::command]
+fn devflow_mcp_respond(
+    id: u64,
+    result: Option<serde_json::Value>,
+    error: Option<String>,
+    state: State<BridgeState>,
+) -> Result<(), String> {
+    let sender = state.pending.lock().map_err(|e| e.to_string())?.remove(&id);
+    if let Some(tx) = sender {
+        let _ = tx.send(BridgeReply { result, error });
+    }
     Ok(())
 }
 
@@ -1053,6 +1237,7 @@ pub fn run() {
         .manage(PtySessions(Mutex::new(HashMap::new())))
         .manage(WebhookState(Mutex::new(None)))
         .manage(WatchState(Mutex::new(HashMap::new())))
+        .manage(BridgeState::default())
         .invoke_handler(tauri::generate_handler![
             start_mcp_server,
             stop_mcp_server,
@@ -1072,6 +1257,9 @@ pub fn run() {
             write_text_file,
             http_request,
             mcp_call_tool,
+            mcp_list_tools,
+            devflow_mcp_bridge_start,
+            devflow_mcp_respond,
             webhook_start,
             watch_start,
             watch_stop,

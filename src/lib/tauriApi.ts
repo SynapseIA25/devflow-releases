@@ -155,6 +155,26 @@ export async function mcpCallTool(
   return invoke<string>("mcp_call_tool", { command, envVars, tool, arguments: args });
 }
 
+// Introspecta las tools de un MCP server (mismo handshake que mcpCallTool, pero tools/list). Devuelve
+// el JSON crudo del result (`{tools: [...]}`) — para devflow_list_mcp_tools del MCP bridge.
+export async function mcpListTools(command: string, envVars: Record<string, string>): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("mcp_list_tools", { command, envVars });
+}
+
+// MCP bridge de DevFlow: arranca (idempotente) el servidor HTTP local que le da a cualquier agente de
+// chat acceso al motor de Workflows real de la app. Devuelve el puerto asignado.
+export async function mcpBridgeStart(token: string): Promise<number> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<number>("devflow_mcp_bridge_start", { token });
+}
+
+// Resuelve (con éxito o error) una tool call del MCP bridge que está bloqueada esperando respuesta.
+export async function mcpRespond(id: number, result?: unknown, error?: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("devflow_mcp_respond", { id, result: result ?? null, error: error ?? null });
+}
+
 // command: si se pasa, el PTY corre ese comando (server/proceso de un Servicio) y termina al terminar
 // el comando; si se omite, abre un shell interactivo (terminal por-workspace del chat).
 // env: variables de ambiente del proyecto (Frente 4) que se inyectan al proceso.

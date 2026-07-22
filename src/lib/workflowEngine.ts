@@ -24,6 +24,7 @@ import type { Edge } from "@xyflow/react";
 import type { WorkflowNode, NodeStatus } from "../store/workflowStore";
 import type { LogEntry } from "../components/OutputPanel";
 import { resolveTemplate, parseList, type NodeResult } from "./workflowTemplate";
+import { NODE_SCHEMAS } from "../nodes/nodeSchema";
 
 export type { NodeResult };
 
@@ -65,6 +66,44 @@ function topoSort(nodes: WorkflowNode[], edges: Edge[]): string[] | null {
     }
   }
   return order.length === nodes.length ? order : null;
+}
+
+// Valida un grafo ANTES de guardarlo (usado por devflow_define_workflow del MCP bridge — un agente
+// de chat autorando un workflow entero de una tiene más chances de mandar algo roto que la UI, que ya
+// previene esto por construcción: el schema de nodos, el picker de conexiones, etc.). No ejecuta nada.
+const VAR_REF = /\{\{\s*([a-zA-Z0-9_]+)\.(output|exitCode|branch)\s*\}\}/g;
+
+export function validateWorkflowGraph(nodes: WorkflowNode[], edges: Edge[]): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const ids = new Set(nodes.map((n) => n.id));
+
+  if (ids.size !== nodes.length) errors.push("Hay ids de nodo repetidos.");
+  for (const n of nodes) {
+    if (!NODE_SCHEMAS[n.type ?? ""]) errors.push(`Nodo "${n.id}": tipo de nodo desconocido "${n.type}".`);
+  }
+  for (const e of edges) {
+    if (!ids.has(e.source)) errors.push(`Edge "${e.id ?? `${e.source}->${e.target}`}": el nodo origen "${e.source}" no existe.`);
+    if (!ids.has(e.target)) errors.push(`Edge "${e.id ?? `${e.source}->${e.target}`}": el nodo destino "${e.target}" no existe.`);
+  }
+  if (edges.every((e) => ids.has(e.source) && ids.has(e.target)) && topoSort(nodes, edges) === null) {
+    errors.push("El grafo tiene un ciclo.");
+  }
+  for (const n of nodes) {
+    const schema = NODE_SCHEMAS[n.type ?? ""];
+    if (!schema) continue;
+    for (const field of schema.fields) {
+      if (!field.vars) continue;
+      const raw = n.data?.[field.key];
+      if (typeof raw !== "string") continue;
+      for (const match of raw.matchAll(VAR_REF)) {
+        const refId = match[1];
+        if (refId !== "input" && !ids.has(refId)) {
+          errors.push(`Nodo "${n.id}", campo "${field.key}": referencia "{{${refId}.${match[2]}}}" a un nodo que no existe.`);
+        }
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }
 
 // ── Ejecutores por tipo ─────────────────────────────────────────────────────

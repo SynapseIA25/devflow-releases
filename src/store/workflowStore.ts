@@ -92,6 +92,12 @@ type WorkflowStore = {
   deleteWorkflow: (id: string) => void;
   renameWorkflow: (id: string, name: string) => void;
   setActiveWorkflow: (id: string) => void;
+  // Reemplaza nodes/edges de UN flujo por id explícito — a diferencia de onNodesChange/addNode/etc.
+  // (que operan sobre `activeId` vía patchActive), esto no requiere que sea el flujo que se está
+  // viendo. Primitiva de bajo nivel para autoría programática (ver mcpBridgeHandlers.ts): el bridge
+  // MCP deja que un agente de chat edite cualquier workflow sin forzar un cambio de flujo activo en
+  // la UI del usuario.
+  setWorkflowGraph: (id: string, nodes: WorkflowNode[], edges: Edge[]) => void;
 };
 
 // Aplica un cambio a los nodes/edges del flujo activo de forma inmutable.
@@ -182,6 +188,13 @@ export const useWorkflowStore = create<WorkflowStore>()(
 
       setActiveWorkflow: (id) =>
         set((s) => (s.workflows[id] ? { activeId: id } : {})),
+
+      setWorkflowGraph: (id, nodes, edges) =>
+        set((s) => {
+          const w = s.workflows[id];
+          if (!w) return {};
+          return { workflows: { ...s.workflows, [id]: { ...w, nodes, edges } } };
+        }),
     }),
     {
       name: "devflow-workflow",
