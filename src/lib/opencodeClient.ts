@@ -25,10 +25,12 @@
 import { createOpencodeClient } from "@opencode-ai/sdk/client";
 import { opencodeServeEnsure, opencodeServeStop, opencodeEventsStart, opencodeEventsStop, isTauri } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
-import { PROVIDER_KEY_SPECS } from "./providers";
+import { PROVIDER_KEY_SPECS, type AgentConfig } from "./providers";
 import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
 import { providerKeysEnv } from "./acpClient";
 import type { SessionUpdate, PermissionRequest, PermissionOption, ModelOption, ModelInfo } from "./acpClient";
+import { ensureNativeExpertAgent } from "./opencodeAgents";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 type OpencodeClient = ReturnType<typeof createOpencodeClient>;
 type UpdateListener = (provider: string, sessionId: string, update: SessionUpdate) => void;
@@ -251,6 +253,63 @@ export function getSessionModel(provider: string, sessionId: string): string | n
   return modelBySession.get(`${provider}:${sessionId}`) ?? null;
 }
 
+// Nombres de agente que ya confirmamos registrados en el proceso `opencode serve` ACTUAL — se
+// limpia en restart() (proceso nuevo = registro nuevo). Evita pegarle a GET /agent en cada turno
+// para experts que ya sabemos que están arriba.
+const registeredAgents = new Set<string>();
+
+async function listRegisteredAgents(port: number): Promise<Set<string>> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/agent`);
+    if (!res.ok) return new Set();
+    const list = (await res.json()) as Array<{ name: string }>;
+    return new Set(list.map((a) => a.name));
+  } catch {
+    return new Set();
+  }
+}
+
+// Escribe (o actualiza) el .md del agente nativo de un experto y garantiza que el proceso
+// `opencode serve` lo tenga registrado antes de devolver el nombre — corrige un bug real
+// encontrado en la práctica: un server YA CORRIENDO no re-escanea `agent/` solo (ver el comentario
+// grande en opencodeAgents.ts); la única forma confirmada de que lo note es reiniciarlo. Por eso
+// esto puede matar y re-spawnear el proceso — cuando pasa, invalida las sesiones de TODOS los
+// workspaces de este provider (no solo el que disparó el turno), así que se hace resetSessions()
+// app-wide, igual que ya hacen AddModelModal/SettingsView/TeamView tras un restart manual.
+export async function ensureExpertAgent(provider: string, agent: AgentConfig): Promise<string> {
+  const { name, changed } = await ensureNativeExpertAgent(agent);
+  if (!changed && registeredAgents.has(name)) return name; // camino rápido: ya confirmado, sin tocar red
+
+  await ensureServer(provider);
+  const { port } = await clientPromise!;
+  let known = await listRegisteredAgents(port);
+  if (known.has(name)) {
+    registeredAgents.add(name);
+    return name;
+  }
+
+  // No está — reiniciar es la única vía confirmada. Se hace UNA vez por (nombre, cambio de
+  // contenido), no en cada turno: la próxima vez que se llame con el mismo contenido, el camino
+  // rápido de arriba evita repetir esto.
+  await restart(provider); // ya limpia registeredAgents
+  useWorkspaceStore.getState().resetSessions(provider);
+
+  await ensureServer(provider);
+  const { port: newPort } = await clientPromise!;
+  const deadline = Date.now() + 6000;
+  while (Date.now() < deadline) {
+    known = await listRegisteredAgents(newPort);
+    if (known.has(name)) {
+      registeredAgents.add(name);
+      return name;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  // best-effort: si ni con restart apareció, seguimos igual — el próximo prompt() va a fallar con
+  // un error claro ("Agent not found") en vez de colgar acá para siempre.
+  return name;
+}
+
 export async function newSession(provider: string, cwd: string, preferredModel?: string, taskProfile?: TaskProfile): Promise<string> {
   const client = await ensureServer(provider, cwd);
   const session = await client.session.create({ body: {}, query: { directory: cwd } });
@@ -274,7 +333,18 @@ export async function newSession(provider: string, cwd: string, preferredModel?:
   return sessionId;
 }
 
-export async function prompt(provider: string, sessionId: string, cwd: string, text: string): Promise<{ stopReason: string }> {
+// opts.agent: nombre de un agente nativo de OpenCode (ver opencodeAgents.ts) — reemplaza al
+// prepend de texto "[System]\n..." que sigue usando el path ACP. opts.system: system prompt crudo
+// para agentes que no tienen (o no necesitan) un agente nativo registrado. Mutuamente excluyentes
+// en la práctica (ver ChatView.runOpenCodeHttp/teamDelegate.runAgentTurn): si hay agente nativo, su
+// .md ya trae el system prompt, no hace falta mandar los dos.
+export async function prompt(
+  provider: string,
+  sessionId: string,
+  cwd: string,
+  text: string,
+  opts?: { system?: string; agent?: string }
+): Promise<{ stopReason: string }> {
   const client = await ensureServer(provider, cwd);
   const modelValue = modelBySession.get(`${provider}:${sessionId}`);
   if (modelValue) recordModelUse(modelValue);
@@ -286,14 +356,25 @@ export async function prompt(provider: string, sessionId: string, cwd: string, t
   const result = await client.session.prompt({
     path: { id: sessionId },
     query: { directory: cwd },
-    body: { parts: [{ type: "text", text }], ...(model ? { model } : {}) },
+    body: {
+      parts: [{ type: "text", text }],
+      ...(model ? { model } : {}),
+      ...(opts?.system ? { system: opts.system } : {}),
+      ...(opts?.agent ? { agent: opts.agent } : {}),
+    },
   });
+  // Dos formas de error distintas verificadas en la práctica: un 4xx real de la request (ej. "Agent
+  // not found") viene en result.error (result.data queda undefined — leerlo sin chequear esto
+  // primero explota); un error del propio turno (ej. falta de API key del provider) viene con 200
+  // OK pero embebido en result.data.info.error.
+  if (result.error) throw new Error(extractErrorMessage(result.error));
   const info = (result.data as any)?.info;
-  if (info?.error) {
-    const msg = info.error.data?.message ?? info.error.name ?? "OpenCode error";
-    throw new Error(msg);
-  }
+  if (info?.error) throw new Error(extractErrorMessage(info.error));
   return { stopReason: info?.finish ?? "stop" };
+}
+
+function extractErrorMessage(err: any): string {
+  return err?.data?.message ?? err?.name ?? "OpenCode error";
 }
 
 export function onUpdate(cb: UpdateListener): () => void {
@@ -355,4 +436,5 @@ export async function restart(provider: string): Promise<void> {
   modelBySession.clear();
   partTypeCache.clear();
   toolSeenCache.clear();
+  registeredAgents.clear();
 }

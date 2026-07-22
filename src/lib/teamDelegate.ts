@@ -1,4 +1,4 @@
-import { DEFAULT_PROVIDERS, type AgentConfig } from "./providers";
+import { DEFAULT_PROVIDERS, isExpertAgent, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
 import * as opencodeClient from "./opencodeClient";
 import { isQuotaError, reportQuotaError, type TaskProfile } from "./modelRouter";
@@ -48,6 +48,21 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
   // getSessionModel/onUpdate/cancel comparten firma entre los dos, así que se puede delegar a uno u
   // otro según el transporte del provider sin duplicar el resto de esta función.
   const client = isNative ? opencodeClient : acpClient;
+  const sys = agent.systemPrompt?.trim();
+  // Path nativo: el system prompt va por el campo real de OpenCode, no prepend de texto — los
+  // expertos (isExpertAgent) corren como agente REAL registrado (permission-scoping por skills
+  // incluido), el resto usa el campo `system` simple. El path ACP sigue con el prepend (no tiene
+  // campo de sistema propio). OJO orden: ensureExpertAgent puede reiniciar el server de OpenCode
+  // (invalida TODAS las sesiones nativas) — tiene que correr ANTES de abrir la sesión de este
+  // turno, si no la dejaría colgando de un sessionId que ya no existe.
+  let nativeOpts: { system?: string; agent?: string } = {};
+  if (isNative) {
+    nativeOpts = isExpertAgent(agent)
+      ? { agent: await opencodeClient.ensureExpertAgent(agent.providerId, agent) }
+      : sys
+      ? { system: sys }
+      : {};
+  }
   const sessionId = isNative
     ? await opencodeClient.newSession(agent.providerId, cwd, agent.model || undefined, agent.taskProfile)
     : await acpClient.newSession(agent.providerId, provider!.acp!, cwd, agent.model || undefined, agent.taskProfile);
@@ -64,9 +79,13 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
   });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const sys = agent.systemPrompt?.trim();
-    const fullText = sys ? `[System]\n${sys}\n\n${promptText}` : promptText;
-    const promptP = isNative ? opencodeClient.prompt(agent.providerId, sessionId, cwd, fullText) : acpClient.prompt(agent.providerId, sessionId, fullText);
+    let promptP: Promise<{ stopReason: string }>;
+    if (isNative) {
+      promptP = opencodeClient.prompt(agent.providerId, sessionId, cwd, promptText, nativeOpts);
+    } else {
+      const fullText = sys ? `[System]\n${sys}\n\n${promptText}` : promptText;
+      promptP = acpClient.prompt(agent.providerId, sessionId, fullText);
+    }
     if (timeoutMs > 0) {
       const timeoutP = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {

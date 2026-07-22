@@ -666,6 +666,22 @@ export function ChatView() {
     let inChars = text.length;
     let turnKey: string | null = null;
     try {
+      // El system prompt del agente va por el campo nativo de OpenCode, no como texto prepend (eso
+      // sigue siendo cosa de ACP, ver runAcp): si el agente es un experto (isExpertAgent), corre
+      // como agente REAL de OpenCode (permission-scoping por skills incluido, ver
+      // opencodeClient.ensureExpertAgent); si no, pero tiene systemPrompt propio, va por `system`.
+      // OJO orden: ensureExpertAgent puede reiniciar el server de OpenCode si el agente es nuevo/
+      // cambió (invalida TODAS las sesiones nativas, no solo la de este workspace) — tiene que
+      // correr ANTES de leer/crear la sesión de este turno, si no la dejaría colgando de un
+      // sessionId que ya no existe.
+      const agentCfg = agentForWs(wsId);
+      let promptOpts: { system?: string; agent?: string } | undefined;
+      if (agentCfg && isExpertAgent(agentCfg)) {
+        promptOpts = { agent: await opencodeClient.ensureExpertAgent(provider, agentCfg) };
+      } else if (agentCfg?.systemPrompt?.trim()) {
+        promptOpts = { system: agentCfg.systemPrompt.trim() };
+      }
+
       const wsNow = useWorkspaceStore.getState().workspaces.find((w) => w.id === wsId);
       let sid = wsNow?.sessionProvider === provider ? wsNow?.sessionId : undefined;
       const isNewSession = !sid;
@@ -679,10 +695,6 @@ export function ChatView() {
       turnKey = `${provider}:${sid}`;
       activeTurnsRef.current.set(turnKey, { wsId, aiBlockId, outChars: 0 });
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
-      const systemPrompt = agentForWs(wsId)?.systemPrompt?.trim();
-      if (isNewSession && systemPrompt) {
-        fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
-      }
       if (isNewSession) {
         try {
           const sstate = useSkillsStore.getState();
@@ -704,7 +716,7 @@ export function ChatView() {
         }
       }
       if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
-      await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt);
+      await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt, promptOpts);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg !== "__turn_cancelled__") {
