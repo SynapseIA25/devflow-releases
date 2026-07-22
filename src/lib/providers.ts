@@ -24,15 +24,6 @@ export type ProviderConfig = {
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
   {
-    id: "mimo",
-    name: "MiMo Code",
-    description: "Agente de código de Xiaomi. Modelo y credenciales gestionados por el CLI `mimo`.",
-    color: "#f97316",
-    icon: "⬡",
-    docsUrl: "https://mimo.xiaomi.com/coder",
-    acp: { command: "mimo", args: ["acp", "--print-logs", "--log-level", "ERROR"] },
-  },
-  {
     // Claude Code vía el adaptador ACP oficial de Zed (@zed-industries/claude-code-acp): envuelve el
     // Claude Code SDK y habla ACP protocolVersion 1 (verificado por handshake). Auth: usa la sesión del
     // CLI `claude` (correr `claude /login` una vez). En Windows, acp_start lo spawnea vía `cmd /C npx …`.
@@ -140,18 +131,6 @@ export type AgentConfig = {
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
   {
-    id: "mimo-coder",
-    name: "MiMo Code",
-    description: "Agente especializado en programación. Edita archivos, ejecuta tests y refactoriza código.",
-    icon: "⬡",
-    color: "#f97316",
-    providerId: "mimo",
-    model: "mimo-coder",
-    systemPrompt: "You are MiMo Code, an expert coding assistant. Help with code editing, refactoring, and debugging.",
-    skills: ["file-edit", "terminal", "git", "search"],
-    status: "inactive",
-  },
-  {
     id: "claude-code",
     name: "Claude Code",
     description: "Agente de Anthropic. Razonamiento avanzado para tareas complejas de desarrollo.",
@@ -178,14 +157,15 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
 ];
 
 // ── Agentes expertos por área (pilar 1) ──
-// 9 roles preconfigurados, todos sobre MiMo (el único agente capaz). Cada uno con un system prompt de
-// especialidad (se inyecta al abrir la sesión ACP) y keywords para el router determinista.
+// 9 roles preconfigurados, todos sobre DevFlow Code (nativo — gana permission-scoping real y memoria
+// persistente por proyecto, ver Fases 2-3 en memoria del proyecto). Cada uno con un system prompt de
+// especialidad (se inyecta al abrir la sesión) y keywords para el router determinista.
 const mkExpert = (
   id: string, name: string, icon: string, color: string, area: string,
   description: string, systemPrompt: string, skills: string[], areaKeywords: string[],
   taskProfile: TaskProfile
 ): AgentConfig => ({
-  id, name, icon, color, providerId: "mimo", model: "mimo-coder",
+  id, name, icon, color, providerId: "opencode", model: "",
   description, systemPrompt: `${systemPrompt}\n\nRespondé siempre en español, de forma concreta y accionable.`,
   skills, expertArea: area, areaKeywords, taskProfile, status: "inactive",
 });

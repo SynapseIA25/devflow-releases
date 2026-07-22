@@ -54,14 +54,14 @@ const makeId = () => Math.random().toString(36).slice(2);
 const INITIAL_WORKSPACE: Workspace = {
   id: "ws1",
   projectId: "", // sentinela: se adopta al proyecto activo en el primer activateProject (ver merge)
-  title: "MiMo-app",
-  agentId: "mimo-coder",
+  title: "DevFlow-app",
+  agentId: "opencode-agent",
   steps: [],
   blocks: [
     {
       id: "b1",
       type: "ai",
-      agentId: "mimo-coder",
+      agentId: "opencode-agent",
       ts: Date.now(),
       content: `## Bienvenido a DevFlow
 

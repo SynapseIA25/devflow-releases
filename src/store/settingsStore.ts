@@ -16,7 +16,7 @@ type SettingsStore = {
   autoApprovePermissions: boolean;
   permissionLog: PermissionLogEntry[];
   // Modelo elegido por el usuario para cada provider ACP (se aplica al abrir sesión, ver acpClient.newSession).
-  // Persistido. Vacío = usar el default del agente (o el fallback mimo-auto para MiMo).
+  // Persistido. Vacío = usar el default del agente.
   modelByProvider: Record<string, string>;
   // Modelos que el agente ofrece (descubiertos en runtime al abrir sesión) y el actualmente activo.
   // NO se persisten: se repueblan en cada sesión.
@@ -28,8 +28,8 @@ type SettingsStore = {
   providerKeys: Record<string, string>;
   // Wizard de primer arranque: true una vez que el usuario lo cerró.
   onboardingDone: boolean;
-  // Provider ACP sobre el que corre el EQUIPO de expertos (TeamView). "mimo" = comportamiento
-  // histórico; "opencode" = cada experto usa el mejor modelo GRATIS para su perfil (modelRouter).
+  // Provider sobre el que corre el EQUIPO de expertos (TeamView). "opencode" (default) = cada
+  // experto usa el mejor modelo GRATIS para su perfil (modelRouter); "anthropic" = Claude Code.
   teamProviderId: string;
   // Timeout por turno del equipo (segundos). El default de 240s queda corto para sub-tareas tipo QA
   // (npm install + escribir tests) con modelos gratis — subirlo si los expertos cortan a mitad de trabajo.
@@ -61,7 +61,7 @@ export const useSettingsStore = create<SettingsStore>()(
       currentModelByProvider: {},
       providerKeys: {},
       onboardingDone: false,
-      teamProviderId: "mimo",
+      teamProviderId: "opencode",
       teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
 
@@ -104,15 +104,18 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: "devflow-settings",
-      version: 1,
+      version: 2,
       // v0 persistía `providers` (con apiKey/baseUrl/modelos ficticios) y `selectedProviderId/selectedModel`
       // — vestigios del diseño viejo "cliente-LLM directo". Los descartamos: providers es config estática y
       // la selección de modelo vive en modelByProvider + el selector del chat.
-      migrate: (persisted: any) => {
+      // v1→v2: retiro del provider "mimo" (Fase 4) — si el equipo estaba corriendo sobre "mimo", lo
+      // pasamos a "opencode" (DevFlow Code), que es lo que queda seleccionable en el dropdown.
+      migrate: (persisted: any, version) => {
         if (persisted && typeof persisted === "object") {
           delete persisted.providers;
           delete persisted.selectedProviderId;
           delete persisted.selectedModel;
+          if (version < 2 && persisted.teamProviderId === "mimo") persisted.teamProviderId = "opencode";
         }
         return persisted;
       },

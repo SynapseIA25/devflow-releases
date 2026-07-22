@@ -20,9 +20,10 @@ import { useUiStore } from "../store/uiStore";
 // - Auto-delegar: un líder descompone la tarea, delega a los expertos (ACP) y sintetiza (teamDelegate).
 export function TeamView() {
   const agents = useAgentsStore((s) => s.agents);
-  // Provider sobre el que corre el equipo: "mimo" (histórico) u "opencode" (multi-LLM: cada experto
-  // usa el mejor modelo GRATIS para su taskProfile vía modelRouter, cuota-consciente). El override se
-  // aplica al delegar (providerId + model limpio para que rutee el perfil); los agentes no se tocan.
+  // Provider sobre el que corre el equipo: "opencode" (default, multi-LLM: cada experto usa el mejor
+  // modelo GRATIS para su taskProfile vía modelRouter, cuota-consciente) o "anthropic" (Claude Code).
+  // El override se aplica al delegar (providerId + model limpio para que rutee el perfil); los
+  // agentes no se tocan.
   const teamProviderId = useSettingsStore((s) => s.teamProviderId);
   const setTeamProviderId = useSettingsStore((s) => s.setTeamProviderId);
   const teamTurnTimeoutSecs = useSettingsStore((s) => s.teamTurnTimeoutSecs);
@@ -33,7 +34,7 @@ export function TeamView() {
     [teamProviderId]
   );
   const experts = useMemo(() => agents.filter(isExpertAgent), [agents]);
-  const lead = useMemo(() => agents.find((a) => a.id === "mimo-coder") ?? agents[0], [agents]);
+  const lead = useMemo(() => agents.find((a) => a.id === "opencode-agent") ?? agents[0], [agents]);
 
   const [mode, setMode] = useState<"router" | "delegate">("router");
   const [task, setTask] = useState("");

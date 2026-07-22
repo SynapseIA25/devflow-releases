@@ -43,11 +43,11 @@ type PersistedState = {
 // Grafo semilla (antes vivía hardcodeado en Canvas.tsx). Es el contenido del flujo inicial.
 const seedNodes: WorkflowNode[] = [
   { id: "1", type: "file", position: { x: 80, y: 200 }, data: { label: "Read Codebase", path: "./src", operation: "read" } },
-  { id: "2", type: "mimo", position: { x: 360, y: 150 }, data: { label: "MiMo Refactor", prompt: "Refactor the code following best practices and improve readability." } },
+  { id: "2", type: "mimo", position: { x: 360, y: 150 }, data: { label: "DevFlow Code Refactor", prompt: "Refactor the code following best practices and improve readability." } },
   { id: "3", type: "terminal", position: { x: 640, y: 150 }, data: { label: "Run Tests", command: "npm test" } },
   // Condición referencia el exitCode del nodo de tests por id, vía templating (ver workflowEngine).
   { id: "4", type: "condition", position: { x: 900, y: 150 }, data: { label: "Tests passed?", condition: "{{3.exitCode}} === 0" } },
-  { id: "5", type: "terminal", position: { x: 1160, y: 80 }, data: { label: "Git Commit", command: "git commit -am 'refactor: apply MiMo suggestions'" } },
+  { id: "5", type: "terminal", position: { x: 1160, y: 80 }, data: { label: "Git Commit", command: "git commit -am 'refactor: apply DevFlow Code suggestions'" } },
 ];
 
 const seedEdges: Edge[] = [
@@ -58,8 +58,8 @@ const seedEdges: Edge[] = [
 ];
 
 const defaultsByType: Record<string, WorkflowNodeData> = {
-  mimo: { label: "MiMo Agent", prompt: "" },
-  agent: { label: "Agente", agentId: "mimo-coder", prompt: "" },
+  mimo: { label: "DevFlow Code", prompt: "" },
+  agent: { label: "Agente", agentId: "opencode-agent", prompt: "" },
   http: { label: "HTTP Request", method: "GET", url: "", headers: "", body: "" },
   mcp: { label: "MCP Tool", command: "", tool: "", arguments: "" },
   terminal: { label: "Terminal", command: "" },
@@ -185,7 +185,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
     }),
     {
       name: "devflow-workflow",
-      version: 1,
+      version: 2,
       // No persistimos el status transitorio de ejecución: tras un reload los nodos arrancan
       // en idle, no congelados en running/success de un run anterior.
       partialize: (state): PersistedState => ({
@@ -201,10 +201,14 @@ export const useWorkflowStore = create<WorkflowStore>()(
         ),
       }),
       // v0 era un único flujo plano { nodes, edges, nodeSeq }. Lo envolvemos en un flujo nombrado.
+      // v1→v2: retiro del provider "mimo" (Fase 4) — cualquier nodo tipo "agent" que apuntaba al
+      // agente retirado "mimo-coder" se reasigna a "opencode-agent" (DevFlow Code), si no el nodo
+      // revienta en runtime ("el agente ya no existe").
       migrate: (persisted, version): PersistedState => {
         const p = persisted as Record<string, unknown> | undefined;
+        let result = persisted as PersistedState;
         if (version < 1 && p && Array.isArray(p.nodes)) {
-          return {
+          result = {
             workflows: {
               [FIRST_FLOW_ID]: {
                 id: FIRST_FLOW_ID,
@@ -219,7 +223,14 @@ export const useWorkflowStore = create<WorkflowStore>()(
             flowSeq: 1,
           };
         }
-        return persisted as PersistedState;
+        if (version < 2 && result?.workflows) {
+          for (const w of Object.values(result.workflows)) {
+            for (const n of w.nodes) {
+              if (n.type === "agent" && n.data?.agentId === "mimo-coder") n.data.agentId = "opencode-agent";
+            }
+          }
+        }
+        return result;
       },
     }
   )

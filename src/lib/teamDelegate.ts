@@ -141,7 +141,7 @@ export async function autoDelegate(
 ): Promise<void> {
   const areaList = experts.map((e) => `- ${e.expertArea}: ${e.name} (${e.description})`).join("\n");
 
-  // El líder (mimo-coder) no trae taskProfile: overrideado a un provider multi-modelo (OpenCode) sin
+  // El líder (opencode-agent) no trae taskProfile: overrideado a un provider multi-modelo (OpenCode) sin
   // perfil, newSession no rutea y cae al modelo DEFAULT del agente — que con key de OpenRouter es PAGO.
   // Le damos perfil por turno: el plan es corto y estructurado (fast), la síntesis pide criterio (reasoning).
   const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });

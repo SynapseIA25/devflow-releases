@@ -119,7 +119,7 @@ export function NewAgentForm({ onClose, onCreated }: { onClose: () => void; onCr
   const providers = useSettingsStore((s) => s.providers);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [providerId, setProviderId] = useState(providers.find((p) => p.acp || p.nativeHttp)?.id ?? providers[0]?.id ?? "mimo");
+  const [providerId, setProviderId] = useState(providers.find((p) => p.acp || p.nativeHttp)?.id ?? providers[0]?.id ?? "opencode");
   const [systemPrompt, setSystemPrompt] = useState("");
 
   const save = () => {

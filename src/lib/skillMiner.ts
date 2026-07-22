@@ -1,7 +1,6 @@
 import { DEFAULT_AGENTS } from "./providers";
 import { runAgentTurn } from "./teamDelegate";
 import { parseSkillMd } from "./skills";
-import { checkCli } from "./tauriApi";
 import { useSkillsStore } from "../store/skillsStore";
 import { useProjectStore } from "../store/projectStore";
 import { useWorkspaceStore, type Workspace } from "../store/workspaceStore";
@@ -19,24 +18,17 @@ const MAX_TRANSCRIPT_CHARS = 12_000;
 const lastMineAttempt = new Map<string, number>();
 let mining = false; // un solo análisis concurrente en toda la app
 
-// El minero corre en el agente más barato disponible: OpenCode (modelos gratis + router) si su CLI
-// está instalado, si no MiMo. Claude Code queda excluido a propósito (tokens pagos para una tarea
-// de fondo). Cacheado: el set de CLIs instalados no cambia durante la sesión.
+// El minero corre en el agente más barato disponible: DevFlow Code (modelos gratis + router),
+// siempre bundleado como sidecar (no requiere instalación aparte, ver providers.ts). Claude Code
+// queda excluido a propósito (tokens pagos para una tarea de fondo).
 let minerAgentP: Promise<(typeof DEFAULT_AGENTS)[number] | null> | null = null;
 const pickMinerAgent = () => {
   minerAgentP ??= (async () => {
-    try {
-      const cli = await checkCli(["opencode", "mimo"]);
-      const providerId = cli.opencode ? "opencode" : cli.mimo ? "mimo" : null;
-      if (!providerId) return null;
-      const base = DEFAULT_AGENTS.find((a) => a.providerId === providerId && !a.expertArea);
-      if (!base) return null;
-      // systemPrompt vacío: el prompt del minero es autocontenido. Perfil "fast": es clasificación
-      // + síntesis corta, no hace falta un modelo caro.
-      return { ...base, systemPrompt: "", taskProfile: "fast" as const };
-    } catch {
-      return null;
-    }
+    const base = DEFAULT_AGENTS.find((a) => a.providerId === "opencode" && !a.expertArea);
+    if (!base) return null;
+    // systemPrompt vacío: el prompt del minero es autocontenido. Perfil "fast": es clasificación
+    // + síntesis corta, no hace falta un modelo caro.
+    return { ...base, systemPrompt: "", taskProfile: "fast" as const };
   })();
   return minerAgentP;
 };

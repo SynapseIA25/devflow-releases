@@ -4,7 +4,7 @@ const NODE_PALETTE = [
   {
     type: "mimo",
     icon: "🤖",
-    name: "MiMo Agent",
+    name: "DevFlow Code",
     desc: "AI task",
     color: "rgba(124,58,237,0.2)",
   },

@@ -11,7 +11,9 @@ const DEFAULT_IDS = new Set(DEFAULT_AGENTS.map((a) => a.id));
 // Agentes default que se retiraron del código pero pueden seguir persistidos: el merge los descarta
 // para que no reaparezcan como "custom". "hermes" se reubicó como infraestructura MCP (Hermes · Mensajería
 // en la vista MCP), ya no es un agente de chat (su modelo local era débil). Ver investigación MiMo×Hermes.
-const RETIRED_AGENT_IDS = new Set(["hermes"]);
+// "mimo-coder" se retiró en la Fase 4 (provider MiMo dado de baja) — DevFlow Code (opencode-agent) es
+// el nuevo agente líder por defecto.
+const RETIRED_AGENT_IDS = new Set(["hermes", "mimo-coder"]);
 
 export const isDefaultAgent = (id: string) => DEFAULT_IDS.has(id);
 
@@ -40,7 +42,7 @@ export const useAgentsStore = create<AgentsStore>()(
           description: partial.description?.trim() || "Agente definido por el usuario.",
           icon: partial.icon || "✦",
           color: partial.color || "#a78bfa",
-          providerId: partial.providerId || "mimo",
+          providerId: partial.providerId || "opencode",
           model: partial.model || "",
           systemPrompt: partial.systemPrompt || "",
           skills: partial.skills || [],
@@ -65,13 +67,18 @@ export const useAgentsStore = create<AgentsStore>()(
     }),
     {
       name: "devflow-agents",
-      version: 1,
+      version: 2,
       // v0→v1: rebrand del agente nativo de OpenCode a "DevFlow Code" (nombre de cara al usuario;
       // el id interno "opencode-agent"/"opencode" no cambia). El merge de abajo aplica lo persistido
       // ENCIMA de los defaults de código por diseño (para no pisar ediciones reales del usuario), así
       // que sin esto una instalación existente se queda con el nombre viejo para siempre. Solo toca
       // el registro si el nombre persistido es EXACTAMENTE el default viejo — si el usuario lo
       // renombró a otra cosa, esa edición real se respeta y no se toca.
+      // v1→v2: retiro del provider "mimo" (Fase 4). A diferencia del parche anterior (un solo registro
+      // por id fijo), acá reescribimos TODO registro persistido —default o custom— cuyo providerId sea
+      // "mimo" (los 9 expertos + cualquier agente custom que el usuario haya apuntado ahí), porque el
+      // merge de abajo aplica ese providerId persistido encima del nuevo default de código y lo dejaría
+      // apuntando a un provider que ya no existe.
       migrate: (persisted, version) => {
         const p = persisted as { agents?: AgentConfig[] } | undefined;
         if (version < 1 && p?.agents) {
@@ -79,6 +86,14 @@ export const useAgentsStore = create<AgentsStore>()(
           if (oc && oc.name === "OpenCode") {
             const def = DEFAULT_AGENTS.find((a) => a.id === "opencode-agent");
             if (def) Object.assign(oc, { name: def.name, description: def.description, icon: def.icon, color: def.color });
+          }
+        }
+        if (version < 2 && p?.agents) {
+          for (const a of p.agents) {
+            if (a.providerId === "mimo") {
+              a.providerId = "opencode";
+              if (a.model === "mimo-coder") a.model = "";
+            }
           }
         }
         return p as AgentsStore;

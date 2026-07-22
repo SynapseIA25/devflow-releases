@@ -285,15 +285,16 @@ export function ChatView() {
   // Al cambiar de proyecto activo: adoptar workspaces huérfanos, garantizar ≥1 pestaña, y activar la
   // pestaña recordada del proyecto. Corre también en el primer montaje (migra los ws viejos sin projectId).
   useEffect(() => {
-    useWorkspaceStore.getState().activateProject(activeProjectId, useChatStore.getState().activeAgentId || "mimo-coder");
+    useWorkspaceStore.getState().activateProject(activeProjectId, useChatStore.getState().activeAgentId || "opencode-agent");
   }, [activeProjectId]);
 
-  // Reconcilia workspaces que apunten a un agente que ya no existe (ej. "hermes", retirado del chat →
-  // ahora es infra MCP): los reasigna a mimo-coder para que sigan funcionando en vez de caer al mock.
+  // Reconcilia workspaces que apunten a un agente que ya no existe (ej. "hermes" o "mimo-coder",
+  // retirados del chat): los reasigna a opencode-agent (DevFlow Code) para que sigan funcionando en
+  // vez de caer al mock.
   useEffect(() => {
     const valid = new Set(agents.map((a) => a.id));
     for (const w of useWorkspaceStore.getState().workspaces) {
-      if (!valid.has(w.agentId)) setWorkspaceAgent(w.id, "mimo-coder");
+      if (!valid.has(w.agentId)) setWorkspaceAgent(w.id, "opencode-agent");
     }
   }, [agents, setWorkspaceAgent]);
 
@@ -462,15 +463,16 @@ export function ChatView() {
   // Pestaña nueva en el proyecto activo, sembrada con el agente de la pestaña actual (o el default global).
   const newWorkspace = () => storeNewWorkspace(ws?.agentId ?? activeAgentId, activeProjectId);
 
-  // Fallback cuando el agente activo NO tiene un adaptador ACP configurado. No debería pasar con los
-  // agentes default (todos son ACP: MiMo, Claude Code, expertos), pero un agente custom podría apuntar
-  // a un provider sin `acp`. En vez de simular una respuesta falsa, avisamos claro qué hacer.
+  // Fallback cuando el agente activo NO tiene un adaptador configurado (ni ACP ni nativo). No debería
+  // pasar con los agentes default (DevFlow Code y Claude Code, más los expertos), pero un agente
+  // custom podría apuntar a un provider sin motor real. En vez de simular una respuesta falsa,
+  // avisamos claro qué hacer.
   const runNoAdapter = async (wsId: string) => {
     try {
       const name = agentForWs(wsId)?.name ?? "This agent";
       addBlockToWs(wsId, {
         type: "ai", agentId: agentForWs(wsId)?.id,
-        content: `**${name}** has no ACP adapter configured, so it can't run the turn.\n\nPick an agent connected over ACP (e.g. **MiMo Code** or **Claude Code**) in the selector above.`,
+        content: `**${name}** has no adapter configured, so it can't run the turn.\n\nPick an agent with a real engine (e.g. **DevFlow Code** or **Claude Code**) in the selector above.`,
       });
     } finally {
       finishTurn(wsId);
@@ -1044,7 +1046,7 @@ export function ChatView() {
           {/* Status bar */}
           <div className="term-statusbar">
             <span className="term-path">{ws?.cwd ?? projectPath}{ws?.envName ? ` · environment: ${ws.envName}` : ""}</span>
-            <span className="term-model">{activeAgent?.name ?? "MiMo"} · devflow v0.1</span>
+            <span className="term-model">{activeAgent?.name ?? "DevFlow Code"} · devflow v0.1</span>
           </div>
         </div>
 

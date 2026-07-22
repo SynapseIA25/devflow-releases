@@ -41,12 +41,12 @@ const TASK_PROFILE_FIELD: NodeField = {
 export const NODE_SCHEMAS: Record<string, NodeSchema> = {
   mimo: {
     type: "mimo",
-    title: "MiMo Agent",
+    title: "DevFlow Code",
     icon: "🤖",
-    description: "Le manda un prompt al agente MiMo (sesión ACP nueva por nodo) y usa su respuesta como salida.",
+    description: "Le manda un prompt a DevFlow Code (sesión nueva por nodo) y usa su respuesta como salida.",
     fields: [
       LABEL_FIELD,
-      { key: "prompt", label: "Prompt", type: "textarea", rows: 6, vars: true, placeholder: "Describí qué debe hacer MiMo…" },
+      { key: "prompt", label: "Prompt", type: "textarea", rows: 6, vars: true, placeholder: "Describí qué debe hacer DevFlow Code…" },
       TASK_PROFILE_FIELD,
     ],
   },
@@ -78,7 +78,7 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
     type: "agent",
     title: "Agente",
     icon: "🤖",
-    description: "Le manda un prompt al agente elegido (elegible por nodo). Solo funcionan agentes con backend ACP real (MiMo).",
+    description: "Le manda un prompt al agente elegido (elegible por nodo). Solo funcionan agentes con backend ACP o nativo real (DevFlow Code, Claude Code).",
     fields: [
       LABEL_FIELD,
       { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents" },

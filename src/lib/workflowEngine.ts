@@ -166,27 +166,29 @@ async function promptAndCollect(provider: ProviderConfig, sessionId: string, pro
   return text;
 }
 
+// Nodo "mimo" (nombre interno histórico, no renombrado para no romper flujos guardados): corre sobre
+// DevFlow Code (nativo) desde la Fase 4, cuando el provider "mimo" se retiró.
 async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
-  const mimo = DEFAULT_PROVIDERS.find((p) => p.id === "mimo");
-  if (!mimo?.acp) throw new Error("Provider 'mimo' sin configuración ACP");
+  const provider = DEFAULT_PROVIDERS.find((p) => p.id === "opencode");
+  if (!provider?.nativeHttp) throw new Error("Provider 'opencode' sin configuración");
   const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
-  cb.onLog("info", `🤖 MiMo: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
+  cb.onLog("info", `🤖 DevFlow Code: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
   const profile = nodeTaskProfile(node);
-  const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, mimo, profile);
-  const text = await promptAndCollect(mimo, sessionId, promptText);
-  cb.onLog("success", `🤖 MiMo respondió (${text.length} chars)`);
+  const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, provider, profile);
+  const text = await promptAndCollect(provider, sessionId, promptText);
+  cb.onLog("success", `🤖 DevFlow Code respondió (${text.length} chars)`);
   return { output: text };
 }
 
 // Nodo agente genérico: como execMimo pero el agente se elige por nodo (data.agentId → agentsStore).
-// Solo funcionan los agentes cuyo provider tiene config ACP; el resto tira error claro.
+// Solo funcionan los agentes cuyo provider tiene config ACP o nativa; el resto tira error claro.
 async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
   const agentId = String(node.data.agentId ?? "");
   const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
   if (!agent) throw new Error("Nodo agente sin agente seleccionado (o el agente ya no existe)");
   const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
-  if (!provider?.acp && !provider?.nativeHttp) throw new Error(`El agente "${agent.name}" no tiene backend ACP ni nativo — elegí uno con motor real (ej. MiMo)`);
+  if (!provider?.acp && !provider?.nativeHttp) throw new Error(`El agente "${agent.name}" no tiene backend ACP ni nativo — elegí uno con motor real (ej. DevFlow Code)`);
   let promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);

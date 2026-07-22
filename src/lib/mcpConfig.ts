@@ -1,10 +1,13 @@
-// Gestión del archivo `mimocode.json` de la carpeta de proyecto — la config que lee el agente MiMo
-// (fork de OpenCode) para descubrir y conectarse a MCP servers. Verificado empíricamente: escribir
-// un bloque `mcp` acá y correr `mimo mcp list` muestra el server como "connected". Este es el camino
-// REAL para darle tools al agente; el viejo start_mcp_server (proceso suelto) no llegaba a MiMo.
+// Gestión del `opencode.json` de la carpeta de proyecto — OpenCode mergea config de proyecto (esta)
+// con la global (~/.config/opencode/opencode.jsonc), con la de proyecto ganando (confirmado en los
+// docs oficiales: opencode.ai/docs/config). Soporta una clave `mcp` nativa (McpLocalConfig en el SDK:
+// {type:"local", command, environment?, enabled?}) — mismo shape que ya usábamos acá, no hace falta
+// transformar nada. Reemplaza el mecanismo viejo (`mimocode.json`, específico del fork MiMo) tras el
+// retiro del provider MiMo (Fase 4).
 //
-// A diferencia de ese enfoque, acá no spawneamos nada: el propio `mimo acp` lanza el server MCP como
-// proceso hijo suyo cuando arranca una sesión con esta carpeta como cwd.
+// A diferencia de spawnear algo nosotros: no lanzamos ningún proceso acá. El propio servidor de
+// OpenCode (`opencode serve`) lee esta config y levanta el MCP server como proceso hijo suyo al abrir
+// una sesión con esta carpeta como directory.
 import { readTextFile, writeTextFile } from "./tauriApi";
 
 export type McpConfigEntry = {
@@ -14,7 +17,7 @@ export type McpConfigEntry = {
   enabled: boolean;
 };
 
-type MimoConfig = {
+type OpencodeProjectConfig = {
   $schema?: string;
   mcp?: Record<string, McpConfigEntry>;
   [key: string]: unknown;
@@ -22,14 +25,14 @@ type MimoConfig = {
 
 function configPath(projectPath: string): string {
   const sep = projectPath.includes("\\") ? "\\" : "/";
-  return projectPath.endsWith(sep) ? `${projectPath}mimocode.json` : `${projectPath}${sep}mimocode.json`;
+  return projectPath.endsWith(sep) ? `${projectPath}opencode.json` : `${projectPath}${sep}opencode.json`;
 }
 
 // Lee y parsea el config actual. Si no existe o está corrupto, devuelve una base vacía (nunca tira)
 // — así podemos hacer merge sin pisar otras claves del usuario (agents, providers, etc.).
-async function readConfig(projectPath: string): Promise<MimoConfig> {
+async function readConfig(projectPath: string): Promise<OpencodeProjectConfig> {
   try {
-    return JSON.parse(await readTextFile(configPath(projectPath))) as MimoConfig;
+    return JSON.parse(await readTextFile(configPath(projectPath))) as OpencodeProjectConfig;
   } catch {
     return {};
   }
@@ -39,7 +42,7 @@ export async function readMcpServers(projectPath: string): Promise<Record<string
   return (await readConfig(projectPath)).mcp ?? {};
 }
 
-// Agrega o actualiza un MCP server en `mimocode.json` (merge, preservando el resto del archivo).
+// Agrega o actualiza un MCP server en `opencode.json` (merge, preservando el resto del archivo).
 export async function setMcpServer(
   projectPath: string,
   id: string,
@@ -48,7 +51,7 @@ export async function setMcpServer(
   enabled: boolean
 ): Promise<void> {
   const cfg = await readConfig(projectPath);
-  cfg.$schema = cfg.$schema ?? "https://mimo.xiaomi.com/config.json";
+  cfg.$schema = cfg.$schema ?? "https://opencode.ai/config.json";
   cfg.mcp = cfg.mcp ?? {};
   const entry: McpConfigEntry = { type: "local", command, enabled };
   const env = environment && Object.fromEntries(Object.entries(environment).filter(([, v]) => v.trim() !== ""));

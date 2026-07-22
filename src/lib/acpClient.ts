@@ -218,13 +218,6 @@ export async function initialize(provider: string, spawn: AcpSpawnConfig): Promi
 
 type ConfigOption = { id: string; value?: string; options?: Array<{ value: string; label?: string; name?: string }> };
 
-// Fallback para MiMo cuando el usuario no eligió modelo: el canal gratuito "MiMo Auto", siempre
-// disponible. El default que trae la cuenta puede quedar apuntando a un modelo deprecado/no soportado
-// (visto: "xiaomi/mimo-v2.5-pro-ultraspeed"), así que si no hay preferencia lo forzamos a mimo-auto.
-// Ya NO es un override duro: si el usuario eligió un modelo (o configuró un provider local en el CLI),
-// se respeta esa elección (ver settingsStore.modelByProvider → preferredModel).
-const MIMO_DEFAULT_MODEL = "mimo/mimo-auto";
-
 export function onModelOptions(cb: ModelOptionsListener): () => void {
   modelOptionsListeners.add(cb);
   return () => modelOptionsListeners.delete(cb);
@@ -264,11 +257,10 @@ export async function newSession(
     }));
     const has = (v?: string | null): v is string => !!v && available.some((o) => o.value === v);
     // Prioridad: preferencia explícita (usuario/agente) → router por perfil de tarea (elige el mejor
-    // modelo GRATIS disponible, cuota-consciente) → fallback de MiMo (anti-deprecado) → default del agente.
+    // modelo GRATIS disponible, cuota-consciente) → default del agente.
     let target: string | null = null;
     if (has(preferredModel)) target = preferredModel;
     else if (taskProfile) target = pickModel(taskProfile, available);
-    if (!target && provider === "mimo" && has(MIMO_DEFAULT_MODEL)) target = MIMO_DEFAULT_MODEL;
     if (target && target !== modelOption.value) {
       try {
         await setSessionModel(provider, result.sessionId, target);

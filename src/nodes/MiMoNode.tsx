@@ -16,7 +16,7 @@ export function MiMoNode({ id, data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={{ background: "#7c3aed" }} />
       <div className="rf-node-header">
         <div className="rf-node-icon">🤖</div>
-        <span className="rf-node-title">{d.label || "MiMo Agent"}</span>
+        <span className="rf-node-title">{d.label || "DevFlow Code"}</span>
         <span className="rf-node-id">{id}</span>
         <span className="rf-node-badge">AI</span>
       </div>
@@ -27,7 +27,7 @@ export function MiMoNode({ id, data, selected }: NodeProps) {
             className="rf-field-input"
             rows={3}
             value={d.prompt || ""}
-            placeholder="Describe what MiMo should do..."
+            placeholder="Describe what DevFlow Code should do..."
             onMouseDown={(e) => e.stopPropagation()}
             onChange={(e) => updateNodeData(id, { prompt: e.target.value })}
           />

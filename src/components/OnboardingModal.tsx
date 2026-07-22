@@ -7,10 +7,10 @@ import { PROVIDER_KEY_SPECS } from "../lib/providers";
 // Wizard de primer arranque (se muestra hasta que settingsStore.onboardingDone). OpenCode viene
 // bundleado como sidecar de Tauri (ver providers.ts, scripts/fetch-opencode-sidecar.mjs) — siempre
 // disponible, no se detecta ni se lista acá. Este wizard solo cubre los agentes OPCIONALES que
-// requieren cuenta propia (Claude Code, MiMo): detecta qué hay instalado (check_cli, `<cli>
-// --version`), y deja instalar Claude Code con un click (install_cli → `npm install -g <pkg>`) o
-// copiar el comando a mano; MiMo no tiene instalador npm, solo link a docs. También deja pegar una
-// API key de OpenRouter (se guarda en providerKeys y se inyecta a OpenCode al spawnearlo).
+// requieren cuenta propia (Claude Code): detecta qué hay instalado (check_cli, `<cli> --version`), y
+// deja instalar Claude Code con un click (install_cli → `npm install -g <pkg>`) o copiar el comando a
+// mano. También deja pegar una API key de OpenRouter (se guarda en providerKeys y se inyecta a
+// OpenCode al spawnearlo).
 type AgentRow = {
   cli: string;
   name: string;
@@ -32,14 +32,6 @@ const AGENT_ROWS: AgentRow[] = [
     install: "npm install -g @anthropic-ai/claude-code",
     npmPackage: "@anthropic-ai/claude-code",
     docsUrl: "https://docs.anthropic.com",
-  },
-  {
-    cli: "mimo",
-    name: "MiMo Code",
-    icon: "⬡",
-    color: "#f97316",
-    note: "Xiaomi's coding agent — requires a Xiaomi account. See the docs for installation.",
-    docsUrl: "https://mimo.xiaomi.com/coder",
   },
 ];
 

@@ -10,6 +10,6 @@ type ChatStore = {
 };
 
 export const useChatStore = create<ChatStore>()((set) => ({
-  activeAgentId: "mimo-coder",
+  activeAgentId: "opencode-agent",
   setActiveAgent: (id) => set({ activeAgentId: id }),
 }));

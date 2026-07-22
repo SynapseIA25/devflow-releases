@@ -5,9 +5,10 @@ import {
   Database, Search, GitBranch, FileCode, Globe2, Hash,
   ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare,
 } from "lucide-react";
-import { isTauri, checkPrerequisites, acpStop, hermesPath } from "../lib/tauriApi";
+import { isTauri, checkPrerequisites, hermesPath } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
 import { useProjectStore } from "../store/projectStore";
+import * as opencodeClient from "../lib/opencodeClient";
 
 /* ── Types ─────────────────────────────────────────────── */
 type McpTool     = { name: string; description: string };
@@ -143,11 +144,11 @@ const CATALOG: McpServer[] = [
   {
     // Hermes reubicado como INFRAESTRUCTURA (no como agente de chat, ver investigación MiMo×Hermes):
     // `hermes mcp serve` expone las conversaciones/inbox multi-plataforma de Hermes como tools MCP, así
-    // MiMo (cerebro de código) puede leer/responder mensajes de WhatsApp/Slack/Telegram/etc. Requiere
+    // el agente de código puede leer/responder mensajes de WhatsApp/Slack/Telegram/etc. Requiere
     // Hermes instalado (ruta absoluta a esta máquina, mismo criterio que providers.ts). Sus tools de
     // browser/visión/computer-use NO se exponen por acá (viven dentro del agent loop de Hermes).
     id: "hermes-messaging", name: "Hermes · Messaging", transport: "stdio", official: false, version: "0.17",
-    description: "Gives MiMo access to Hermes' multi-platform inbox (WhatsApp, Slack, Telegram…): list conversations, read/send messages, attachments and events. Requires Hermes installed.",
+    description: "Gives your coding agent access to Hermes' multi-platform inbox (WhatsApp, Slack, Telegram…): list conversations, read/send messages, attachments and events. Requires Hermes installed.",
     icon: <MessagesSquare size={16} />, status: "stopped",
     // Ruta resuelta en runtime (ver efecto en McpView: hermes_path detecta el binario). Fallback por PATH.
     command: "hermes mcp serve",
@@ -397,9 +398,9 @@ export function McpView() {
   const inTauri = isTauri();
   const projectPath = useProjectStore((s) => s.projectPath);
 
-  // On mount / cambio de proyecto: refleja qué servers están habilitados en mimocode.json (la fuente
-  // de verdad que lee el agente MiMo) + chequea prereqs. "running" acá = habilitado en la config del
-  // agente, no un proceso que spawnee DevFlow (el propio mimo acp lo lanza al abrir sesión).
+  // On mount / cambio de proyecto: refleja qué servers están habilitados en opencode.json (la fuente
+  // de verdad que lee DevFlow Code) + chequea prereqs. "running" acá = habilitado en la config del
+  // agente, no un proceso que spawnee DevFlow (el propio server de OpenCode lo lanza al abrir sesión).
   useEffect(() => {
     if (!inTauri) return;
     readMcpServers(projectPath).then((cfg) => {
@@ -434,7 +435,7 @@ export function McpView() {
       // Browser mode: just toggle UI and show hint
       setServerStatus(id, server.status === "running" ? "stopped" : "running",
         server.status === "stopped"
-          ? "Simulated — run 'npm run tauri dev' to write a real mimocode.json"
+          ? "Simulated — run 'npm run tauri dev' to write a real opencode.json"
           : undefined
       );
       return;
@@ -447,12 +448,12 @@ export function McpView() {
     const enabling = server.status !== "running";
     setServerStatus(id, "connecting");
     try {
-      // Escribe/actualiza la entrada en mimocode.json (habilitada o no). El comando del catálogo es
+      // Escribe/actualiza la entrada en opencode.json (habilitada o no). El comando del catálogo es
       // un string tipo "uvx code-index-mcp" → lo pasamos como array de argumentos.
       await setMcpServer(projectPath, id, server.command.split(/\s+/).filter(Boolean), envVals, enabling);
-      // MiMo lee mimocode.json al arrancar su proceso; lo reiniciamos (best-effort) para que la
-      // próxima sesión del chat tome el cambio. La sesión ACP se re-spawnea sola en el próximo prompt.
-      await acpStop("mimo").catch(() => {});
+      // DevFlow Code lee opencode.json al arrancar su server; lo reiniciamos (best-effort, mismo
+      // patrón que AddModelModal/opencodeAgents) para que la próxima sesión tome el cambio.
+      await opencodeClient.restart("opencode").catch(() => {});
       setServerStatus(id, enabling ? "running" : "stopped");
     } catch (e) {
       setServerStatus(id, "error", String(e));
@@ -461,7 +462,7 @@ export function McpView() {
 
   const removeServer = (id: string) => {
     removeMcpServer(projectPath, id).catch(() => {});
-    acpStop("mimo").catch(() => {});
+    opencodeClient.restart("opencode").catch(() => {});
     setServers((prev) => prev.filter((s) => s.id !== id));
     if (selected === id) setSelected(servers.find((s) => s.id !== id)?.id ?? "");
   };
