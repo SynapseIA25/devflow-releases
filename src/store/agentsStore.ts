@@ -65,6 +65,24 @@ export const useAgentsStore = create<AgentsStore>()(
     }),
     {
       name: "devflow-agents",
+      version: 1,
+      // v0→v1: rebrand del agente nativo de OpenCode a "DevFlow Code" (nombre de cara al usuario;
+      // el id interno "opencode-agent"/"opencode" no cambia). El merge de abajo aplica lo persistido
+      // ENCIMA de los defaults de código por diseño (para no pisar ediciones reales del usuario), así
+      // que sin esto una instalación existente se queda con el nombre viejo para siempre. Solo toca
+      // el registro si el nombre persistido es EXACTAMENTE el default viejo — si el usuario lo
+      // renombró a otra cosa, esa edición real se respeta y no se toca.
+      migrate: (persisted, version) => {
+        const p = persisted as { agents?: AgentConfig[] } | undefined;
+        if (version < 1 && p?.agents) {
+          const oc = p.agents.find((a) => a.id === "opencode-agent");
+          if (oc && oc.name === "OpenCode") {
+            const def = DEFAULT_AGENTS.find((a) => a.id === "opencode-agent");
+            if (def) Object.assign(oc, { name: def.name, description: def.description, icon: def.icon, color: def.color });
+          }
+        }
+        return p as AgentsStore;
+      },
       // Reconcilia lo guardado con los defaults de código: parte de DEFAULT_AGENTS, aplica las
       // ediciones guardadas por id, y agrega los agentes custom que no son defaults.
       merge: (persisted, current) => {

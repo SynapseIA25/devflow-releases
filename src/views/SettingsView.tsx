@@ -12,7 +12,7 @@ import * as opencodeClient from "../lib/opencodeClient";
 function ProviderCard({ provider }: { provider: ProviderConfig }) {
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[provider.id]);
   const connected = !!provider.acp || !!provider.nativeHttp;
-  const cliName = provider.acp?.command.split(/[\\/]/).pop() ?? (provider.nativeHttp ? provider.id : undefined);
+  const cliName = provider.acp?.command.split(/[\\/]/).pop();
 
   return (
     <div className="provider-card">
@@ -35,7 +35,7 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
           </div>
           <div className="provider-note">
             {provider.nativeHttp
-              ? <>Runs via DevFlow's native OpenCode integration (<code>{cliName}</code>). The model is switched from the chat selector.</>
+              ? <>Runs natively inside DevFlow — nothing to install separately. The model is switched from the chat selector.</>
               : <>Authentication and models are managed by the <code>{cliName}</code> CLI. The model is switched from the chat selector.</>}
           </div>
         </div>
@@ -83,9 +83,9 @@ function ApiKeysSection() {
     <div className="settings-apikeys">
       <h3 className="settings-section-title"><KeyRound size={14} /> Inference providers · API keys</h3>
       <p className="apikeys-subtitle">
-        Add a key to unlock that provider's models in the OpenCode agent (chat model selector).
-        No key at all? OpenCode still includes free models out of the box. Keys are stored locally
-        on this machine.
+        Add a key to unlock that provider's models in DevFlow Code (chat model selector).
+        No key at all? DevFlow Code still includes free models out of the box. Keys are stored
+        locally on this machine.
       </p>
       {PROVIDER_KEY_SPECS.map((spec) => {
         const saved = providerKeys[spec.id] ?? "";
@@ -116,7 +116,7 @@ function ApiKeysSection() {
       <div className="apikeys-actions">
         <button className="apikeys-save" disabled={!dirty || applying} onClick={apply}>
           {applying ? <RotateCw size={12} className="spin" /> : null}
-          {applying ? "Applying…" : "Save & restart OpenCode"}
+          {applying ? "Applying…" : "Save & restart DevFlow Code"}
         </button>
         {appliedAt && !dirty && (
           <span className="apikeys-applied">✓ Applied — new models appear on the next chat session.</span>

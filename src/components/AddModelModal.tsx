@@ -90,8 +90,8 @@ export function AddModelModal({
         <div className="model-search-body">
           <p className="model-search-hint">
             Catálogo completo de OpenRouter, Google, Groq y Mistral (models.dev) — no solo la lista
-            curada de OpenCode. Agregar un modelo edita tu <code>opencode.jsonc</code> por vos y
-            reinicia OpenCode.
+            curada de DevFlow Code. Agregar un modelo edita tu configuración por vos y reinicia
+            DevFlow Code.
           </p>
           <div className="model-search-inputrow">
             <Search size={13} />

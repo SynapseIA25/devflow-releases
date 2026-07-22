@@ -46,19 +46,21 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     acp: { command: "npx", args: ["-y", "@zed-industries/claude-code-acp"] },
   },
   {
-    // OpenCode upstream (el mismo proyecto del que MiMo es fork, pero moderno: v1.x). Es la vía
-    // multi-LLM de DevFlow: sin configurar nada trae los modelos gratuitos de OpenCode Zen, y con
-    // las API keys de Settings (OpenRouter/Google/Groq/Mistral, ver PROVIDER_KEY_SPECS) expone los
-    // modelos de esos providers en el selector del chat. Bundleado como sidecar de Tauri (binario
-    // nativo de `opencode-ai`, ver scripts/fetch-opencode-sidecar.mjs) — no requiere instalación
-    // aparte, DevFlow lo trae adentro. `nativeHttp: true`: se habla por el servidor HTTP+SSE propio
-    // del binario (opencodeClient.ts, `opencode serve`), no por ACP-sobre-stdio como el resto —
-    // primer paso hacia una herramienta de codificación nativa de DevFlow (ver roadmap en memoria).
+    // Rebrandeado de cara al usuario como "DevFlow Code" (id interno sigue siendo "opencode" —
+    // cambiarlo tocaría decenas de archivos sin ningún beneficio para el usuario, ver memoria del
+    // proyecto). Por dentro sigue siendo OpenCode upstream (el mismo proyecto del que MiMo es fork,
+    // pero moderno: v1.x). Es la vía multi-LLM de DevFlow: sin configurar nada trae los modelos
+    // gratuitos de OpenCode Zen, y con las API keys de Settings (OpenRouter/Google/Groq/Mistral, ver
+    // PROVIDER_KEY_SPECS) expone los modelos de esos providers en el selector del chat. Bundleado
+    // como sidecar de Tauri (binario nativo de `opencode-ai`, ver scripts/fetch-opencode-sidecar.mjs)
+    // — no requiere instalación aparte, DevFlow lo trae adentro. `nativeHttp: true`: se habla por el
+    // servidor HTTP+SSE propio del binario (opencodeClient.ts, `opencode serve`), no por
+    // ACP-sobre-stdio como el resto.
     id: "opencode",
-    name: "OpenCode",
-    description: "Multi-LLM agent, built in — free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
-    color: "#10b981",
-    icon: "◎",
+    name: "DevFlow Code",
+    description: "DevFlow's built-in multi-LLM coding agent — free models out of the box; add API keys in Settings for OpenRouter, Gemini, Groq and more.",
+    color: "#7c3aed",
+    icon: "◆",
     docsUrl: "https://opencode.ai/docs",
     nativeHttp: true,
   },
@@ -163,10 +165,10 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
   },
   {
     id: "opencode-agent",
-    name: "OpenCode",
-    description: "Multi-LLM agent: free models included, plus any provider you add a key for (OpenRouter, Gemini, Groq…).",
-    icon: "◎",
-    color: "#10b981",
+    name: "DevFlow Code",
+    description: "DevFlow's built-in multi-LLM agent: free models included, plus any provider you add a key for (OpenRouter, Gemini, Groq…).",
+    icon: "◆",
+    color: "#7c3aed",
     providerId: "opencode",
     model: "",
     systemPrompt: "",

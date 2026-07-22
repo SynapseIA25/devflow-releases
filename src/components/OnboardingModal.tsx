@@ -109,8 +109,8 @@ export function OnboardingModal() {
       <div className="onb-modal">
         <h2 className="onb-title">Welcome to DevFlow</h2>
         <p className="onb-sub">
-          DevFlow comes with a coding agent (OpenCode) built in — nothing to install, just start
-          chatting. Optionally, add these agents too if you have your own account:
+          DevFlow comes with a coding agent, DevFlow Code, built in — nothing to install, just
+          start chatting. Optionally, add these agents too if you have your own account:
         </p>
 
         <div className="onb-agents">
@@ -158,7 +158,7 @@ export function OnboardingModal() {
         <div className="onb-key">
           <div className="onb-key-title"><KeyRound size={13} /> OpenRouter API key <span className="onb-optional">optional</span></div>
           <p className="onb-key-note">
-            {openrouter.freeTier} Paste a key and the OpenCode agent will list those models in the
+            {openrouter.freeTier} Paste a key and DevFlow Code will list those models in the
             chat. You can also do this later in Settings.{" "}
             <a href={openrouter.keyUrl} target="_blank" rel="noreferrer">Get a key <ExternalLink size={9} /></a>
           </p>
