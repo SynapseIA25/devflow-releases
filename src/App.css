@@ -2372,3 +2372,11 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .model-search-added {
   display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #34d399; flex-shrink: 0;
 }
+.model-search-modetoggle, .model-search-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.model-search-modebtn {
+  display: flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11px; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-2); cursor: pointer;
+}
+.model-search-modebtn:hover { color: var(--text); }
+.model-search-modebtn.active { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
