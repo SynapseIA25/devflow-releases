@@ -11,10 +11,12 @@ import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import * as opencodeClient from "../lib/opencodeClient";
 import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
-import { readTextFile } from "../lib/tauriApi";
+import { readTextFile, writeTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useSettingsStore } from "../store/settingsStore";
+import * as teamDelegate from "../lib/teamDelegate";
+import { memoryPath, readProjectMemory, buildMemoryPreamble, summarizeWorkspaceBlocks, buildDistillationPrompt } from "../lib/projectMemory";
 
 // Referencia estable para el selector de settingsStore (evita re-render por array nuevo en cada llamada).
 const EMPTY_MODELS: acpClient.ModelOption[] = [];
@@ -561,6 +563,25 @@ export function ChatView() {
     return `${parts.join("\n\n")}\n\n${text}`;
   };
 
+  // Preámbulo de sesión NUEVA: índice de skills + memoria de proyecto (ver projectMemory.ts).
+  // Compartido entre runAcp y runOpenCodeHttp — ninguna de las dos cosas depende del motor de IA
+  // (a diferencia del system prompt del agente, que cada path inyecta a su manera: ACP lo prepende
+  // como texto, OpenCode nativo lo manda por su campo `system`/`agent` real, ver runOpenCodeHttp).
+  const buildNewSessionPreamble = async (projectRoot: string): Promise<string> => {
+    const parts: string[] = [];
+    try {
+      const sstate = useSkillsStore.getState();
+      const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
+      const skillsPreamble = buildSkillsPreamble(skillsList, await skillsRoot());
+      if (skillsPreamble) parts.push(skillsPreamble);
+    } catch { /* sin índice de skills el turno sigue igual */ }
+    try {
+      const memoryPreamble = await buildMemoryPreamble(projectRoot);
+      if (memoryPreamble) parts.push(memoryPreamble);
+    } catch { /* sin memoria el turno sigue igual */ }
+    return parts.join("\n\n");
+  };
+
   const runAcp = async (wsId: string, text: string, provider: string, spawn: acpClient.AcpSpawnConfig) => {
     const aiBlockId = makeId();
     updateWsSteps(wsId, () => []);
@@ -577,6 +598,7 @@ export function ChatView() {
       const wsNow = useWorkspaceStore.getState().workspaces.find((w) => w.id === wsId);
       let sid = wsNow?.sessionProvider === provider ? wsNow?.sessionId : undefined;
       const isNewSession = !sid;
+      let newSessionPreamble = "";
       if (!sid) {
         // Si el workspace está atado a un ambiente, la sesión ACP se abre en el worktree (cwd override)
         // → el agente lee/escribe/ejecuta AISLADO ahí, sin tocar el proyecto real.
@@ -590,6 +612,7 @@ export function ChatView() {
         const preferredModel = useSettingsStore.getState().modelByProvider[provider];
         sid = await acpClient.newSession(provider, spawn, sessionCwd, preferredModel);
         setSession(wsId, sid, provider);
+        newSessionPreamble = await buildNewSessionPreamble(sessionCwd);
       }
       // Registramos el turno keyed por sesión: el handler de session/update lo encuentra por acá,
       // y cancel() puede destrabarlo selectivamente sin tocar turnos de otros workspaces.
@@ -602,16 +625,8 @@ export function ChatView() {
       if (isNewSession && systemPrompt) {
         fullPrompt = `[System]\n${systemPrompt}\n\n${fullPrompt}`;
       }
-      // Índice de skills (divulgación progresiva): en la sesión nueva va solo nombre+descripción+path
-      // de cada skill habilitada; el agente lee el SKILL.md con su propio tool si la tarea matchea.
-      if (isNewSession) {
-        try {
-          const sstate = useSkillsStore.getState();
-          const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
-          const preamble = buildSkillsPreamble(skillsList, await skillsRoot());
-          if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
-        } catch { /* sin índice el turno sigue igual */ }
-      }
+      // Índice de skills + memoria de proyecto (ver buildNewSessionPreamble) — solo en sesión nueva.
+      if (newSessionPreamble) fullPrompt = `${newSessionPreamble}\n\n${fullPrompt}`;
       inChars = fullPrompt.length;
       // Modo Auto del router: si el usuario eligió "Auto" en el selector de modelo, clasificamos el
       // turno (classifyTask) y elegimos el mejor modelo GRATIS disponible para ese perfil
@@ -695,13 +710,10 @@ export function ChatView() {
       turnKey = `${provider}:${sid}`;
       activeTurnsRef.current.set(turnKey, { wsId, aiBlockId, outChars: 0 });
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
+      // Índice de skills + memoria de proyecto (ver buildNewSessionPreamble) — solo en sesión nueva.
       if (isNewSession) {
-        try {
-          const sstate = useSkillsStore.getState();
-          const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
-          const preamble = buildSkillsPreamble(skillsList, await skillsRoot());
-          if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
-        } catch { /* sin índice el turno sigue igual */ }
+        const preamble = await buildNewSessionPreamble(sessionCwd);
+        if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
       }
       inChars = fullPrompt.length;
       if (useSettingsStore.getState().modelByProvider[provider] === AUTO_MODEL) {
@@ -774,6 +786,37 @@ export function ChatView() {
     }
   };
 
+  // /remember: destila la conversación reciente del workspace en la memoria persistente del
+  // proyecto (MEMORY.md, ver projectMemory.ts). Corre en un turno APARTE del chat visible —
+  // reusa teamDelegate.runAgentTurn (ya sabe abrir sesión + mandar prompt + juntar el texto de
+  // vuelta, y ya bifurca ACP/nativo) en vez de ensuciar esta pestaña con el prompt de instrucción
+  // y el Markdown completo de la respuesta. No es automático a propósito: un LLM call extra en
+  // cada mensaje sería caro y ruidoso — el usuario decide cuándo vale la pena consolidar.
+  const runRememberFromChat = async (wsId: string) => {
+    const agent = agentForWs(wsId);
+    const w = useWorkspaceStore.getState().workspaces.find((x) => x.id === wsId);
+    const pstate = useProjectStore.getState();
+    const projectRoot = w?.cwd ?? pstate.projects[w?.projectId ?? ""]?.path ?? pstate.projectPath;
+    if (!agent) {
+      addBlockToWs(wsId, { type: "ai", content: "**Error:** No active agent for this workspace." });
+      finishTurn(wsId);
+      return;
+    }
+    try {
+      const existing = await readProjectMemory(projectRoot);
+      const transcript = summarizeWorkspaceBlocks(w?.blocks ?? []);
+      const prompt = buildDistillationPrompt(existing, transcript);
+      const updated = await teamDelegate.runAgentTurn(agent, prompt, projectRoot, 120_000);
+      await writeTextFile(memoryPath(projectRoot), `${updated.trim()}\n`);
+      addBlockToWs(wsId, { type: "ai", agentId: agent.id, content: "✓ Project memory updated (`MEMORY.md`)." });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      addBlockToWs(wsId, { type: "ai", agentId: agent.id, content: `**Error:** ${msg}` });
+    } finally {
+      finishTurn(wsId);
+    }
+  };
+
   // Cierra un turno: re-habilita el input del workspace y, si hay mensajes encolados, arranca el
   // siguiente automáticamente. Único lugar que baja `running` → todos los runners lo llaman en su finally.
   const finishTurn = (wsId: string) => {
@@ -794,6 +837,8 @@ export function ChatView() {
     cancelledRef.current.set(wsId, false);
     if (text === "/run" || text.startsWith("/run ")) {
       void runWorkflowFromChat(wsId, text.slice(4));
+    } else if (text === "/remember") {
+      void runRememberFromChat(wsId);
     } else {
       void runAI(wsId, text);
     }
@@ -1044,7 +1089,7 @@ export function ChatView() {
                 onKeyDown={handleKey}
                 placeholder={ws?.running
                   ? "Type to queue the next message… (Enter queues)"
-                  : "Ask the agent something… (or /run [flow] to run a workflow)"}
+                  : "Ask the agent something… (/run [flow] to run a workflow, /remember to update project memory)"}
                 rows={2}
               />
               <button
