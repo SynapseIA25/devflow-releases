@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -377,6 +377,27 @@ fn opencode_serve_ensure(
         }
     });
 
+    // `opencode serve` tarda un rato en bindear el puerto tras spawnear — sin esto, el primer fetch
+    // real del frontend (justo después de que esta función resuelve) puede llegar antes de que el
+    // socket esté escuchando y fallar con "Failed to fetch" (visto en la práctica: pasa seguido en
+    // el primer prompt justo tras abrir la app, un reintento después ya anda porque el proceso tuvo
+    // tiempo de arrancar). Se espera activamente a que el puerto acepte conexiones TCP antes de
+    // devolverlo, en vez de devolverlo a ciegas.
+    let ready_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let addr = format!("127.0.0.1:{}", port).parse().map_err(|e| format!("{}", e))?;
+        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok() {
+            break;
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("'opencode serve' terminó antes de levantar (status: {})", status));
+        }
+        if std::time::Instant::now() >= ready_deadline {
+            return Err("'opencode serve' no levantó el puerto a tiempo (10s)".to_string());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
     processes.insert(provider, (child, port));
     Ok(port)
 }
@@ -520,6 +541,106 @@ async fn http_request(
     let status = resp.status().as_u16();
     let body = resp.text().await.map_err(|e| e.to_string())?;
     Ok(HttpResponse { status, body })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadTestResult {
+    completed: u32,
+    errors: u32,
+    requests_per_sec: f64,
+    min_ms: u64,
+    max_ms: u64,
+    avg_ms: u64,
+    p50_ms: u64,
+    p95_ms: u64,
+}
+
+fn percentile(sorted: &[u64], p: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let idx = (((sorted.len() - 1) as f64) * p).round() as usize;
+    sorted[idx.min(sorted.len() - 1)]
+}
+
+// Load test HTTP real para el nodo perf (modo "http"): concurrencia real vía tokio (declarado directo
+// en Cargo.toml, ver comentario ahí), no orquestada desde el webview — evita pagar un round-trip de
+// IPC Tauri por cada request individual, que sería el costo de loopear http_request desde TS. Un
+// status no-2xx cuenta como error igual que una falla de red (ambos son "no completó bien"); las
+// latencias agregadas (min/max/avg/p50/p95) solo consideran requests exitosos.
+#[tauri::command]
+async fn http_load_test(
+    url: String,
+    method: String,
+    concurrency: u32,
+    total_requests: u32,
+) -> Result<LoadTestResult, String> {
+    let m = reqwest::Method::from_bytes(method.trim().to_uppercase().as_bytes())
+        .map_err(|e| format!("Método HTTP inválido: {e}"))?;
+    let client = reqwest::Client::new();
+    let next = Arc::new(AtomicU32::new(0));
+    let durations: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+    let errors = Arc::new(AtomicU32::new(0));
+    let started = std::time::Instant::now();
+
+    let mut handles = Vec::new();
+    for _ in 0..concurrency.max(1) {
+        let client = client.clone();
+        let m = m.clone();
+        let url = url.clone();
+        let next = next.clone();
+        let durations = durations.clone();
+        let errors = errors.clone();
+        let total = total_requests;
+        handles.push(tokio::spawn(async move {
+            loop {
+                let i = next.fetch_add(1, Ordering::SeqCst);
+                if i >= total {
+                    break;
+                }
+                let t0 = std::time::Instant::now();
+                match client.request(m.clone(), &url).send().await {
+                    Ok(resp) => {
+                        let ok = resp.status().is_success();
+                        let _ = resp.bytes().await;
+                        if ok {
+                            durations.lock().unwrap().push(t0.elapsed().as_millis() as u64);
+                        } else {
+                            errors.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                    Err(_) => {
+                        errors.fetch_add(1, Ordering::SeqCst);
+                    }
+                }
+            }
+        }));
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+
+    let wall_sec = started.elapsed().as_secs_f64().max(0.001);
+    let mut durs = durations.lock().unwrap().clone();
+    durs.sort_unstable();
+    let completed = durs.len() as u32;
+    let (min_ms, max_ms, avg_ms) = if durs.is_empty() {
+        (0, 0, 0)
+    } else {
+        let sum: u64 = durs.iter().sum();
+        (durs[0], durs[durs.len() - 1], sum / durs.len() as u64)
+    };
+    Ok(LoadTestResult {
+        completed,
+        errors: errors.load(Ordering::SeqCst),
+        requests_per_sec: (completed as f64 / wall_sec * 100.0).round() / 100.0,
+        min_ms,
+        max_ms,
+        avg_ms,
+        p50_ms: percentile(&durs, 0.50),
+        p95_ms: percentile(&durs, 0.95),
+    })
 }
 
 // Extrae el texto de un `result` de tools/call: concatena los items {type:"text", text}. Si no hay
@@ -1256,6 +1377,7 @@ pub fn run() {
             read_text_file,
             write_text_file,
             http_request,
+            http_load_test,
             mcp_call_tool,
             mcp_list_tools,
             devflow_mcp_bridge_start,

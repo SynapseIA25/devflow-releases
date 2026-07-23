@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useWorkflowStore } from "../../store/workflowStore";
 import { useAgentsStore } from "../../store/agentsStore";
+import { useUiStore } from "../../store/uiStore";
 import { DEFAULT_PROVIDERS } from "../../lib/providers";
 import { NODE_SCHEMAS } from "../../nodes/nodeSchema";
+import { generateVerifyScript } from "../../lib/verifyScript";
 import { VarInput, type Variable } from "./VarInput";
 
 // Panel lateral que configura el nodo seleccionado en el canvas. Lee el schema declarativo del tipo
@@ -15,6 +18,9 @@ export function NodeInspector() {
   const workflows = useWorkflowStore((s) => s.workflows);
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData);
   const agents = useAgentsStore((s) => s.agents);
+  const openInEditor = useUiStore((s) => s.openInEditor);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   const selected = nodes.find((n) => n.selected);
   const schema = selected ? NODE_SCHEMAS[selected.type ?? ""] : undefined;
@@ -53,7 +59,7 @@ export function NodeInspector() {
       <p className="wf-inspector-desc">{schema.description}</p>
 
       <div className="wf-inspector-fields">
-        {schema.fields.map((f) => {
+        {schema.fields.filter((f) => !f.visibleWhen || f.visibleWhen(selected.data)).map((f) => {
           const val = String(selected.data[f.key] ?? "");
           const set = (v: string) => updateNodeData(selected.id, { [f.key]: v });
 
@@ -112,6 +118,46 @@ export function NodeInspector() {
             </label>
           );
         })}
+
+        {/* Script mode del nodo verify: no es expresable como NodeField (no hay tipo "button" en el
+            schema) — mismo criterio que la sección "Avanzado" de abajo, bloque a mano por tipo. */}
+        {selected.type === "verify" && (
+          <>
+            <div className="wf-adv-sep">Script generado</div>
+            {selected.data.mode === "script" && !selected.data.scriptPath && (
+              <p className="tests-error">Modo script sin script generado — generá uno en modo Exploración primero.</p>
+            )}
+            {!selected.data.lastVerifyTrace && !selected.data.scriptPath && (
+              <p className="wf-inspector-desc">Corré este nodo en modo Exploración al menos una vez (con veredicto PASS) para poder generar un script.</p>
+            )}
+            {typeof selected.data.scriptPath === "string" && selected.data.scriptPath && (
+              <div className="tests-config-row">
+                <span className="tests-config-cmd">{String(selected.data.scriptPath).split(/[\\/]/).pop()}</span>
+                <button className="svc-icon" onClick={() => openInEditor(String(selected.data.scriptPath))} title="Ver script">Ver</button>
+              </div>
+            )}
+            {!!selected.data.lastVerifyTrace && (
+              <button
+                className="svc-btn"
+                disabled={generating}
+                onClick={async () => {
+                  setGenerating(true);
+                  setGenError(null);
+                  try {
+                    await generateVerifyScript(selected);
+                  } catch (e) {
+                    setGenError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setGenerating(false);
+                  }
+                }}
+              >
+                {generating ? "Generando…" : selected.data.scriptPath ? "Regenerar script" : "Generar script desde la última corrida"}
+              </button>
+            )}
+            {genError && <p className="tests-error">{genError}</p>}
+          </>
+        )}
 
         {/* Manejo de errores — genérico para cualquier nodo (lo lee runGraph en el motor). */}
         <div className="wf-adv-sep">Avanzado</div>

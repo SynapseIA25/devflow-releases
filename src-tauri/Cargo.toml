@@ -34,4 +34,8 @@ rfd = "0.15"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "charset", "http2", "blocking"] }
 tiny_http = "0.12"   # servidor HTTP mínimo para el trigger webhook
 notify = "6"         # watcher de filesystem para el trigger on-file-change
+# tokio ya vive transitivamente vía tauri (que lo usa como runtime async) — se declara directo acá
+# para poder spawnear tareas concurrentes reales en http_load_test (nodo perf, modo HTTP) sin
+# orquestar la concurrencia desde el webview (evita N round-trips de IPC Tauri por request).
+tokio = { version = "1", features = ["full"] }
 

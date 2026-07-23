@@ -64,6 +64,13 @@ const NODE_PALETTE = [
     desc: "Iterar una lista",
     color: "rgba(245,158,11,0.2)",
   },
+  {
+    type: "perf",
+    icon: "📊",
+    name: "Perf",
+    desc: "CPU/RAM o load test",
+    color: "rgba(244,114,182,0.2)",
+  },
 ];
 
 export function Sidebar() {

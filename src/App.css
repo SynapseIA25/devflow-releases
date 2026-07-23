@@ -549,6 +549,8 @@ html, body, #root {
 .loop-node .rf-node-icon { background: rgba(245,158,11,0.18); }
 .loop-node .rf-node-badge { background: rgba(245,158,11,0.18); color: var(--yellow); }
 .loop-node { border-style: dashed; }
+.perf-node .rf-node-icon { background: rgba(244,114,182,0.2); }
+.perf-node .rf-node-badge { background: rgba(244,114,182,0.2); color: #f472b6; }
 .subflow-meta { font-size: 10px; color: var(--text-2); margin-top: 5px; }
 .subflow-meta--warn { color: var(--orange); }
 

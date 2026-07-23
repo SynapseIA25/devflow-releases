@@ -126,6 +126,29 @@ export async function httpRequest(
   return invoke<HttpResponse>("http_request", { method, url, headers, body });
 }
 
+export type LoadTestResult = {
+  completed: number;
+  errors: number;
+  requestsPerSec: number;
+  minMs: number;
+  maxMs: number;
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+};
+
+// Load test HTTP real (concurrencia vía tokio en Rust) para el nodo perf, modo "http" — ver
+// http_load_test en lib.rs para el porqué de no orquestar esto desde el webview.
+export async function httpLoadTest(
+  url: string,
+  method: string,
+  concurrency: number,
+  totalRequests: number
+): Promise<LoadTestResult> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<LoadTestResult>("http_load_test", { url, method, concurrency, totalRequests });
+}
+
 // Trigger webhook: arranca el servidor HTTP local (idempotente) y devuelve el puerto.
 export async function webhookStart(port: number): Promise<number> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");

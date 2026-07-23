@@ -7,6 +7,10 @@ export type VerifyNodeData = {
   label: string;
   agentId: string;
   prompt: string;
+  mode?: "explore" | "script";
+  scriptPath?: string;
+  lastVerifyTrace?: string;
+  lastVerifyPrompt?: string;
   status?: NodeStatus;
 };
 
@@ -31,6 +35,7 @@ export function VerifyNode({ id, data, selected }: NodeProps) {
         <span className="rf-node-title">{d.label || "Verificar"}</span>
         <span className="rf-node-id">{id}</span>
         <span className="rf-node-badge">QA</span>
+        <span className="rf-node-badge">{d.mode === "script" ? "Script" : "IA"}</span>
       </div>
       <div className="rf-node-body">
         <div className="rf-node-field">

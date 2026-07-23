@@ -16,6 +16,9 @@ export type NodeField = {
   vars?: boolean; // soporta templating {{...}} → autocompletado en el inspector
   options?: { value: string; label: string }[];
   dynamicOptions?: "flows" | "agents"; // opciones calculadas en runtime (flujos para subflow, agentes para agent)
+  // Oculta el campo en el inspector si no aplica al estado actual del nodo (ej. campos de un modo que
+  // no está seleccionado). Sin esto, se muestra siempre — la mayoría de los campos no lo necesitan.
+  visibleWhen?: (data: Record<string, unknown>) => boolean;
 };
 
 export type NodeSchema = {
@@ -93,9 +96,13 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
     description: "Le pide al agente elegido (típicamente QA) que verifique algo de verdad usando sus tools disponibles (terminal, MCP de mobile-mcp/Desktop CDP/Puppeteer según lo que esté habilitado para el proyecto) y traduce su veredicto a exitCode (0=pasó, 1=falló) para que un nodo Condición pueda ramificar sobre {{id.exitCode}}.",
     fields: [
       LABEL_FIELD,
-      { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents" },
-      { key: "prompt", label: "Qué verificar", type: "textarea", rows: 6, vars: true, placeholder: "Ej: Abrí la app y confirmá que el botón \"Guardar\" persiste el formulario. Si el proyecto es mobile/web/desktop, usá las tools de MCP que tengas disponibles para operarlo de verdad, no asumas." },
-      TASK_PROFILE_FIELD,
+      { key: "mode", label: "Modo", type: "select", options: [
+        { value: "explore", label: "Exploración (agente)" },
+        { value: "script", label: "Script guardado (sin LLM)" },
+      ] },
+      { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents", visibleWhen: (d) => d.mode !== "script" },
+      { key: "prompt", label: "Qué verificar", type: "textarea", rows: 6, vars: true, placeholder: "Ej: Abrí la app y confirmá que el botón \"Guardar\" persiste el formulario. Si el proyecto es mobile/web/desktop, usá las tools de MCP que tengas disponibles para operarlo de verdad, no asumas.", visibleWhen: (d) => d.mode !== "script" },
+      { ...TASK_PROFILE_FIELD, visibleWhen: (d) => d.mode !== "script" },
     ],
   },
   http: {
@@ -152,6 +159,30 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
         { value: "sequential", label: "Secuencial" },
         { value: "parallel", label: "Paralelo (todas a la vez)" },
       ] },
+    ],
+  },
+  perf: {
+    type: "perf",
+    title: "Perf/Benchmark",
+    icon: "📊",
+    description: "Mide propiedades no funcionales: consumo de CPU/RAM de un proceso a lo largo del tiempo, o latencia/throughput de un endpoint HTTP bajo carga concurrente. exitCode = 0 si pudo medir (recursos) o si no hubo errores de request (HTTP); el resumen numérico queda en la salida del nodo.",
+    fields: [
+      LABEL_FIELD,
+      { key: "mode", label: "Modo", type: "select", options: [
+        { value: "resource", label: "Consumo de recursos (CPU/RAM)" },
+        { value: "http", label: "Load test HTTP" },
+      ] },
+      // Modo "resource" (Windows, vía Get-Process — ver execPerfResource).
+      { key: "processMatch", label: "Nombre del proceso", type: "text", vars: true, placeholder: "mimo-agent (sin .exe)", visibleWhen: (d) => (d.mode ?? "resource") === "resource" },
+      { key: "durationSec", label: "Duración (segundos)", type: "text", placeholder: "10", visibleWhen: (d) => (d.mode ?? "resource") === "resource" },
+      { key: "intervalMs", label: "Intervalo de muestreo (ms)", type: "text", placeholder: "1000", visibleWhen: (d) => (d.mode ?? "resource") === "resource" },
+      // Modo "http" (load test — ver execPerfHttp / http_load_test en Rust).
+      { key: "url", label: "URL", type: "text", vars: true, placeholder: "http://127.0.0.1:3000/health", visibleWhen: (d) => d.mode === "http" },
+      { key: "method", label: "Método", type: "select", options: [
+        { value: "GET", label: "GET" }, { value: "POST", label: "POST" },
+      ], visibleWhen: (d) => d.mode === "http" },
+      { key: "concurrency", label: "Concurrencia", type: "text", placeholder: "10", visibleWhen: (d) => d.mode === "http" },
+      { key: "requests", label: "Cantidad total de requests", type: "text", placeholder: "200", visibleWhen: (d) => d.mode === "http" },
     ],
   },
   subflow: {

@@ -8,8 +8,9 @@ import { FileNode } from "./FileNode";
 import { ConditionNode } from "./ConditionNode";
 import { LoopNode } from "./LoopNode";
 import { SubflowNode } from "./SubflowNode";
+import { PerfNode } from "./PerfNode";
 
-export { MiMoNode, AgentNode, VerifyNode, HttpNode, McpNode, TerminalNode, FileNode, ConditionNode, LoopNode, SubflowNode };
+export { MiMoNode, AgentNode, VerifyNode, HttpNode, McpNode, TerminalNode, FileNode, ConditionNode, LoopNode, SubflowNode, PerfNode };
 
 export const nodeTypes = {
   mimo: MiMoNode,
@@ -22,4 +23,5 @@ export const nodeTypes = {
   condition: ConditionNode,
   loop: LoopNode,
   subflow: SubflowNode,
+  perf: PerfNode,
 } as const;

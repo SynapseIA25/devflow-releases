@@ -12,7 +12,7 @@
 //   se acumula entre nodos del mismo agente y se paga un solo session/new. Los loops aíslan una caché
 //   por item (en paralelo no se puede compartir una sesión). Permisos: WorkflowView no monta el
 //   listener → acpClient cae al fail-safe allow-first-option ya existente.
-import { runShellCommand, readTextFile, writeTextFile, httpRequest, mcpCallTool } from "./tauriApi";
+import { runShellCommand, readTextFile, writeTextFile, httpRequest, httpLoadTest, mcpCallTool } from "./tauriApi";
 import * as acpClient from "./acpClient";
 import * as opencodeClient from "./opencodeClient";
 import { DEFAULT_PROVIDERS, type ProviderConfig } from "./providers";
@@ -21,7 +21,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useSettingsStore } from "../store/settingsStore";
 import type { Edge } from "@xyflow/react";
-import type { WorkflowNode, NodeStatus } from "../store/workflowStore";
+import { useWorkflowStore, type WorkflowNode, type NodeStatus } from "../store/workflowStore";
 import type { LogEntry } from "../components/OutputPanel";
 import { resolveTemplate, parseList, type NodeResult } from "./workflowTemplate";
 import { NODE_SCHEMAS } from "../nodes/nodeSchema";
@@ -205,6 +205,54 @@ async function promptAndCollect(provider: ProviderConfig, sessionId: string, pro
   return text;
 }
 
+// Traza de tool calls de un turno — capturada solo por verify (ver promptAndCollectWithTrace) para
+// poder generar un script determinístico a partir de una exploración exitosa (ver verifyScript.ts).
+// No se usa en mimo/agent: agregar esto a TODOS los turnos sería costo de memoria sin beneficio hoy.
+export type TraceEntry = { tool: string; input: unknown; output: unknown };
+const MAX_TRACE_CHARS = 50_000; // igual criterio que MAX_OUTPUT de testRunner.ts — acotar lo persistido.
+
+// Como promptAndCollect, pero además junta cada tool_call/tool_call_update del turno en un array.
+// Seguro por la misma razón que promptAndCollect: tanto acpClient.prompt() como opencodeClient.prompt()
+// solo resuelven cuando el turno completo (con todos sus tool calls) terminó — así que todo lo que se
+// junte entre el subscribe y el await está garantizado completo antes de leer `trace`.
+async function promptAndCollectWithTrace(
+  provider: ProviderConfig, sessionId: string, promptText: string
+): Promise<{ text: string; trace: TraceEntry[] }> {
+  let text = "";
+  // Por toolCallId, no un array plano: un tool call real llega como VARIOS eventos para el mismo id
+  // (tool_call al arrancar, con input/output todavía vacíos — recién tool_call_update trae el input
+  // completo y, más tarde, el output real al terminar) — quedarse solo con "tool_call" (como se hizo
+  // en un primer intento) capturaba objetos vacíos. Cada update pisa al anterior; el último gana.
+  const byId = new Map<string, TraceEntry>();
+  const client = provider.nativeHttp ? opencodeClient : acpClient;
+  const unsub = client.onUpdate((prov, sid, update) => {
+    if (prov !== provider.id || sid !== sessionId) return;
+    if (update.sessionUpdate === "agent_message_chunk") {
+      const content = update.content as { type?: string; text?: string } | string | undefined;
+      if (typeof content === "string") text += content;
+      else if (content?.type === "text" && typeof content.text === "string") text += content.text;
+    } else if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
+      const u = update as unknown as { toolCallId?: string; title?: string; kind?: string; rawInput?: unknown; rawOutput?: unknown; content?: unknown };
+      // rawOutput SIEMPRE viene definido (opencodeClient.ts arma {metadata:...} incondicional, aunque
+      // metadata esté vacío) — un `??` contra u.content nunca caía al content real. Se combinan los
+      // dos: metadata (ej. exit code) + content (el resultado real, texto/estructura del tool call).
+      const id = u.toolCallId ?? `${byId.size}`;
+      const meta = (u.rawOutput as { metadata?: unknown } | undefined)?.metadata;
+      byId.set(id, { tool: u.title || u.kind || "tool", input: u.rawInput, output: { metadata: meta, result: u.content } });
+    }
+  });
+  try {
+    if (provider.nativeHttp) {
+      await opencodeClient.prompt(provider.id, sessionId, useProjectStore.getState().projectPath, promptText);
+    } else {
+      await acpClient.prompt(provider.id, sessionId, promptText);
+    }
+  } finally {
+    unsub();
+  }
+  return { text, trace: [...byId.values()] };
+}
+
 // Nodo "mimo" (nombre interno histórico, no renombrado para no romper flujos guardados): corre sobre
 // DevFlow Code (nativo) desde la Fase 4, cuando el provider "mimo" se retiró.
 async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
@@ -257,6 +305,23 @@ const VERIFY_INSTRUCTION =
   "(sin nada más en esas líneas):\nVERIFY_RESULT: PASS  (o FAIL)\nVERIFY_REASON: <una frase con la evidencia concreta que viste>";
 
 async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
+  // Modo "script": ya se generó un script determinístico de una exploración anterior (ver
+  // verifyScript.ts) — se corre directo, igual que execTerminal, SIN agente/LLM de por medio. Es
+  // el punto de esta feature: pagar el turno de agente solo una vez, no en cada corrida.
+  if (node.data.mode === "script") {
+    const scriptPath = String(node.data.scriptPath ?? "").trim();
+    if (!scriptPath) {
+      throw new Error('Modo script sin script generado — generá uno primero (botón "Generar script" en el inspector) o volvé a modo Exploración.');
+    }
+    const cwd = useProjectStore.getState().projectPath;
+    const runner = /\.mjs$/i.test(scriptPath) ? "node" : "bash";
+    cb.onLog("info", `✅ Script (${runner}): ${scriptPath}`);
+    const res = await runShellCommand(`${runner} "${scriptPath}"`, cwd);
+    if (res.output.trim()) cb.onLog(res.exitCode === 0 ? "info" : "error", res.output.trimEnd());
+    cb.onLog(res.exitCode === 0 ? "success" : "error", `✅ Veredicto (script): ${res.exitCode === 0 ? "PASS" : "FAIL"} [exit code ${res.exitCode}]`);
+    return { output: res.output, exitCode: res.exitCode === 0 ? 0 : 1 };
+  }
+
   const agentId = String(node.data.agentId ?? "");
   const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
   if (!agent) throw new Error("Nodo verify sin agente seleccionado (o el agente ya no existe)");
@@ -270,7 +335,7 @@ async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, 
   const { sessionId, isNew } = await acquireSession(sessions, `verify:${agent.id}:${profile ?? ""}`, provider, profile);
   const systemPrompt = agent.systemPrompt?.trim();
   if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;
-  const text = await promptAndCollect(provider, sessionId, promptText);
+  const { text, trace } = await promptAndCollectWithTrace(provider, sessionId, promptText);
   const match = text.match(VERIFY_SENTINEL);
   if (!match) {
     throw new Error(`El agente no devolvió un veredicto reconocible (esperaba "VERIFY_RESULT: PASS" o "FAIL"). Respuesta: ${text.slice(-300)}`);
@@ -278,6 +343,15 @@ async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, 
   const passed = match[1].toUpperCase() === "PASS";
   const reason = text.match(VERIFY_REASON)?.[1]?.trim();
   cb.onLog(passed ? "success" : "error", `✅ Veredicto: ${passed ? "PASS" : "FAIL"}${reason ? ` — ${reason}` : ""}`);
+  // Traza persistida SOLO en PASS (no tiene sentido generar un script desde una exploración que
+  // falló) — habilita el botón "Generar script" en el inspector para la próxima vez que se abra este
+  // nodo, incluso en otra sesión de la app (WorkflowNodeData es free-form, sobrevive al persist).
+  if (passed) {
+    useWorkflowStore.getState().updateNodeData(node.id, {
+      lastVerifyTrace: JSON.stringify(trace).slice(0, MAX_TRACE_CHARS),
+      lastVerifyPrompt: basePrompt,
+    });
+  }
   return { output: text, exitCode: passed ? 0 : 1 };
 }
 
@@ -304,6 +378,88 @@ async function execHttp(node: WorkflowNode, results: Map<string, NodeResult>, in
   const preview = res.body.trim().slice(0, 200);
   cb.onLog(ok ? "success" : "error", `↳ ${res.status}${preview ? ` · ${preview}` : ""}`);
   return { output: res.body, exitCode: ok ? 0 : res.status };
+}
+
+// Nodo perf, modo "resource": polea CPU/RAM de un proceso por nombre durante durationSec, cada
+// intervalMs, vía Get-Process (Windows only en v1 — mismo criterio de scoping que otros gaps de
+// plataforma ya documentados en este proyecto). Cada tick es un `runShellCommand` propio (no hay
+// primitiva de polling nativo) — simple y suficiente para intervalos de ≥ ~500ms.
+type PerfResourceSample = { t: number; workingSetBytes: number; cpuSeconds: number };
+
+async function execPerfResource(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  const processMatch = resolveTemplate(String(node.data.processMatch ?? ""), results, input).trim().replace(/\.exe$/i, "");
+  if (!processMatch) throw new Error("Nombre de proceso vacío");
+  const durationSec = Math.max(1, Number(node.data.durationSec) || 10);
+  const intervalMs = Math.max(200, Number(node.data.intervalMs) || 1000);
+  const cwd = useProjectStore.getState().projectPath;
+  cb.onLog("info", `📊 Midiendo "${processMatch}" por ${durationSec}s cada ${intervalMs}ms…`);
+
+  const psCmd = `powershell.exe -NoProfile -Command "Get-Process -Name '${processMatch}' -ErrorAction SilentlyContinue | Select-Object CPU,WorkingSet64 | ConvertTo-Json -Compress"`;
+  const samples: PerfResourceSample[] = [];
+  const deadline = Date.now() + durationSec * 1000;
+  while (Date.now() < deadline) {
+    if (cb.isCancelled()) break;
+    const res = await runShellCommand(psCmd, cwd);
+    const raw = res.output.trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const rows = Array.isArray(parsed) ? parsed : [parsed];
+        let ws = 0, cpu = 0;
+        for (const r of rows) { ws += Number(r.WorkingSet64) || 0; cpu += Number(r.CPU) || 0; }
+        samples.push({ t: Date.now(), workingSetBytes: ws, cpuSeconds: cpu });
+      } catch {
+        // línea no-JSON (proceso no encontrado esa vuelta, etc.) — se ignora, no corta la corrida.
+      }
+    }
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(intervalMs, remaining)));
+  }
+
+  if (samples.length === 0) {
+    const summary = { processMatch, samples: 0 };
+    cb.onLog("error", `📊 No se encontró ningún proceso "${processMatch}" durante la medición.`);
+    return { output: JSON.stringify(summary), exitCode: 1 };
+  }
+  const ramValues = samples.map((s) => s.workingSetBytes);
+  const avgRamMB = ramValues.reduce((a, b) => a + b, 0) / ramValues.length / 1_048_576;
+  const peakRamMB = Math.max(...ramValues) / 1_048_576;
+  const first = samples[0], last = samples[samples.length - 1];
+  const wallSec = Math.max(0.001, (last.t - first.t) / 1000);
+  // Núcleos usados en promedio (delta de CPU-segundos acumulados / segundos reales transcurridos) — NO
+  // es un porcentaje de un core, es "cuántos cores equivalentes" consumió en promedio en la ventana.
+  const avgCores = samples.length > 1 ? (last.cpuSeconds - first.cpuSeconds) / wallSec : null;
+  const summary = {
+    processMatch, samples: samples.length, durationSec,
+    ramAvgMB: Math.round(avgRamMB * 10) / 10,
+    ramPeakMB: Math.round(peakRamMB * 10) / 10,
+    avgCoresUsed: avgCores !== null ? Math.round(avgCores * 100) / 100 : null,
+  };
+  cb.onLog("success", `📊 RAM avg ${summary.ramAvgMB}MB / peak ${summary.ramPeakMB}MB${avgCores !== null ? ` · ~${summary.avgCoresUsed} cores` : ""} (${samples.length} muestras)`);
+  return { output: JSON.stringify(summary), exitCode: 0 };
+}
+
+// Nodo perf, modo "http": load test real vía Rust (concurrencia real con reqwest+tokio, sin pagar N
+// round-trips de IPC Tauri por request — ver http_load_test en lib.rs). exitCode = 0 si no hubo
+// errores de red/protocolo (4xx/5xx cuentan como "requests con error" en el resumen, no fallan el nodo
+// por sí solos — el usuario decide el umbral aguas abajo con un Condición sobre {{id.output}}).
+async function execPerfHttp(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  const url = resolveTemplate(String(node.data.url ?? ""), results, input).trim();
+  if (!url) throw new Error("URL vacía");
+  const method = String(node.data.method ?? "GET");
+  const concurrency = Math.max(1, Number(node.data.concurrency) || 10);
+  const requests = Math.max(1, Number(node.data.requests) || 200);
+  cb.onLog("info", `📊 Load test ${method} ${url} — ${requests} requests, concurrencia ${concurrency}…`);
+  const result = await httpLoadTest(url, method, concurrency, requests);
+  cb.onLog(
+    result.errors > 0 ? "warn" : "success",
+    `📊 ${result.completed} completados, ${result.errors} errores · p50 ${result.p50Ms}ms p95 ${result.p95Ms}ms · ${result.requestsPerSec} req/s`
+  );
+  return { output: JSON.stringify(result), exitCode: result.completed > 0 ? 0 : 1 };
+}
+
+async function execPerf(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  return node.data.mode === "http" ? execPerfHttp(node, results, input, cb) : execPerfResource(node, results, input, cb);
 }
 
 // Nodo MCP: llama una tool de un MCP server (one-shot: DevFlow spawnea el server, hace el handshake y
@@ -424,6 +580,7 @@ async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, in
     case "agent": return execAgent(node, results, input, cb, sessions);
     case "verify": return execVerify(node, results, input, cb, sessions);
     case "http": return execHttp(node, results, input, cb);
+    case "perf": return execPerf(node, results, input, cb);
     case "mcp": return execMcp(node, results, input, cb);
     case "loop": return execLoop(node, results, input, cb, stack);
     case "subflow": return execSubflow(node, input, cb, stack, sessions);

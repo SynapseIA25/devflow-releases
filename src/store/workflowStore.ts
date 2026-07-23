@@ -60,7 +60,7 @@ const seedEdges: Edge[] = [
 const defaultsByType: Record<string, WorkflowNodeData> = {
   mimo: { label: "DevFlow Code", prompt: "" },
   agent: { label: "Agente", agentId: "opencode-agent", prompt: "" },
-  verify: { label: "Verificar", agentId: "expert-qa", prompt: "" },
+  verify: { label: "Verificar", agentId: "expert-qa", prompt: "", mode: "explore" },
   http: { label: "HTTP Request", method: "GET", url: "", headers: "", body: "" },
   mcp: { label: "MCP Tool", command: "", tool: "", arguments: "" },
   terminal: { label: "Terminal", command: "" },
@@ -68,6 +68,7 @@ const defaultsByType: Record<string, WorkflowNodeData> = {
   condition: { label: "Condition", condition: "" },
   loop: { label: "Loop", list: "", flowId: "", parallel: "sequential" },
   subflow: { label: "Sub-flujo", flowId: "", flowName: "" },
+  perf: { label: "Perf", mode: "resource", processMatch: "", durationSec: "10", intervalMs: "1000", url: "", method: "GET", concurrency: "10", requests: "200" },
 };
 
 const FIRST_FLOW_ID = "flow_0";

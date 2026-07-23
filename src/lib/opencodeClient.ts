@@ -151,19 +151,33 @@ function handleEvent(provider: string, event: any) {
       const callId = part.callID as string;
       const state = part.state ?? {};
       const isExecute = part.tool === "bash";
-      const title = state.title ?? part.tool ?? "Tool call";
+      // `||` a propósito, no `??`: OpenCode manda `state.title: ""` mientras el tool call está
+      // "pending" (antes de resolver su título real) — con `??` ese "" gana y se pierde el fallback a
+      // part.tool, dejando el título vacío en el evento final también si nunca lo actualiza.
+      const title = state.title || part.tool || "Tool call";
+      // Igual que arriba: si el output no es un string plano (ej. resultado MCP estructurado tipo
+      // {content:[...]}, no el string simple que sí manda el tool "bash" nativo), lo serializamos en
+      // vez de perderlo — mejor un JSON crudo en la traza que un output vacío.
+      const rawOut = state.output ?? state.metadata?.output;
       const output: string | undefined =
-        typeof state.output === "string" ? state.output : typeof state.metadata?.output === "string" ? state.metadata.output : undefined;
+        typeof rawOut === "string" ? rawOut : rawOut !== undefined ? JSON.stringify(rawOut) : undefined;
       const kind = toolSeenCache.has(callId) ? "tool_call_update" : "tool_call";
       toolSeenCache.add(callId);
+      // rawInput/rawOutput se forwardean para CUALQUIER tool, no solo bash (antes se descartaban acá
+      // mismo para todo lo que no fuera "execute" — ChatView solo lee .command/.metadata.exit cuando
+      // kind==="execute", así que ensanchar esto es aditivo, no cambia el comportamiento del chat; lo
+      // que sí habilita es capturar la traza completa de un tool call MCP (ej. desktop_evaluate: la
+      // expresión JS real en rawInput, el resultado real en rawOutput) para script-mode de verify —
+      // ver workflowEngine.ts::promptAndCollectWithTrace). El shape de rawOutput se mantiene envuelto
+      // en {metadata:...} para no romper la lectura existente de rawOutput.metadata.exit en bash.
       const update: SessionUpdate = {
         sessionUpdate: kind,
         toolCallId: callId,
         title,
         kind: isExecute ? "execute" : part.tool,
         status: mapOpenCodeStatus(state.status),
-        rawInput: isExecute ? { command: state.input?.command } : undefined,
-        rawOutput: isExecute ? { metadata: { exit: state.metadata?.exit } } : undefined,
+        rawInput: state.input,
+        rawOutput: { metadata: state.metadata },
         content: output !== undefined ? [{ type: "content", content: { type: "text", text: output } }] : undefined,
       };
       for (const l of updateListeners) l(provider, sessionId, update);
