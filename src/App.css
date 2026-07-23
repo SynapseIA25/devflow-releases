@@ -1340,6 +1340,27 @@ html, body, #root {
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 
+/* ── Panel de Tests (runner tradicional, Fase 1) ────────── */
+.tests-view { display: flex; height: 100%; width: 100%; overflow: hidden; }
+.tests-sidebar { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-panel, var(--bg-card)); }
+.tests-header { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.tests-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-1); }
+.tests-config { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.tests-config-row { display: flex; align-items: center; gap: 6px; }
+.tests-config-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.tests-config-badge { font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 4px; background: var(--bg-2, #0d1117); border: 1px solid var(--border); color: var(--text-3); flex-shrink: 0; }
+.tests-config-cmd { font-size: 11px; color: var(--text-2); font-family: 'Cascadia Code','Consolas',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tests-empty-config { display: flex; flex-direction: column; gap: 6px; }
+.tests-empty-config p { font-size: 11px; color: var(--text-3); line-height: 1.5; margin: 0; }
+.tests-run-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.tests-run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tests-error { font-size: 11px; color: #f87171; line-height: 1.5; margin: 0; }
+.tests-runs-list { border-top: 1px solid var(--border); }
+.tests-icon-pass { color: #4ade80; }
+.tests-icon-fail { color: #f87171; }
+.tests-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.tests-output { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; background: #0d1117; color: var(--text-2); font-size: 12px; font-family: 'Cascadia Code','Consolas',monospace; white-space: pre-wrap; word-break: break-word; }
+
 /* ── MCP View ────────────────────────────────────────── */
 .mcp-view { display: flex; flex: 1; overflow: hidden; }
 

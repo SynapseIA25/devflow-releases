@@ -45,6 +45,7 @@ const TOOLS = [
   { name: "devflow_validate_workflow", description: "Valida el grafo de un workflow (tipos de nodo, ciclos, referencias colgantes) sin ejecutarlo.", inputSchema: { type: "object", properties: { workflowId: { type: "string" } }, required: ["workflowId"] } },
   { name: "devflow_run_workflow", description: "Corre un workflow de punta a punta (motor real) y devuelve el log completo de la ejecución. Sensible: ejecuta comandos de shell/agentes/HTTP reales.", inputSchema: { type: "object", properties: { workflowId: { type: "string" }, input: { type: "string" } }, required: ["workflowId"] } },
   { name: "devflow_stop_run", description: "Cancela una ejecución de workflow en curso.", inputSchema: { type: "object", properties: { workflowId: { type: "string" } }, required: ["workflowId"] } },
+  { name: "devflow_run_tests", description: "Corre los tests del proyecto actual (comando configurado en la vista Tests, o auto-detectado por convención: package.json script 'test', Cargo.toml, go.mod, pytest.ini/pyproject.toml/setup.py). Devuelve status (passed/failed), exit code y el output completo.", inputSchema: { type: "object", properties: {} } },
 ];
 
 function readDiscovery() {

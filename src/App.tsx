@@ -19,6 +19,7 @@ import { CodebaseMapView } from "./views/CodebaseMapView";
 import { AgentsView } from "./views/AgentsView";
 import { McpView } from "./views/McpView";
 import { ServicesView } from "./views/ServicesView";
+import { TestsView } from "./views/TestsView";
 import { ProjectsView } from "./views/ProjectsView";
 import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
@@ -43,6 +44,7 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   team: <TeamView />,
   skills: <SkillsView />,
   services: <ServicesView />,
+  tests: <TestsView />,
   agents:   <AgentsView />,
   mcp:      <McpView />,
   settings: <SettingsView />,

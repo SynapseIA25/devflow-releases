@@ -60,6 +60,24 @@ export type TestEnv = {
   createdAt: number;
 };
 
+// ── Tests (herramienta nativa de testing, Fase 1: runner tradicional) ──
+// Un proyecto puede tener un comando de test configurado (a mano o auto-detectado por testRunner.ts
+// mirando package.json/Cargo.toml/go.mod/pytest.ini de su raíz) y un historial acotado de corridas.
+// Igual que Servicios/Deuda/Ambientes: scope duro por proyecto. A diferencia de esos, las acciones que
+// lo mutan reciben un `projectId` explícito (no "el activo"): el MCP bridge corre tests de un proyecto
+// que puede no ser el que el usuario tiene abierto en la UI en ese momento (ver mcpBridgeHandlers.ts).
+export type TestFramework = "npm" | "pytest" | "cargo" | "go" | "custom";
+export type TestConfig = { command: string; cwd?: string; framework: TestFramework };
+export type TestRunStatus = "running" | "passed" | "failed";
+export type TestRun = {
+  id: string;
+  status: TestRunStatus;
+  startedAt: number;
+  finishedAt?: number;
+  exitCode?: number;
+  output: string;
+};
+
 // ── Terminales independientes (antes global, ahora scopeadas por proyecto) ──
 // Un shell interactivo con su propio cwd, desacoplado del chat y de los servicios. Antes vivían en un
 // terminalsStore GLOBAL; ahora cada proyecto tiene sus propias terminales (scope duro): al cambiar de
@@ -85,6 +103,8 @@ export type Project = {
   debt: DebtItem[]; // tablero de deuda técnica del proyecto (Tanda D)
   environments: TestEnv[]; // ambientes de prueba (worktrees efímeros)
   terminals: AppTerminal[]; // terminales independientes del proyecto (scope duro)
+  testConfig?: TestConfig; // comando de test (a mano o auto-detectado) — ver testRunner.ts
+  testRuns: TestRun[]; // historial de corridas (más reciente primero, acotado — ver MAX_TEST_RUNS)
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -99,6 +119,8 @@ const makeServiceId = () => `svc_${Math.random().toString(36).slice(2, 9)}`;
 const makeDebtId = () => `debt_${Math.random().toString(36).slice(2, 9)}`;
 const makeEnvId = () => `env_${Math.random().toString(36).slice(2, 9)}`;
 const makeTerminalId = () => `term_${Math.random().toString(36).slice(2, 9)}`;
+const makeTestRunId = () => `trun_${Math.random().toString(36).slice(2, 9)}`;
+const MAX_TEST_RUNS = 15; // los outputs pueden ser grandes — acotar el historial persistido
 
 // basename de una ruta Windows o POSIX (para nombrar un proyecto nuevo por su carpeta).
 export function baseName(path: string): string {
@@ -122,6 +144,7 @@ function makeProject(path: string, name?: string): Project {
     debt: [],
     environments: [],
     terminals: [],
+    testRuns: [],
   };
 }
 
@@ -174,16 +197,28 @@ type ProjectStore = {
   addTerminal: (cwd: string, name?: string) => string;
   removeTerminal: (id: string) => void;
   renameTerminal: (id: string, name: string) => void;
+
+  // ── Tests: a diferencia de lo anterior, reciben projectId explícito (ver comentario del tipo Project) ──
+  setTestConfig: (projectId: string, config: TestConfig | undefined) => void;
+  addTestRun: (projectId: string, run: Omit<TestRun, "id">) => string;
+  updateTestRun: (projectId: string, runId: string, patch: Partial<Omit<TestRun, "id">>) => void;
+  clearTestRuns: (projectId: string) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
 function patchActive(s: ProjectStore, fn: (p: Project) => Partial<Project>): Partial<ProjectStore> {
-  const p = s.projects[s.activeId];
+  return patchProject(s, s.activeId, fn);
+}
+
+// Igual que patchActive pero por id explícito — lo necesitan las acciones de Tests, que el MCP bridge
+// puede invocar para un proyecto distinto del que el usuario tiene abierto en la UI en ese momento.
+function patchProject(s: ProjectStore, id: string, fn: (p: Project) => Partial<Project>): Partial<ProjectStore> {
+  const p = s.projects[id];
   if (!p) return {};
   const next = { ...p, ...fn(p) };
   return {
-    projects: { ...s.projects, [s.activeId]: next },
-    projectPath: next.path, // mantener el compat sincronizado si cambió la ruta
+    projects: { ...s.projects, [id]: next },
+    ...(id === s.activeId ? { projectPath: next.path } : {}), // compat solo si es el activo
   };
 }
 
@@ -331,19 +366,49 @@ export const useProjectStore = create<ProjectStore>()(
 
       renameTerminal: (id, name) =>
         set((s) => patchActive(s, (p) => ({ terminals: p.terminals.map((t) => (t.id === id ? { ...t, name: name.trim() || t.name } : t)) }))),
+
+      setTestConfig: (projectId, config) =>
+        set((s) => patchProject(s, projectId, () => ({ testConfig: config }))),
+
+      addTestRun: (projectId, run) => {
+        const id = makeTestRunId();
+        set((s) =>
+          patchProject(s, projectId, (p) => ({
+            testRuns: [{ ...run, id }, ...p.testRuns].slice(0, MAX_TEST_RUNS),
+          }))
+        );
+        return id;
+      },
+
+      updateTestRun: (projectId, runId, patch) =>
+        set((s) =>
+          patchProject(s, projectId, (p) => ({
+            testRuns: p.testRuns.map((r) => (r.id === runId ? { ...r, ...patch } : r)),
+          }))
+        ),
+
+      clearTestRuns: (projectId) => set((s) => patchProject(s, projectId, () => ({ testRuns: [] }))),
     }),
     {
       name: "devflow-project",
       version: 1,
       // Persistimos solo la definición. status/exitCode de cada servicio se resetean a "stopped":
-      // tras un restart de la app ningún PTY sigue vivo. projectPath no se persiste (es derivado).
+      // tras un restart de la app ningún PTY sigue vivo. Un test run que quedó "running" tampoco puede
+      // seguir corriendo tras un restart — se marca "failed" (interrumpido) en vez de quedar colgado
+      // para siempre en la UI. projectPath no se persiste (es derivado).
       partialize: (s): PersistedState => ({
         activeId: s.activeId,
         order: s.order,
         projects: Object.fromEntries(
           Object.entries(s.projects).map(([id, p]) => [
             id,
-            { ...p, services: p.services.map((svc) => ({ ...svc, status: "stopped" as ServiceStatus, exitCode: undefined })) },
+            {
+              ...p,
+              services: p.services.map((svc) => ({ ...svc, status: "stopped" as ServiceStatus, exitCode: undefined })),
+              testRuns: p.testRuns.map((r) =>
+                r.status === "running" ? { ...r, status: "failed" as TestRunStatus, output: r.output + "\n[interrupted: app closed]" } : r
+              ),
+            },
           ])
         ),
       }),
@@ -365,7 +430,7 @@ export const useProjectStore = create<ProjectStore>()(
         const projects = Object.fromEntries(
           Object.entries(p.projects).map(([id, proj]) => [
             id,
-            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [], terminals: proj.terminals ?? [] },
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [], terminals: proj.terminals ?? [], testRuns: proj.testRuns ?? [] },
           ])
         );
         return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };

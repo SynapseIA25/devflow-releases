@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
-export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "terminals" | "team" | "skills" | "agents" | "mcp" | "services" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "map" | "projects" | "environments" | "terminals" | "team" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
 
 type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
 type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
@@ -29,6 +29,7 @@ const GROUPS: NavGroup[] = [
       { id: "terminals",    icon: SquareTerminal, label: "Terminals",    hint: "shells" },
       { id: "services",     icon: TerminalSquare, label: "Services",     hint: "processes" },
       { id: "environments", icon: Boxes,          label: "Environments", hint: "worktrees" },
+      { id: "tests",        icon: FlaskConical,   label: "Tests",        hint: "test runner" },
     ],
   },
   {

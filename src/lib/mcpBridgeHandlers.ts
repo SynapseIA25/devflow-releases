@@ -7,6 +7,7 @@ import { NODE_SCHEMAS } from "../nodes/nodeSchema";
 import { runWorkflow, validateWorkflowGraph, type EngineCallbacks } from "./workflowEngine";
 import * as mcpConfig from "./mcpConfig";
 import { mcpListTools as mcpListToolsRust } from "./tauriApi";
+import { runTestsForPath } from "./testRunner";
 import type { Edge } from "@xyflow/react";
 
 function requireWorkflow(id: unknown): { id: string; name: string; nodes: WorkflowNode[]; edges: Edge[] } {
@@ -199,6 +200,12 @@ function stopRun(args: Record<string, unknown>) {
   return { ok: true };
 }
 
+// ── Tests (Fase 1 de la herramienta de testing nativa) ────────────────────────
+async function runTestsTool(projectPath: string) {
+  const run = await runTestsForPath(projectPath);
+  return { status: run.status, exitCode: run.exitCode, output: run.output };
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 export async function handleBridgeTool(tool: string, args: unknown, projectPath: string): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
@@ -239,6 +246,8 @@ export async function handleBridgeTool(tool: string, args: unknown, projectPath:
       return runWorkflowTool(a);
     case "devflow_stop_run":
       return stopRun(a);
+    case "devflow_run_tests":
+      return runTestsTool(projectPath);
     default:
       throw new Error(`Tool desconocida: "${tool}".`);
   }
