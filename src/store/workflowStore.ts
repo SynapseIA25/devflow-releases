@@ -60,6 +60,7 @@ const seedEdges: Edge[] = [
 const defaultsByType: Record<string, WorkflowNodeData> = {
   mimo: { label: "DevFlow Code", prompt: "" },
   agent: { label: "Agente", agentId: "opencode-agent", prompt: "" },
+  verify: { label: "Verificar", agentId: "expert-qa", prompt: "" },
   http: { label: "HTTP Request", method: "GET", url: "", headers: "", body: "" },
   mcp: { label: "MCP Tool", command: "", tool: "", arguments: "" },
   terminal: { label: "Terminal", command: "" },

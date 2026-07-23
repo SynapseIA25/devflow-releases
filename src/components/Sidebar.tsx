@@ -16,6 +16,13 @@ const NODE_PALETTE = [
     color: "rgba(167,139,250,0.2)",
   },
   {
+    type: "verify",
+    icon: "✅",
+    name: "Verificar",
+    desc: "QA con veredicto",
+    color: "rgba(45,212,191,0.2)",
+  },
+  {
     type: "http",
     icon: "🌐",
     name: "HTTP",

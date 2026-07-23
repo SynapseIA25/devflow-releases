@@ -540,6 +540,8 @@ html, body, #root {
 .subflow-node { border-style: dashed; }
 .agent-node .rf-node-icon { background: rgba(167,139,250,0.2); }
 .agent-node .rf-node-badge { background: rgba(167,139,250,0.2); color: var(--accent-2); }
+.verify-node .rf-node-icon { background: rgba(45,212,191,0.2); }
+.verify-node .rf-node-badge { background: rgba(45,212,191,0.2); color: #2dd4bf; }
 .http-node .rf-node-icon { background: rgba(34,211,238,0.18); }
 .http-node .rf-node-badge { background: rgba(34,211,238,0.18); color: #22d3ee; }
 .mcp-node .rf-node-icon { background: rgba(56,189,248,0.15); }

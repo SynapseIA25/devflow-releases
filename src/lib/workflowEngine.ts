@@ -243,6 +243,44 @@ async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, i
   return { output: text };
 }
 
+// Nodo verify: como execAgent, pero le exige al agente terminar con un veredicto en un formato fijo
+// y lo traduce a exitCode (0/1) — el mismo campo que ya usan terminal/http para que un nodo condition
+// aguas abajo pueda ramificar sobre {{id.exitCode}}. Si el agente no devuelve el sentinel reconocible,
+// tira un error: cae en el mecanismo de reintentos genérico por nodo que YA tiene runGraph (no hace
+// falta un retry propio para "el agente no formateó bien"). El agente resuelve el verify usando lo que
+// tenga disponible en su sesión (terminal, MCP de mobile-mcp/Desktop CDP/Puppeteer si están habilitados
+// para el proyecto) — el motor no orquesta ningún backend específico, solo interpreta la respuesta.
+const VERIFY_SENTINEL = /VERIFY_RESULT:\s*(PASS|FAIL)/i;
+const VERIFY_REASON = /VERIFY_REASON:\s*(.+)/i;
+const VERIFY_INSTRUCTION =
+  "\n\nCuando termines de verificar, tu último párrafo tiene que tener EXACTAMENTE estas dos líneas " +
+  "(sin nada más en esas líneas):\nVERIFY_RESULT: PASS  (o FAIL)\nVERIFY_REASON: <una frase con la evidencia concreta que viste>";
+
+async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
+  const agentId = String(node.data.agentId ?? "");
+  const agent = useAgentsStore.getState().agents.find((a) => a.id === agentId);
+  if (!agent) throw new Error("Nodo verify sin agente seleccionado (o el agente ya no existe)");
+  const provider = DEFAULT_PROVIDERS.find((p) => p.id === agent.providerId);
+  if (!provider?.acp && !provider?.nativeHttp) throw new Error(`El agente "${agent.name}" no tiene backend ACP ni nativo — elegí uno con motor real (ej. DevFlow Code)`);
+  const basePrompt = resolveTemplate(String(node.data.prompt ?? ""), results, input);
+  if (!basePrompt.trim()) throw new Error("Prompt vacío");
+  let promptText = basePrompt + VERIFY_INSTRUCTION;
+  cb.onLog("info", `✅ ${agent.name} verificando: ${basePrompt.slice(0, 80)}${basePrompt.length > 80 ? "…" : ""}`);
+  const profile = nodeTaskProfile(node, agent.taskProfile);
+  const { sessionId, isNew } = await acquireSession(sessions, `verify:${agent.id}:${profile ?? ""}`, provider, profile);
+  const systemPrompt = agent.systemPrompt?.trim();
+  if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;
+  const text = await promptAndCollect(provider, sessionId, promptText);
+  const match = text.match(VERIFY_SENTINEL);
+  if (!match) {
+    throw new Error(`El agente no devolvió un veredicto reconocible (esperaba "VERIFY_RESULT: PASS" o "FAIL"). Respuesta: ${text.slice(-300)}`);
+  }
+  const passed = match[1].toUpperCase() === "PASS";
+  const reason = text.match(VERIFY_REASON)?.[1]?.trim();
+  cb.onLog(passed ? "success" : "error", `✅ Veredicto: ${passed ? "PASS" : "FAIL"}${reason ? ` — ${reason}` : ""}`);
+  return { output: text, exitCode: passed ? 0 : 1 };
+}
+
 // Nodo HTTP: request genérico vía Rust (sin CORS). Los campos url/headers/body admiten templating.
 // exitCode = 0 si la respuesta es 2xx, si no el código HTTP (así un condition puede ramificar sobre
 // {{id.exitCode}} y un no-2xx se marca "warn" ámbar, igual que un comando con exit ≠ 0).
@@ -384,6 +422,7 @@ async function execNode(node: WorkflowNode, results: Map<string, NodeResult>, in
     case "condition": return execCondition(node, results, input, cb);
     case "mimo": return execMimo(node, results, input, cb, sessions);
     case "agent": return execAgent(node, results, input, cb, sessions);
+    case "verify": return execVerify(node, results, input, cb, sessions);
     case "http": return execHttp(node, results, input, cb);
     case "mcp": return execMcp(node, results, input, cb);
     case "loop": return execLoop(node, results, input, cb, stack);

@@ -86,6 +86,18 @@ export const NODE_SCHEMAS: Record<string, NodeSchema> = {
       TASK_PROFILE_FIELD,
     ],
   },
+  verify: {
+    type: "verify",
+    title: "Verificar",
+    icon: "✅",
+    description: "Le pide al agente elegido (típicamente QA) que verifique algo de verdad usando sus tools disponibles (terminal, MCP de mobile-mcp/Desktop CDP/Puppeteer según lo que esté habilitado para el proyecto) y traduce su veredicto a exitCode (0=pasó, 1=falló) para que un nodo Condición pueda ramificar sobre {{id.exitCode}}.",
+    fields: [
+      LABEL_FIELD,
+      { key: "agentId", label: "Agente", type: "select", dynamicOptions: "agents" },
+      { key: "prompt", label: "Qué verificar", type: "textarea", rows: 6, vars: true, placeholder: "Ej: Abrí la app y confirmá que el botón \"Guardar\" persiste el formulario. Si el proyecto es mobile/web/desktop, usá las tools de MCP que tengas disponibles para operarlo de verdad, no asumas." },
+      TASK_PROFILE_FIELD,
+    ],
+  },
   http: {
     type: "http",
     title: "HTTP Request",
