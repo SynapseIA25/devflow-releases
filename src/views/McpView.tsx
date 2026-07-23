@@ -3,7 +3,7 @@ import {
   Server, Plus, Play, Square, Trash2, RefreshCw,
   CheckCircle, AlertCircle, Circle, Terminal, Globe,
   Database, Search, GitBranch, FileCode, Globe2, Hash,
-  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare,
+  ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare, Smartphone,
 } from "lucide-react";
 import { isTauri, checkPrerequisites, hermesPath } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
@@ -160,6 +160,28 @@ const CATALOG: McpServer[] = [
       { name: "channels_list",      description: "Lists available channels/targets on each platform" },
       { name: "attachments_fetch",  description: "Gets the attachments (images/media) of a message" },
       { name: "events_poll",        description: "Polls for new conversation events since a cursor" },
+    ],
+  },
+  {
+    // Backend mobile de la Fase 2 de la herramienta de testing nativa (ver memoria
+    // devflow-testing-tool-design): controla simuladores/emuladores/dispositivos reales iOS y Android
+    // por accessibility-tree, para que el experto QA pueda verificar apps React Native/Flutter/nativas
+    // igual que un humano tocando la pantalla. No reemplaza Xcode/Android SDK: los CONTROLA, no los
+    // instala — sigue haciendo falta un simulador iOS booteado (solo macOS) o un emulador Android
+    // corriendo. Sin binario propio (TS puro): npx lo baja on-demand, no hace falta bundlearlo.
+    id: "mobile-mcp", name: "Mobile MCP", transport: "stdio", official: false, version: "0.0.1",
+    description: "Controls iOS/Android simulators, emulators and real devices: tap, swipe, screenshots, app install/launch, screen recording. Requires Xcode (iOS, macOS only) or the Android SDK (Android) with a booted simulator/emulator.",
+    icon: <Smartphone size={16} />, status: "stopped",
+    command: "npx -y @mobilenext/mobile-mcp@latest",
+    tools: [
+      { name: "mobile_list_available_devices", description: "Lists simulators, emulators and connected real devices" },
+      { name: "mobile_launch_app",             description: "Launches an app by its package name" },
+      { name: "mobile_take_screenshot",        description: "Takes a screenshot to see what's on screen" },
+      { name: "mobile_list_elements_on_screen", description: "Lists UI elements with coordinates and properties" },
+      { name: "mobile_click_on_screen_at_coordinates", description: "Taps at specific x,y coordinates" },
+      { name: "mobile_swipe_on_screen",        description: "Swipes in any direction" },
+      { name: "mobile_type_keys",              description: "Types text into the focused element" },
+      { name: "mobile_list_crashes",           description: "Lists crash reports available on the device" },
     ],
   },
 ];
