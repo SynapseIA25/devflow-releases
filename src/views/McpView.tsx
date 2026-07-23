@@ -9,6 +9,7 @@ import { isTauri, checkPrerequisites, hermesPath } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
 import { useProjectStore } from "../store/projectStore";
 import * as opencodeClient from "../lib/opencodeClient";
+import { ensureDesktopCdpScriptWritten } from "../lib/desktopCdpMcp";
 
 /* ── Types ─────────────────────────────────────────────── */
 type McpTool     = { name: string; description: string };
@@ -182,6 +183,23 @@ const CATALOG: McpServer[] = [
       { name: "mobile_swipe_on_screen",        description: "Swipes in any direction" },
       { name: "mobile_type_keys",              description: "Types text into the focused element" },
       { name: "mobile_list_crashes",           description: "Lists crash reports available on the device" },
+    ],
+  },
+  {
+    // Backend desktop de la Fase 2 (ver mobile-mcp arriba y memoria devflow-testing-tool-design):
+    // generaliza el helper cdp.mjs que ya uso a mano para verificar DevFlow por CDP crudo, para que el
+    // experto QA pueda verificar CUALQUIER app desktop Tauri/Electron de la misma forma. A diferencia
+    // de los demás entries, `command` no es fijo: se resuelve en runtime (efecto de abajo) porque es un
+    // script propio de DevFlow escrito a `<home>/.devflow/cdp-mcp.js`, no un paquete de npm.
+    id: "desktop-cdp", name: "Desktop CDP", transport: "stdio", official: false, version: "0.1",
+    description: "Verifies desktop Tauri/Electron apps via the Chrome DevTools Protocol: evaluate JS in the running window, list open targets, take screenshots. Requires launching the target app yourself with its debug port open (see the desktop_list_targets tool description) — this server only connects to it, it doesn't launch anything.",
+    icon: <MonitorDot size={16} />, status: "stopped",
+    command: "", // resuelto en runtime — ver efecto de useEffect (ensureDesktopCdpScriptWritten)
+    env: { CDP_PORT: "9222" },
+    tools: [
+      { name: "desktop_list_targets", description: "Lists the open pages/windows on the debug port" },
+      { name: "desktop_evaluate",     description: "Runs JS in the target page and returns the result" },
+      { name: "desktop_screenshot",   description: "Captures a PNG screenshot of the target page" },
     ],
   },
 ];
@@ -440,6 +458,11 @@ export function McpView() {
           ? prev.map((s) => (s.id === "hermes-messaging" ? { ...s, command: `${hp} mcp serve` } : s))
           : prev.filter((s) => s.id !== "hermes-messaging")
       );
+    }).catch(() => {});
+    // Desktop CDP: a diferencia de hermes (puede no estar instalado), este script SIEMPRE se puede
+    // escribir — no hay nada que detectar, solo resolver la ruta absoluta bajo el home del usuario.
+    ensureDesktopCdpScriptWritten().then((scriptPath) => {
+      setServers((prev) => prev.map((s) => (s.id === "desktop-cdp" ? { ...s, command: `node ${scriptPath}` } : s)));
     }).catch(() => {});
   }, [inTauri, projectPath]);
 
