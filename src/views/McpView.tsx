@@ -5,7 +5,7 @@ import {
   Database, Search, GitBranch, FileCode, Globe2, Hash,
   ChevronRight, ChevronDown, Copy, ExternalLink, MonitorDot, ScanSearch, MessagesSquare, Smartphone,
 } from "lucide-react";
-import { isTauri, checkPrerequisites, hermesPath } from "../lib/tauriApi";
+import { isTauri, checkPrerequisites, hermesPath, runShellCommand } from "../lib/tauriApi";
 import { readMcpServers, setMcpServer, removeMcpServer } from "../lib/mcpConfig";
 import { useProjectStore } from "../store/projectStore";
 import * as opencodeClient from "../lib/opencodeClient";
@@ -14,6 +14,12 @@ import { ensureDesktopCdpScriptWritten } from "../lib/desktopCdpMcp";
 /* ── Types ─────────────────────────────────────────────── */
 type McpTool     = { name: string; description: string };
 type McpResource = { uri: string; name: string };
+
+// Fase 3: checklist de setup para servers cuyo prerrequisito real DevFlow NO puede fabricar (a
+// diferencia de node/npx/uvx de PrereqsBanner, que sí se pueden instalar) — un simulador iOS booteado
+// o un emulador/dispositivo Android conectado. `successPattern` distingue "la herramienta está
+// instalada pero sin dispositivo" de "hay un dispositivo de verdad" (ver el comentario en CATALOG).
+type PrereqCheck = { id: string; label: string; command: string; successPattern: RegExp };
 
 type McpServer = {
   id: string;
@@ -30,6 +36,7 @@ type McpServer = {
   resources?: McpResource[];
   version?: string;
   official?: boolean;
+  prereqChecks?: PrereqCheck[];
 };
 
 type Prereqs = { node: boolean; npx: boolean; uvx: boolean; uv: boolean };
@@ -174,6 +181,13 @@ const CATALOG: McpServer[] = [
     description: "Controls iOS/Android simulators, emulators and real devices: tap, swipe, screenshots, app install/launch, screen recording. Requires Xcode (iOS, macOS only) or the Android SDK (Android) with a booted simulator/emulator.",
     icon: <Smartphone size={16} />, status: "stopped",
     command: "npx -y @mobilenext/mobile-mcp@latest",
+    // "device" (word boundary) solo aparece en una línea real de dispositivo (ej. "emulator-5554\tdevice"),
+    // no en el header "List of devices attached" — distingue adb instalado-sin-nada de un emulador real
+    // corriendo. Mismo criterio para "(Booted)" de xcrun: solo aparece si hay un simulador iOS booteado.
+    prereqChecks: [
+      { id: "android", label: "Android emulator/device (adb)", command: "adb devices", successPattern: /\bdevice\b/m },
+      { id: "ios", label: "iOS simulator (Xcode)", command: "xcrun simctl list devices booted", successPattern: /\(Booted\)/ },
+    ],
     tools: [
       { name: "mobile_list_available_devices", description: "Lists simulators, emulators and connected real devices" },
       { name: "mobile_launch_app",             description: "Launches an app by its package name" },
@@ -232,6 +246,46 @@ function PrereqsBanner({ prereqs }: { prereqs: Prereqs | null }) {
   );
 }
 
+/* ── Prereq checklist (Fase 3) ──────────────────────────── */
+type CheckState = "idle" | "checking" | "ok" | "missing";
+
+function PrereqChecklist({ checks, projectPath }: { checks: PrereqCheck[]; projectPath: string }) {
+  const [states, setStates] = useState<Record<string, CheckState>>({});
+
+  const runCheck = async (check: PrereqCheck) => {
+    setStates((prev) => ({ ...prev, [check.id]: "checking" }));
+    try {
+      const res = await runShellCommand(check.command, projectPath);
+      const ok = res.exitCode === 0 && check.successPattern.test(res.output);
+      setStates((prev) => ({ ...prev, [check.id]: ok ? "ok" : "missing" }));
+    } catch {
+      // El comando ni siquiera pudo correr (ej. "adb"/"xcrun" no existen en este SO) — mismo resultado
+      // visual que "missing", el usuario ve igual que tiene que resolverlo, sin distinguir la causa.
+      setStates((prev) => ({ ...prev, [check.id]: "missing" }));
+    }
+  };
+
+  return (
+    <div className="mcp-section">
+      <div className="mcp-section-label">Prerequisites (DevFlow can't provision these — install/boot them yourself)</div>
+      <div className="mcp-prereq-list">
+        {checks.map((check) => {
+          const state = states[check.id] ?? "idle";
+          return (
+            <div key={check.id} className="mcp-prereq-row">
+              <span className={`mcp-prereq-dot mcp-prereq-dot--${state}`} />
+              <span className="mcp-prereq-label">{check.label}</span>
+              <button className="mcp-prereq-check-btn" onClick={() => runCheck(check)} disabled={state === "checking"}>
+                {state === "checking" ? <RefreshCw size={11} className="spin" /> : "Check"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Tool row ───────────────────────────────────────────── */
 function ToolRow({ tool }: { tool: McpTool }) {
   return (
@@ -243,8 +297,9 @@ function ToolRow({ tool }: { tool: McpTool }) {
 }
 
 /* ── Server detail ──────────────────────────────────────── */
-function ServerDetail({ server, onToggle, onRemove }: {
+function ServerDetail({ server, projectPath, onToggle, onRemove }: {
   server: McpServer;
+  projectPath: string;
   onToggle: (envVals: Record<string, string>) => void;
   onRemove: () => void;
 }) {
@@ -310,6 +365,10 @@ function ServerDetail({ server, onToggle, onRemove }: {
             </button>
           </div>
         </div>
+      )}
+
+      {server.prereqChecks && server.prereqChecks.length > 0 && (
+        <PrereqChecklist checks={server.prereqChecks} projectPath={projectPath} />
       )}
 
       {server.env && Object.keys(server.env).length > 0 && (
@@ -581,6 +640,7 @@ export function McpView() {
         {selectedServer ? (
           <ServerDetail
             server={selectedServer}
+            projectPath={projectPath}
             onToggle={(envVals) => toggleServer(selectedServer.id, envVals)}
             onRemove={() => removeServer(selectedServer.id)}
           />

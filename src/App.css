@@ -1518,6 +1518,20 @@ html, body, #root {
 }
 .mcp-copy-btn:hover { color: var(--text); }
 
+.mcp-prereq-list { display: flex; flex-direction: column; gap: 6px; }
+.mcp-prereq-row { display: flex; align-items: center; gap: 8px; }
+.mcp-prereq-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+.mcp-prereq-dot--ok { background: #4ade80; box-shadow: 0 0 6px #4ade8088; }
+.mcp-prereq-dot--missing { background: #f87171; }
+.mcp-prereq-dot--checking { background: var(--yellow); }
+.mcp-prereq-label { flex: 1; font-size: 12px; color: var(--text-2); }
+.mcp-prereq-check-btn {
+  padding: 4px 9px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-2); font-size: 11px; cursor: pointer; flex-shrink: 0;
+}
+.mcp-prereq-check-btn:hover { color: var(--text); border-color: var(--accent); }
+.mcp-prereq-check-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 .mcp-env-toggle {
   display: flex; align-items: center; gap: 5px; background: none; border: none;
   color: var(--text-2); cursor: pointer; font-size: 12px; padding: 0; margin-bottom: 8px;

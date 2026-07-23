@@ -39,6 +39,33 @@ export async function detectTestCommand(projectPath: string): Promise<TestConfig
   return null;
 }
 
+// Fase 3: cuenta de tests pasados/fallados, derivada del output YA guardado — no cambia el comando que
+// se corre (no le agrega --json/--reporter a nada, que podría no existir en el setup del usuario) ni
+// agrega campos al store (se recalcula al vuelo desde `output`, así nunca puede quedar desincronizada).
+// Agnóstico de framework a propósito: en vez de un regex por herramienta (jest vs. vitest vs. mocha
+// todos declaran framework "npm" en TestConfig, no hay forma de saber cuál corrió de verdad), busca de
+// abajo hacia arriba la última línea con pares "<número> passed|failed|total|error|ignored" — cubre el
+// resumen de vitest ("Tests  34 passed (34)"), jest ("Tests:  2 failed, 8 passed, 10 total"), pytest
+// ("3 failed, 31 passed in 2.1s") y cargo ("test result: FAILED. 3 passed; 1 failed; ...") con el mismo
+// código. go test sin -json no imprime un resumen así — para ese caso devuelve null (degrada con
+// gracia: la UI sigue mostrando exit code, solo no hay conteo).
+const COUNT_WORD = /(\d+)\s+(passed|failed|total|error|errors|ignored)\b/gi;
+
+export function parseTestCounts(output: string): { passed: number; failed: number; total?: number } | null {
+  const lines = output.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const matches = [...lines[i].matchAll(COUNT_WORD)];
+    if (matches.length === 0) continue;
+    const counts: Record<string, number> = {};
+    for (const m of matches) counts[m[2].toLowerCase()] = parseInt(m[1], 10);
+    const passed = counts.passed ?? 0;
+    const failed = (counts.failed ?? 0) + (counts.error ?? 0) + (counts.errors ?? 0);
+    if (passed === 0 && failed === 0 && counts.total === undefined) continue; // línea sin señal real
+    return { passed, failed, total: counts.total };
+  }
+  return null;
+}
+
 // Normaliza separadores (\ y / se tratan igual, como en baseName() de projectStore.ts) y mayúsculas
 // antes de comparar — el path que llega en una tool call del MCP bridge puede no coincidir carácter a
 // carácter con el `.path` guardado del proyecto aunque sean "el mismo" path en Windows.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FlaskConical, Play, CheckCircle2, XCircle, Loader2, Pencil, Search } from "lucide-react";
 import { useProjectStore, type TestFramework, type TestRun } from "../store/projectStore";
-import { detectTestCommand, runProjectTests } from "../lib/testRunner";
+import { detectTestCommand, runProjectTests, parseTestCounts } from "../lib/testRunner";
 
 const FRAMEWORK_LABEL: Record<TestFramework, string> = {
   npm: "npm", pytest: "pytest", cargo: "cargo", go: "go", custom: "custom",
@@ -15,6 +15,16 @@ function durationLabel(run: TestRun): string {
 
 function timeLabel(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// Fase 3: conteo de tests pasados/fallados, derivado del output ya guardado (ver parseTestCounts).
+// Devuelve null si el framework no imprimió un resumen reconocible (ej. go test sin -v) — degrada
+// mostrando solo el exit code, como antes.
+function countsLabel(run: TestRun): string | null {
+  if (!run.output) return null;
+  const counts = parseTestCounts(run.output);
+  if (!counts) return null;
+  return counts.failed > 0 ? `${counts.passed} passed, ${counts.failed} failed` : `${counts.passed} passed`;
 }
 
 function StatusIcon({ status }: { status: TestRun["status"] }) {
@@ -157,8 +167,8 @@ export function TestsView() {
               <StatusIcon status={run.status} />
               <div className="svc-row-info">
                 <div className="svc-row-name">
-                  {run.status === "running" ? "Corriendo…" : run.status === "passed" ? "Pasó" : "Falló"}
-                  {run.exitCode != null && ` (exit ${run.exitCode})`}
+                  {run.status === "running" ? "Corriendo…" : countsLabel(run) ?? (run.status === "passed" ? "Pasó" : "Falló")}
+                  {run.status !== "running" && run.exitCode != null && ` (exit ${run.exitCode})`}
                 </div>
                 <div className="svc-row-cmd">{timeLabel(run.startedAt)}{run.finishedAt ? ` · ${durationLabel(run)}` : ""}</div>
               </div>
@@ -174,7 +184,9 @@ export function TestsView() {
               <StatusIcon status={selectedRun.status} />
               <span className="svc-detail-name">{config?.command}</span>
               <span className="svc-detail-status">
-                {selectedRun.status === "running" ? "corriendo…" : `${timeLabel(selectedRun.startedAt)} · ${durationLabel(selectedRun)}`}
+                {selectedRun.status === "running"
+                  ? "corriendo…"
+                  : `${timeLabel(selectedRun.startedAt)} · ${durationLabel(selectedRun)}${countsLabel(selectedRun) ? ` · ${countsLabel(selectedRun)}` : ""}`}
               </span>
             </div>
             <pre className="tests-output">{selectedRun.output || (selectedRun.status === "running" ? "…" : "(sin output)")}</pre>
