@@ -93,7 +93,9 @@ export async function mineWorkspace(wsId: string, opts?: { force?: boolean }): P
     const fence = reply.match(/```(?:markdown|md)?\s*\n([\s\S]*?)```/);
     const parsed = parseSkillMd((fence ? fence[1] : reply).trim());
     if (!parsed) return "The miner replied with an invalid skill format.";
-    useSkillsStore.getState().addSuggestion({ ...parsed, fromWsTitle: ws.title });
+    // Default a scope de proyecto: un procedimiento destilado de una sesión suele ser específico de
+    // ESE repo (ej. "cómo correr los tests acá"); el usuario puede promoverla a global editándola.
+    useSkillsStore.getState().addSuggestion({ ...parsed, fromWsTitle: ws.title, scope: "project", projectId: ws.projectId });
     return `Suggested skill "${parsed.name}" — review it in the Skills view.`;
   } catch (e) {
     return `Mining failed: ${e instanceof Error ? e.message : String(e)}`;

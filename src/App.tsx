@@ -81,7 +81,9 @@ export default function App() {
   useEffect(() => {
     const st = useSkillsStore.getState();
     st.curatorPass();
-    void syncSkillsToDisk(Object.values(st.skills));
+    const projectRoots: Record<string, string> = {};
+    for (const [id, p] of Object.entries(useProjectStore.getState().projects)) projectRoots[id] = p.path;
+    void syncSkillsToDisk(Object.values(st.skills), projectRoots);
   }, []);
 
   const isChatFull = view === "chat";

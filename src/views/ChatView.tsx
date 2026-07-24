@@ -387,7 +387,10 @@ export function ChatView() {
         if (kind === "tool_call") {
           const rawInput = (update as any).rawInput;
           const used = detectSkillUse(`${title} ${command ?? ""} ${rawInput ? JSON.stringify(rawInput) : ""}`);
-          if (used) useSkillsStore.getState().recordUse(used);
+          if (used) {
+            const wsForUse = useWorkspaceStore.getState().workspaces.find((w) => w.id === turn.wsId);
+            useSkillsStore.getState().recordUse(used, { projectId: wsForUse?.projectId });
+          }
         }
         updateWsSteps(turn.wsId, (prev) => {
           const idx = prev.findIndex((s) => s.id === toolCallId);
@@ -569,12 +572,14 @@ export function ChatView() {
   // Compartido entre runAcp y runOpenCodeHttp — ninguna de las dos cosas depende del motor de IA
   // (a diferencia del system prompt del agente, que cada path inyecta a su manera: ACP lo prepende
   // como texto, OpenCode nativo lo manda por su campo `system`/`agent` real, ver runOpenCodeHttp).
-  const buildNewSessionPreamble = async (projectRoot: string): Promise<string> => {
+  // project: proyecto de la sesión que se abre (id + path REGISTRADO, distinto de projectRoot que
+  // puede ser un worktree/Ambiente) — scopea qué skills de proyecto entran al índice inyectado.
+  const buildNewSessionPreamble = async (projectRoot: string, project?: { id: string; root: string }): Promise<string> => {
     const parts: string[] = [];
     try {
       const sstate = useSkillsStore.getState();
       const skillsList = sstate.order.map((id) => sstate.skills[id]).filter(Boolean);
-      const skillsPreamble = buildSkillsPreamble(skillsList, await skillsRoot());
+      const skillsPreamble = buildSkillsPreamble(skillsList, await skillsRoot(), project);
       if (skillsPreamble) parts.push(skillsPreamble);
     } catch { /* sin índice de skills el turno sigue igual */ }
     try {
@@ -610,11 +615,13 @@ export function ChatView() {
         // estaba desincronizado en ese instante (bug: chat de un proyecto describiendo otro).
         const pstate = useProjectStore.getState();
         const sessionCwd = wsNow?.cwd ?? pstate.projects[wsNow?.projectId ?? ""]?.path ?? pstate.projectPath;
+        const registeredRoot = wsNow?.projectId ? pstate.projects[wsNow.projectId]?.path : undefined;
+        const project = wsNow?.projectId && registeredRoot ? { id: wsNow.projectId, root: registeredRoot } : undefined;
         // Modelo elegido por el usuario para este provider (si hay); si no, acpClient usa el default.
         const preferredModel = useSettingsStore.getState().modelByProvider[provider];
         sid = await acpClient.newSession(provider, spawn, sessionCwd, preferredModel);
         setSession(wsId, sid, provider);
-        newSessionPreamble = await buildNewSessionPreamble(sessionCwd);
+        newSessionPreamble = await buildNewSessionPreamble(sessionCwd, project);
       }
       // Registramos el turno keyed por sesión: el handler de session/update lo encuentra por acá,
       // y cancel() puede destrabarlo selectivamente sin tocar turnos de otros workspaces.
@@ -704,6 +711,8 @@ export function ChatView() {
       const isNewSession = !sid;
       const pstate = useProjectStore.getState();
       const sessionCwd = wsNow?.cwd ?? pstate.projects[wsNow?.projectId ?? ""]?.path ?? pstate.projectPath;
+      const registeredRoot = wsNow?.projectId ? pstate.projects[wsNow.projectId]?.path : undefined;
+      const project = wsNow?.projectId && registeredRoot ? { id: wsNow.projectId, root: registeredRoot } : undefined;
       if (!sid) {
         const preferredModel = useSettingsStore.getState().modelByProvider[provider];
         sid = await opencodeClient.newSession(provider, sessionCwd, preferredModel);
@@ -714,7 +723,7 @@ export function ChatView() {
       let fullPrompt = await buildPromptWithContext(wsId, sid, text);
       // Índice de skills + memoria de proyecto (ver buildNewSessionPreamble) — solo en sesión nueva.
       if (isNewSession) {
-        const preamble = await buildNewSessionPreamble(sessionCwd);
+        const preamble = await buildNewSessionPreamble(sessionCwd, project);
         if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
       }
       inChars = fullPrompt.length;

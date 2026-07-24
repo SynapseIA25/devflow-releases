@@ -2262,6 +2262,10 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
   border-left: 3px solid var(--accent); border-radius: 6px; padding: 8px 12px;
 }
 .skills-section { display: flex; flex-direction: column; gap: 8px; }
+.skills-subsection-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-3, var(--text-2)); margin: 6px 0 -2px 4px;
+}
 .skills-section-label {
   display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin-bottom: 2px;
@@ -2295,6 +2299,8 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .skills-badge.src-imported { color: #38bdf8; border-color: #38bdf844; }
 .skills-badge.pinned { color: #fbbf24; border-color: #fbbf2444; }
 .skills-badge.stale  { color: #f87171; border-color: #f8717144; }
+.skills-badge.scope-project { color: #2dd4bf; border-color: #2dd4bf44; }
+.skills-badge.scope-project.orphan { color: #f87171; border-color: #f8717144; }
 .skills-icon-btn {
   display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
   background: transparent; color: var(--text-2); border: 1px solid transparent; border-radius: 6px; cursor: pointer;

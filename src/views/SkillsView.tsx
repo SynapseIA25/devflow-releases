@@ -5,7 +5,8 @@ import {
 } from "lucide-react";
 import { useSkillsStore } from "../store/skillsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { parseSkillMd, serializeSkillMd, slugify, type Skill } from "../lib/skills";
+import { useProjectStore } from "../store/projectStore";
+import { parseSkillMd, serializeSkillMd, slugify, type Skill, type SkillScope } from "../lib/skills";
 import { pickFolder, writeTextFile, httpRequest } from "../lib/tauriApi";
 import { mineWorkspace } from "../lib/skillMiner";
 
@@ -28,7 +29,7 @@ const SOURCE_LABEL: Record<Skill["source"], string> = {
   user: "manual", mined: "mined", imported: "imported", tap: "community",
 };
 
-type EditorState = { id?: string; name: string; description: string; category: string; content: string };
+type EditorState = { id?: string; name: string; description: string; category: string; content: string; scope: SkillScope; projectId?: string };
 
 export function SkillsView() {
   const skills        = useSkillsStore((s) => s.skills);
@@ -37,6 +38,10 @@ export function SkillsView() {
   const taps          = useSkillsStore((s) => s.taps);
   const miningEnabled = useSkillsStore((s) => s.miningEnabled);
   const store         = useSkillsStore;
+
+  const projects        = useProjectStore((s) => s.projects);
+  const activeProjectId = useProjectStore((s) => s.activeId);
+  const activeProject   = projects[activeProjectId];
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -47,6 +52,13 @@ export function SkillsView() {
   const list = order.map((id) => skills[id]).filter(Boolean);
   const active = list.filter((s) => !s.archived);
   const archived = list.filter((s) => s.archived);
+
+  // Proyecto borrado/renombrado tras minar/crear una skill ahí: nunca se oculta ni se fusiona con
+  // el scope global (sería un leak cruzado de proyecto) — queda visible aparte, reasignable.
+  const isOrphan = (s: Skill) => s.scope === "project" && (!s.projectId || !projects[s.projectId]);
+  const thisProjectSkills = active.filter((s) => s.scope === "project" && s.projectId === activeProjectId);
+  const globalSkills = active.filter((s) => s.scope === "global");
+  const orphanSkills = active.filter(isOrphan);
 
   const flash = (msg: string) => {
     setStatus(msg);
@@ -60,11 +72,17 @@ export function SkillsView() {
       flash("Name, description and content are required.");
       return;
     }
-    const fields = { name, description: editor.description.trim(), category: editor.category.trim() || undefined, content: editor.content.trim() };
+    const fields = {
+      name, description: editor.description.trim(), category: editor.category.trim() || undefined,
+      content: editor.content.trim(), scope: editor.scope, projectId: editor.scope === "project" ? editor.projectId : undefined,
+    };
     if (editor.id) store.getState().updateSkill(editor.id, fields);
     else store.getState().addSkill({ ...fields, source: "user" });
     setEditor(null);
   };
+
+  const openEditor = (s: Skill) =>
+    setEditor({ id: s.id, name: s.name, description: s.description, category: s.category ?? "", content: s.content, scope: s.scope, projectId: s.projectId });
 
   const exportSkill = async (s: Skill) => {
     try {
@@ -120,7 +138,13 @@ export function SkillsView() {
             {miningNow ? <RefreshCw size={13} className="spin" /> : <Wand2 size={13} />} Mine current session
           </button>
           <button className="skills-btn" onClick={() => fileInputRef.current?.click()}><Upload size={13} /> Import</button>
-          <button className="skills-btn primary" onClick={() => setEditor({ name: "", description: "", category: "", content: "## Steps\n1. " })}>
+          <button
+            className="skills-btn primary"
+            onClick={() => setEditor({
+              name: "", description: "", category: "", content: "## Steps\n1. ",
+              scope: activeProject ? "project" : "global", projectId: activeProject?.id,
+            })}
+          >
             <Plus size={13} /> New skill
           </button>
           <input
@@ -139,6 +163,7 @@ export function SkillsView() {
             <SuggestionCard
               key={sug.id}
               name={sug.name} description={sug.description} content={sug.content} fromWsTitle={sug.fromWsTitle}
+              scopeLabel={sug.scope === "project" ? (sug.projectId ? projects[sug.projectId]?.name ?? "this project" : "this project") : "global"}
               onAccept={() => store.getState().acceptSuggestion(sug.id)}
               onReject={() => store.getState().rejectSuggestion(sug.id)}
             />
@@ -153,13 +178,30 @@ export function SkillsView() {
             No skills yet. Work in the chat and approve mined suggestions, create one manually, or install from a community repo below.
           </div>
         )}
-        {active.map((s) => (
-          <SkillRow
-            key={s.id} skill={s}
-            onEdit={() => setEditor({ id: s.id, name: s.name, description: s.description, category: s.category ?? "", content: s.content })}
-            onExport={() => exportSkill(s)}
-          />
-        ))}
+        {activeProject && thisProjectSkills.length > 0 && (
+          <>
+            <div className="skills-subsection-label">This project ({activeProject.name}) — {thisProjectSkills.length}</div>
+            {thisProjectSkills.map((s) => (
+              <SkillRow key={s.id} skill={s} projectName={activeProject.name} onEdit={() => openEditor(s)} onExport={() => exportSkill(s)} />
+            ))}
+          </>
+        )}
+        {globalSkills.length > 0 && (
+          <>
+            {activeProject && thisProjectSkills.length > 0 && <div className="skills-subsection-label">Global — {globalSkills.length}</div>}
+            {globalSkills.map((s) => (
+              <SkillRow key={s.id} skill={s} onEdit={() => openEditor(s)} onExport={() => exportSkill(s)} />
+            ))}
+          </>
+        )}
+        {orphanSkills.length > 0 && (
+          <>
+            <div className="skills-subsection-label">Orphaned (project deleted) — {orphanSkills.length}</div>
+            {orphanSkills.map((s) => (
+              <SkillRow key={s.id} skill={s} orphan onEdit={() => openEditor(s)} onExport={() => exportSkill(s)} />
+            ))}
+          </>
+        )}
       </div>
 
       {archived.length > 0 && (
@@ -188,6 +230,16 @@ export function SkillsView() {
         <div className="skills-editor-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setEditor(null); }}>
           <div className="skills-editor">
             <div className="skills-editor-title">{editor.id ? "Edit skill" : "New skill"}</div>
+            <select
+              className="skills-input" value={editor.scope}
+              onChange={(e) => {
+                const scope = e.target.value as SkillScope;
+                setEditor({ ...editor, scope, projectId: scope === "project" ? (editor.projectId ?? activeProject?.id) : undefined });
+              }}
+            >
+              <option value="project">This project{activeProject ? ` (${activeProject.name})` : " (no active project)"}</option>
+              <option value="global">Global — visible in every project</option>
+            </select>
             <div className="skills-editor-grid">
               <input className="skills-input" placeholder="name (kebab-case)" value={editor.name}
                 onChange={(e) => setEditor({ ...editor, name: e.target.value })} />
@@ -210,7 +262,9 @@ export function SkillsView() {
 }
 
 /* ── Fila de skill ─────────────────────────────────────── */
-function SkillRow({ skill: s, onEdit, onExport }: { skill: Skill; onEdit: () => void; onExport: () => void }) {
+function SkillRow({ skill: s, projectName, orphan, onEdit, onExport }: {
+  skill: Skill; projectName?: string; orphan?: boolean; onEdit: () => void; onExport: () => void;
+}) {
   const store = useSkillsStore;
   const [open, setOpen] = useState(false);
   return (
@@ -219,6 +273,11 @@ function SkillRow({ skill: s, onEdit, onExport }: { skill: Skill; onEdit: () => 
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span className="skills-row-name">{s.name}</span>
         <span className={`skills-badge src-${s.source}`}>{SOURCE_LABEL[s.source]}</span>
+        {s.scope === "project" && (
+          <span className={`skills-badge scope-project${orphan ? " orphan" : ""}`}>
+            {orphan ? "orphaned" : projectName ?? s.projectId}
+          </span>
+        )}
         {s.pinned && <span className="skills-badge pinned"><Pin size={9} /> pinned</span>}
         {s.stale && <span className="skills-badge stale"><Clock size={9} /> stale</span>}
         <span className="skills-row-desc">{s.description}</span>
@@ -243,8 +302,8 @@ function SkillRow({ skill: s, onEdit, onExport }: { skill: Skill; onEdit: () => 
 }
 
 /* ── Sugerencia minada ─────────────────────────────────── */
-function SuggestionCard({ name, description, content, fromWsTitle, onAccept, onReject }: {
-  name: string; description: string; content: string; fromWsTitle?: string;
+function SuggestionCard({ name, description, content, fromWsTitle, scopeLabel, onAccept, onReject }: {
+  name: string; description: string; content: string; fromWsTitle?: string; scopeLabel: string;
   onAccept: () => void; onReject: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -256,6 +315,7 @@ function SuggestionCard({ name, description, content, fromWsTitle, onAccept, onR
         </button>
         <div className="skills-suggestion-info">
           <span className="skills-row-name">{name}</span>
+          <span className="skills-badge scope-project">{scopeLabel}</span>
           <span className="skills-row-desc">{description}</span>
           {fromWsTitle && <span className="skills-suggestion-src">from “{fromWsTitle}”</span>}
         </div>

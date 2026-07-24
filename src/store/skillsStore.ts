@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { slugify, syncSkillsToDisk, type Skill, type SkillSource, type SkillSuggestion } from "../lib/skills";
+import { slugify, syncSkillsToDisk, type Skill, type SkillScope, type SkillSource, type SkillSuggestion } from "../lib/skills";
+import { useProjectStore } from "./projectStore";
 
 // Estado del sistema de skills (ver lib/skills.ts para el modelo completo). Persistido en
 // localStorage como el resto de la app; el disco (~/.devflow/skills) es una proyección para que
@@ -21,12 +22,15 @@ type SkillsStore = {
   // wsId → cantidad de bloques tool ya minados (para no re-analizar la misma actividad)
   minedAt: Record<string, number>;
 
-  addSkill: (partial: { name: string; description: string; content: string; category?: string; source: SkillSource; tapRepo?: string }) => string;
-  updateSkill: (id: string, patch: Partial<Pick<Skill, "name" | "description" | "category" | "content" | "enabled" | "pinned">>) => void;
+  addSkill: (partial: {
+    name: string; description: string; content: string; category?: string; source: SkillSource;
+    tapRepo?: string; scope?: SkillScope; projectId?: string;
+  }) => string;
+  updateSkill: (id: string, patch: Partial<Pick<Skill, "name" | "description" | "category" | "content" | "enabled" | "pinned" | "scope" | "projectId">>) => void;
   removeSkill: (id: string) => void;
   archiveSkill: (id: string) => void;
   restoreSkill: (id: string) => void;
-  recordUse: (name: string) => void;
+  recordUse: (name: string, opts?: { projectId?: string }) => void;
   addSuggestion: (s: Omit<SkillSuggestion, "id" | "createdAt">) => void;
   acceptSuggestion: (id: string) => void;
   rejectSuggestion: (id: string) => void;
@@ -37,17 +41,35 @@ type SkillsStore = {
   curatorPass: () => void;
 };
 
-// Nombre único: si ya existe una skill con ese slug, sufija -2, -3, …
-const uniqueName = (base: string, skills: Record<string, Skill>, exceptId?: string): string => {
-  const taken = new Set(Object.values(skills).filter((s) => s.id !== exceptId).map((s) => s.name));
+// Nombre único DENTRO del mismo (scope, projectId): dos proyectos (o un proyecto y el scope
+// global) pueden cada uno tener, por ejemplo, una skill "deploy" sin pisarse.
+const uniqueName = (
+  base: string,
+  skills: Record<string, Skill>,
+  scope: SkillScope,
+  projectId: string | undefined,
+  exceptId?: string
+): string => {
+  const taken = new Set(
+    Object.values(skills)
+      .filter((s) => s.id !== exceptId && s.scope === scope && s.projectId === projectId)
+      .map((s) => s.name)
+  );
   let name = slugify(base);
   for (let i = 2; taken.has(name); i++) name = `${slugify(base)}-${i}`;
   return name;
 };
 
+// id de proyecto → path registrado (projects[id].path, NO sessionCwd/worktree — ver skills.ts).
+const projectRootsFor = (): Record<string, string> => {
+  const roots: Record<string, string> = {};
+  for (const [id, p] of Object.entries(useProjectStore.getState().projects)) roots[id] = p.path;
+  return roots;
+};
+
 // Proyección al disco tras cada mutación (mejor esfuerzo, fire-and-forget).
 const sync = (skills: Record<string, Skill>) => {
-  void syncSkillsToDisk(Object.values(skills));
+  void syncSkillsToDisk(Object.values(skills), projectRootsFor());
 };
 
 export const useSkillsStore = create<SkillsStore>()(
@@ -65,14 +87,18 @@ export const useSkillsStore = create<SkillsStore>()(
         const id = makeId();
         set((s) => {
           const now = Date.now();
+          const scope: SkillScope = partial.scope === "project" && partial.projectId ? "project" : "global";
+          const projectId = scope === "project" ? partial.projectId : undefined;
           const skill: Skill = {
             id,
-            name: uniqueName(partial.name, s.skills),
+            name: uniqueName(partial.name, s.skills, scope, projectId),
             description: partial.description,
             category: partial.category,
             content: partial.content,
             source: partial.source,
             tapRepo: partial.tapRepo,
+            scope,
+            projectId,
             enabled: true,
             pinned: false,
             archived: false,
@@ -92,8 +118,13 @@ export const useSkillsStore = create<SkillsStore>()(
         set((s) => {
           const prev = s.skills[id];
           if (!prev) return s;
-          const name = patch.name !== undefined ? uniqueName(patch.name, s.skills, id) : prev.name;
-          const skills = { ...s.skills, [id]: { ...prev, ...patch, name, updatedAt: Date.now() } };
+          const scope = patch.scope ?? prev.scope;
+          const projectId = scope === "project" ? (patch.projectId !== undefined ? patch.projectId : prev.projectId) : undefined;
+          // Cambiar name/scope/projectId puede colisionar con otra skill del mismo namespace nuevo —
+          // recalcular unicidad cubre tanto un rename como "promover" una skill a otro scope.
+          const nameChanged = patch.name !== undefined || patch.scope !== undefined || patch.projectId !== undefined;
+          const name = nameChanged ? uniqueName(patch.name ?? prev.name, s.skills, scope, projectId, id) : prev.name;
+          const skills = { ...s.skills, [id]: { ...prev, ...patch, scope, projectId, name, updatedAt: Date.now() } };
           sync(skills);
           return { skills };
         }),
@@ -120,9 +151,16 @@ export const useSkillsStore = create<SkillsStore>()(
           return { skills };
         }),
 
-      recordUse: (name) =>
+      // Con nombres ahora potencialmente repetidos entre scopes (ej. "deploy" global Y "deploy" en
+      // un proyecto), desambigua: primero el match del proyecto que disparó el uso, si no el global,
+      // si no el primero que haya (mejor esfuerzo, nunca deja de contar un uso real por esto).
+      recordUse: (name, opts) =>
         set((s) => {
-          const found = Object.values(s.skills).find((x) => x.name === name);
+          const candidates = Object.values(s.skills).filter((x) => x.name === name);
+          const found =
+            candidates.find((x) => x.scope === "project" && x.projectId === opts?.projectId) ??
+            candidates.find((x) => x.scope === "global") ??
+            candidates[0];
           if (!found) return s;
           return {
             skills: { ...s.skills, [found.id]: { ...found, uses: found.uses + 1, lastUsedAt: Date.now(), stale: false } },
@@ -131,17 +169,24 @@ export const useSkillsStore = create<SkillsStore>()(
 
       addSuggestion: (sug) =>
         set((s) => {
-          // Dedupe: ya hay una sugerencia o una skill con ese nombre → descartar en silencio.
           const name = slugify(sug.name);
-          if (s.suggestions.some((x) => x.name === name)) return s;
-          if (Object.values(s.skills).some((x) => x.name === name)) return s;
-          return { suggestions: [{ ...sug, name, id: makeId(), createdAt: Date.now() }, ...s.suggestions] };
+          const scope: SkillScope = sug.scope === "project" && sug.projectId ? "project" : "global";
+          const projectId = scope === "project" ? sug.projectId : undefined;
+          // Dedupe: ya hay una sugerencia o una skill con ese nombre EN EL MISMO namespace → descartar en silencio.
+          const clashes = (x: { name: string; scope: SkillScope; projectId?: string }) =>
+            x.name === name && x.scope === scope && x.projectId === projectId;
+          if (s.suggestions.some(clashes)) return s;
+          if (Object.values(s.skills).some(clashes)) return s;
+          return { suggestions: [{ ...sug, name, scope, projectId, id: makeId(), createdAt: Date.now() }, ...s.suggestions] };
         }),
 
       acceptSuggestion: (id) => {
         const sug = get().suggestions.find((x) => x.id === id);
         if (!sug) return;
-        get().addSkill({ name: sug.name, description: sug.description, category: sug.category, content: sug.content, source: "mined" });
+        get().addSkill({
+          name: sug.name, description: sug.description, category: sug.category, content: sug.content,
+          source: "mined", scope: sug.scope, projectId: sug.projectId,
+        });
         set((s) => ({ suggestions: s.suggestions.filter((x) => x.id !== id) }));
       },
 
@@ -180,6 +225,29 @@ export const useSkillsStore = create<SkillsStore>()(
           return changed ? { skills, lastCuratorRun: now } : { lastCuratorRun: now };
         }),
     }),
-    { name: "devflow-skills" }
+    {
+      name: "devflow-skills",
+      version: 1,
+      // v0→v1: se introduce scope de proyecto. Todo lo persistido antes de esto era efectivamente
+      // global (store plano sin noción de proyecto) — backfillea scope:"global" en skills y
+      // sugerencias pendientes (las sugerencias viejas no tienen projectId asociado, así que global
+      // es el default seguro que preserva su comportamiento anterior).
+      migrate: (persisted, version) => {
+        const p = persisted as { skills?: Record<string, Skill>; suggestions?: SkillSuggestion[] } | undefined;
+        if (version < 1) {
+          if (p?.skills) {
+            for (const sk of Object.values(p.skills)) {
+              if (!(sk as Partial<Skill>).scope) Object.assign(sk, { scope: "global" as SkillScope, projectId: undefined });
+            }
+          }
+          if (p?.suggestions) {
+            for (const sug of p.suggestions) {
+              if (!(sug as Partial<SkillSuggestion>).scope) Object.assign(sug, { scope: "global" as SkillScope });
+            }
+          }
+        }
+        return p as SkillsStore;
+      },
+    }
   )
 );

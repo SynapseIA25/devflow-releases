@@ -16,14 +16,20 @@ import { homeDir, createDir, writeTextFile } from "./tauriApi";
 
 export type SkillSource = "user" | "mined" | "imported" | "tap";
 
+// "global" vive en ~/.devflow/skills (visible en todos los proyectos); "project" vive en
+// <projectRoot>/.devflow/skills (visible solo en ese proyecto) — ver skillRoot()/projectSkillsRoot().
+export type SkillScope = "global" | "project";
+
 export type Skill = {
   id: string;
-  name: string; // slug kebab-case, único; también es el nombre de la carpeta en disco
+  name: string; // slug kebab-case, único DENTRO de su (scope, projectId); también el nombre de la carpeta en disco
   description: string; // una línea — es lo que ve el agente en el índice para decidir si leerla
   category?: string;
   content: string; // cuerpo markdown (sin frontmatter)
   source: SkillSource;
   tapRepo?: string; // "owner/repo" si vino de un tap
+  scope: SkillScope;
+  projectId?: string; // set sii scope === "project" — id de projectStore, NO el path (puede cambiar/borrarse)
   enabled: boolean;
   pinned: boolean; // pinneada = el curator nunca la marca stale
   archived: boolean; // fuera del índice pero recuperable (nunca se borra sola)
@@ -42,6 +48,8 @@ export type SkillSuggestion = {
   category?: string;
   content: string;
   fromWsTitle?: string;
+  scope: SkillScope;
+  projectId?: string;
   createdAt: number;
 };
 
@@ -92,12 +100,31 @@ export async function skillsRoot(): Promise<string> {
 
 export const skillDiskPath = (root: string, name: string) => `${root}/${name}/SKILL.md`;
 
+// Raíz de disco de las skills de UN proyecto — mismo patrón que <project>/.devflow/scripts/ (ver
+// verifyScript.ts) y <project>/MEMORY.md: un archivo/carpeta más en la raíz del proyecto, keyed por
+// el path REGISTRADO del proyecto (projects[id].path), NO por sessionCwd — sessionCwd puede ser un
+// worktree/Ambiente distinto, y syncSkillsToDisk corre en background sin noción de sesión activa.
+export const projectSkillsRoot = (projectRoot: string): string =>
+  `${projectRoot.replace(/\\/g, "/").replace(/\/+$/, "")}/.devflow/skills`;
+
+// Resuelve la raíz de disco de una skill según su scope. null = skill de proyecto "huérfana" (su
+// projectId ya no resuelve a un proyecto real — borrado/renombrado): el caller la saltea, mejor
+// esfuerzo, nunca tira error.
+export function skillRoot(skill: Skill, globalRoot: string, projectRoots: Record<string, string>): string | null {
+  if (skill.scope === "global") return globalRoot;
+  const root = skill.projectId ? projectRoots[skill.projectId] : undefined;
+  return root ? projectSkillsRoot(root) : null;
+}
+
 // Sincroniza las skills activas al disco (mejor esfuerzo: sin API de borrado en tauriApi, un
 // archivo huérfano de una skill eliminada queda inerte — no está en el índice, nadie lo lee).
-export async function syncSkillsToDisk(skills: Skill[]): Promise<void> {
-  const root = await skillsRoot();
+// projectRoots: id de proyecto → path registrado (skillsStore.ts lo arma desde projectStore).
+export async function syncSkillsToDisk(skills: Skill[], projectRoots: Record<string, string>): Promise<void> {
+  const globalRoot = await skillsRoot();
   for (const s of skills) {
     if (s.archived) continue;
+    const root = skillRoot(s, globalRoot, projectRoots);
+    if (!root) continue; // huérfana: nada a donde sincronizar
     try {
       await createDir(`${root}/${s.name}`);
       await writeTextFile(skillDiskPath(root, s.name), serializeSkillMd(s));
@@ -111,10 +138,21 @@ export async function syncSkillsToDisk(skills: Skill[]): Promise<void> {
 
 const MAX_INDEXED_SKILLS = 30;
 
-export function buildSkillsPreamble(skills: Skill[], root: string): string {
-  const active = skills.filter((s) => s.enabled && !s.archived).slice(0, MAX_INDEXED_SKILLS);
+// project: el proyecto de la sesión que se está abriendo (id + path REGISTRADO, no sessionCwd) —
+// sin esto solo se ve el índice global, igual que antes de que existiera scope de proyecto.
+export function buildSkillsPreamble(skills: Skill[], globalRoot: string, project?: { id: string; root: string }): string {
+  const visible = skills.filter(
+    (s) => s.enabled && !s.archived && (s.scope === "global" || (project !== undefined && s.projectId === project.id))
+  );
+  // Skills de este proyecto primero: si hay 30+ skills entre global y proyecto, las más relevantes
+  // para la sesión actual no deben quedar afuera del cap por venir después alfabéticamente/por id.
+  visible.sort((a, b) => (a.scope === "project" ? 0 : 1) - (b.scope === "project" ? 0 : 1));
+  const active = visible.slice(0, MAX_INDEXED_SKILLS);
   if (active.length === 0) return "";
-  const lines = active.map((s) => `- ${s.name} — ${s.description} → ${skillDiskPath(root, s.name)}`);
+  const lines = active.map((s) => {
+    const root = s.scope === "project" && project ? projectSkillsRoot(project.root) : globalRoot;
+    return `- ${s.name} — ${s.description} → ${skillDiskPath(root, s.name)}`;
+  });
   return (
     `[Skills]\nYou have a library of reusable skills: procedures distilled from past work in this environment. ` +
     `When the current task matches one, READ its SKILL.md file first and follow it.\n${lines.join("\n")}`
