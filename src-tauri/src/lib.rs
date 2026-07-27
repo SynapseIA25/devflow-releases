@@ -6,6 +6,21 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+// Tauri es una app GUI (subsistema Windows, no consola). Cualquier hijo de subsistema consola
+// (cmd.exe, los shims .cmd de npm que se spawnean vía `cmd /C`, el sidecar opencode.exe) se abre con
+// su propia ventana de consola visible si no se pasa este flag — reportado en máquinas reales: se
+// veía una terminal cmd independiente por sesión (el sidecar de opencode serve se reinicia por
+// sesión, ver ensureExpertAgent/Gotcha 3 en memoria). CREATE_NO_WINDOW = 0x08000000.
+#[cfg(windows)]
+fn no_window(cmd: &mut Command) -> &mut Command {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x08000000)
+}
+#[cfg(not(windows))]
+fn no_window(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
 pub struct McpProcesses(pub Mutex<HashMap<String, Child>>);
 // Keyed por provider ("mimo", "hermes", ...) — cada agente ACP corre en su propio proceso hijo,
 // así DevFlow puede tener una sesión de MiMo y una de Hermes activas al mismo tiempo.
@@ -44,12 +59,12 @@ fn start_mcp_server(
         .collect();
 
     let child = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", &command])
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", &command])
             .envs(&filtered_env)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        no_window(&mut cmd).spawn()
     } else {
         let mut parts = command.split_whitespace();
         let prog = parts.next().unwrap_or("");
@@ -107,10 +122,11 @@ fn get_running_servers(state: State<McpProcesses>) -> Vec<String> {
 fn check_prerequisites() -> serde_json::Value {
     let check = |prog: &str, arg: &str| -> bool {
         if cfg!(target_os = "windows") {
-            Command::new("cmd")
-                .args(["/C", &format!("{} {}", prog, arg)])
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", &format!("{} {}", prog, arg)])
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::null());
+            no_window(&mut cmd)
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false)
@@ -140,10 +156,11 @@ fn check_prerequisites() -> serde_json::Value {
 async fn check_cli(names: Vec<String>) -> HashMap<String, bool> {
     let check = |prog: &str| -> bool {
         if cfg!(target_os = "windows") {
-            Command::new("cmd")
-                .args(["/C", &format!("{} --version", prog)])
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/C", &format!("{} --version", prog)])
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::null());
+            no_window(&mut cmd)
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false)
@@ -185,7 +202,9 @@ fn resolve_sidecar_path(name: String) -> Result<String, String> {
 #[tauri::command]
 fn install_cli(package: String) -> Result<String, String> {
     let output = if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/C", "npm", "install", "-g", &package]).output()
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "npm", "install", "-g", &package]);
+        no_window(&mut cmd).output()
     } else {
         Command::new("npm").args(["install", "-g", &package]).output()
     }
@@ -231,8 +250,8 @@ fn acp_start(
         // igual para esos shims que para un .exe con ruta absoluta (caso de Hermes).
         let mut full_args = vec!["/C".to_string(), command.clone()];
         full_args.extend(args.iter().cloned());
-        Command::new("cmd")
-            .args(&full_args)
+        let mut cmd = Command::new("cmd");
+        cmd.args(&full_args)
             // El adaptador claude-code-acp se niega a arrancar si CLAUDECODE está seteado (guard de
             // "sesión anidada"). DevFlow puede haber heredado esa var si se lo lanzó desde una sesión
             // de Claude Code; la quitamos del hijo para que el adaptador funcione igual. Inofensivo
@@ -241,8 +260,8 @@ fn acp_start(
             .envs(&extra_env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+        no_window(&mut cmd).spawn()
     } else {
         Command::new(&command)
             .args(&args)
@@ -344,7 +363,8 @@ fn opencode_serve_ensure(
         .filter(|(_, v)| !v.is_empty())
         .collect();
 
-    let mut child = Command::new(&sidecar)
+    let mut serve_cmd = Command::new(&sidecar);
+    serve_cmd
         .args([
             "serve",
             "--port",
@@ -362,7 +382,8 @@ fn opencode_serve_ensure(
         ])
         .envs(&extra_env)
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = no_window(&mut serve_cmd)
         .spawn()
         .map_err(|e| format!("No se pudo iniciar 'opencode serve': {}", e))?;
 
@@ -383,7 +404,7 @@ fn opencode_serve_ensure(
     // el primer prompt justo tras abrir la app, un reintento después ya anda porque el proceso tuvo
     // tiempo de arrancar). Se espera activamente a que el puerto acepte conexiones TCP antes de
     // devolverlo, en vez de devolverlo a ciegas.
-    let ready_deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let ready_deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
     loop {
         let addr = format!("127.0.0.1:{}", port).parse().map_err(|e| format!("{}", e))?;
         if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)).is_ok() {
@@ -393,7 +414,7 @@ fn opencode_serve_ensure(
             return Err(format!("'opencode serve' terminó antes de levantar (status: {})", status));
         }
         if std::time::Instant::now() >= ready_deadline {
-            return Err("'opencode serve' no levantó el puerto a tiempo (10s)".to_string());
+            return Err("'opencode serve' no levantó el puerto a tiempo (25s)".to_string());
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -704,6 +725,7 @@ fn mcp_spawn_and_handshake(
     let mut cmd = if cfg!(target_os = "windows") {
         let mut c = Command::new("cmd");
         c.args(["/C", command]);
+        no_window(&mut c);
         c
     } else {
         let mut parts = command.split_whitespace();
@@ -1106,11 +1128,13 @@ fn run_shell_command(command: String, cwd: String) -> Result<ShellResult, String
             Some(bash) => {
                 let mut c = Command::new(bash);
                 c.args(["-c", &command]);
+                no_window(&mut c);
                 c
             }
             None => {
                 let mut c = Command::new("powershell.exe");
                 c.args(["-NoProfile", "-Command", &command]);
+                no_window(&mut c);
                 c
             }
         }
