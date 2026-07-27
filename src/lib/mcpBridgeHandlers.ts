@@ -7,7 +7,10 @@ import { NODE_SCHEMAS } from "../nodes/nodeSchema";
 import { runWorkflow, validateWorkflowGraph, type EngineCallbacks } from "./workflowEngine";
 import * as mcpConfig from "./mcpConfig";
 import { mcpListTools as mcpListToolsRust } from "./tauriApi";
-import { runTestsForPath } from "./testRunner";
+import { runTestsForPath, findProjectByPath } from "./testRunner";
+import { suggestTestStrategy } from "./testStrategy";
+import { generateAndInsertCase } from "./testCaseInsert";
+import { useProjectStore } from "../store/projectStore";
 import type { Edge } from "@xyflow/react";
 
 function requireWorkflow(id: unknown): { id: string; name: string; nodes: WorkflowNode[]; edges: Edge[] } {
@@ -206,6 +209,35 @@ async function runTestsTool(projectPath: string) {
   return { status: run.status, exitCode: run.exitCode, output: run.output };
 }
 
+// ── Test Strategy Advisor (Fases 5-7) ─────────────────────────────────────────
+// Persiste la sugerencia en el store del proyecto (no solo la devuelve) — así queda disponible para
+// devflow_insert_test_case sin tener que re-detectar (y sin pagar de nuevo un turno de agente si cayó
+// en el fallback), y la UI (TestStrategyPanel.tsx) la ve actualizada si el usuario la mira después.
+async function suggestTestStrategyTool(projectPath: string) {
+  const project = findProjectByPath(projectPath);
+  if (!project) throw new Error(`DevFlow no tiene abierto ningún proyecto en "${projectPath}".`);
+  const { fingerprint, strategy } = await suggestTestStrategy(projectPath);
+  useProjectStore.getState().setTestStrategy(project.id, { fingerprint, strategy, detectedAt: Date.now() });
+  return { fingerprint, strategy };
+}
+
+async function insertTestCaseTool(projectPath: string, args: Record<string, unknown>) {
+  const project = findProjectByPath(projectPath);
+  if (!project) throw new Error(`DevFlow no tiene abierto ningún proyecto en "${projectPath}".`);
+  const cached = project.testStrategy;
+  if (!cached) {
+    throw new Error('No hay una estrategia detectada para este proyecto todavía — llamá a "devflow_suggest_test_strategy" primero.');
+  }
+  const patternId = String(args.patternId ?? "");
+  const pattern = cached.strategy.casePatterns.find((p) => p.id === patternId);
+  if (!pattern) {
+    const available = cached.strategy.casePatterns.map((p) => p.id).join(", ") || "(ninguno)";
+    throw new Error(`patternId "${patternId}" no reconocido. Patrones disponibles: ${available}.`);
+  }
+  const targetHint = String(args.targetHint ?? "");
+  return generateAndInsertCase(projectPath, pattern, cached.fingerprint, targetHint);
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 export async function handleBridgeTool(tool: string, args: unknown, projectPath: string): Promise<unknown> {
   const a = (args ?? {}) as Record<string, unknown>;
@@ -248,6 +280,10 @@ export async function handleBridgeTool(tool: string, args: unknown, projectPath:
       return stopRun(a);
     case "devflow_run_tests":
       return runTestsTool(projectPath);
+    case "devflow_suggest_test_strategy":
+      return suggestTestStrategyTool(projectPath);
+    case "devflow_insert_test_case":
+      return insertTestCaseTool(projectPath, a);
     default:
       throw new Error(`Tool desconocida: "${tool}".`);
   }
