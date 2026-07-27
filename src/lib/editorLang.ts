@@ -49,3 +49,30 @@ export function languageForPath(path: string): Extension {
       return [];
   }
 }
+
+export type LspKind = "ts" | "rust";
+
+// Extensiones con language server real disponible (TS/JS vía typescript-language-server, Rust vía
+// rust-analyzer, ver lspClient.ts). `languageId` es el identificador que espera el protocolo LSP
+// (`textDocument/didOpen.textDocument.languageId`), no necesariamente igual a la extensión del
+// archivo (ej. "typescript" para .ts, "typescriptreact" para .tsx). null = sin LSP para esa
+// extensión — el editor sigue comportándose exactamente igual que hoy (solo resaltado sintáctico).
+export function lspInfoForPath(path: string): { kind: LspKind; languageId: string } | null {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  switch (ext) {
+    case "ts":
+      return { kind: "ts", languageId: "typescript" };
+    case "tsx":
+      return { kind: "ts", languageId: "typescriptreact" };
+    case "js":
+    case "mjs":
+    case "cjs":
+      return { kind: "ts", languageId: "javascript" };
+    case "jsx":
+      return { kind: "ts", languageId: "javascriptreact" };
+    case "rs":
+      return { kind: "rust", languageId: "rust" };
+    default:
+      return null;
+  }
+}

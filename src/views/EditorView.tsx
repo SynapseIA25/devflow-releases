@@ -10,6 +10,7 @@ import { FileExplorer } from "../components/panel/FileExplorer";
 // abre como pestaña editable (no el preview de solo lectura del panel derecho del chat).
 export function EditorView() {
   const activeProjectId = useProjectStore((s) => s.activeId);
+  const projectPath = useProjectStore((s) => s.projects[activeProjectId]?.path);
   const allTabs = useEditorStore((s) => s.tabs);
   // Solo las pestañas del proyecto activo (scope por proyecto): al cambiar de proyecto se muestran
   // sus propios archivos abiertos, no los del anterior.
@@ -95,6 +96,7 @@ export function EditorView() {
                   value={active.content}
                   onChange={(v) => setContent(active.path, v)}
                   onSave={() => save(active.path)}
+                  projectPath={projectPath}
                 />
               )}
             </div>

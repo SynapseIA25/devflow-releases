@@ -12,14 +12,16 @@ use tauri::{AppHandle, Emitter, Manager, State};
 // veía una terminal cmd independiente por sesión (el sidecar de opencode serve se reinicia por
 // sesión, ver ensureExpertAgent/Gotcha 3 en memoria). CREATE_NO_WINDOW = 0x08000000.
 #[cfg(windows)]
-fn no_window(cmd: &mut Command) -> &mut Command {
+pub(crate) fn no_window(cmd: &mut Command) -> &mut Command {
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(0x08000000)
 }
 #[cfg(not(windows))]
-fn no_window(cmd: &mut Command) -> &mut Command {
+pub(crate) fn no_window(cmd: &mut Command) -> &mut Command {
     cmd
 }
+
+mod lsp;
 
 pub struct McpProcesses(pub Mutex<HashMap<String, Child>>);
 // Keyed por provider ("mimo", "hermes", ...) — cada agente ACP corre en su propio proceso hijo,
@@ -1383,6 +1385,7 @@ pub fn run() {
         .manage(WebhookState(Mutex::new(None)))
         .manage(WatchState(Mutex::new(HashMap::new())))
         .manage(BridgeState::default())
+        .manage(lsp::LspProcesses(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             start_mcp_server,
             stop_mcp_server,
@@ -1419,6 +1422,11 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            lsp::lsp_start,
+            lsp::lsp_send,
+            lsp::lsp_stop,
+            lsp::rust_analyzer_path,
+            lsp::rust_analyzer_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

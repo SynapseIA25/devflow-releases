@@ -267,3 +267,44 @@ export async function runShellCommand(command: string, cwd: string): Promise<She
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   return invoke<ShellResult>("run_shell_command", { command, cwd });
 }
+
+// ── LSP (Language Server Protocol) — puente JSON-RPC-sobre-stdio con language servers reales
+// (typescript-language-server, rust-analyzer), tercera instancia del patrón acp_start/acp_send/
+// acp_stop. `id` lo compone el caller como "{kind}:{root}" (ver lspClient.ts) — un proceso por
+// combinación (lenguaje, raíz de proyecto).
+
+export async function lspStart(
+  id: string,
+  command: string,
+  args: string[],
+  cwd?: string,
+  env?: Record<string, string>
+): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("lsp_start", { id, command, args, cwd: cwd ?? null, env: env ?? null });
+}
+
+// `message` debe venir ya enmarcado (`Content-Length: N\r\n\r\n<json>`, sin newline final) — Rust
+// escribe los bytes tal cual, no reconstruye el framing (a diferencia de acp_send, que sí agrega
+// el "\n" porque ACP es newline-delimited).
+export async function lspSend(id: string, message: string): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri).");
+  return invoke<void>("lsp_send", { id, message });
+}
+
+export async function lspStop(id: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("lsp_stop", { id });
+}
+
+// Ruta detectada de rust-analyzer (vía `rustup which rust-analyzer`), o null si no está instalado.
+export async function rustAnalyzerPath(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("rust_analyzer_path");
+}
+
+// Instala rust-analyzer como componente de rustup. Tira si rustup falla o no está disponible.
+export async function installRustAnalyzer(): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("rust_analyzer_install");
+}

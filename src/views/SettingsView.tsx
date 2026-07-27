@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
 import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
 import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
+import { checkCli, installCli, rustAnalyzerPath, installRustAnalyzer } from "../lib/tauriApi";
 
 // DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
 // del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
@@ -274,6 +275,94 @@ function SecuritySection() {
   );
 }
 
+// Detección/instalación de los language servers reales que potencian hover/autocompletado/find-
+// references en el editor de código (ver lspClient.ts) — no tiene nada que ver con los agentes de
+// chat de arriba. typescript-language-server es un paquete npm (reusa check_cli/install_cli tal
+// cual); rust-analyzer se instala vía rustup component, así que tiene su propio par de comandos.
+type LspRowId = "ts" | "rust";
+const LSP_ROWS: { id: LspRowId; label: string; note: string }[] = [
+  {
+    id: "ts",
+    label: "TypeScript / JavaScript",
+    note: "typescript-language-server (npm) — hover, autocomplete and find-references for .ts/.tsx/.js/.jsx in the editor.",
+  },
+  {
+    id: "rust",
+    label: "Rust",
+    note: "rust-analyzer (rustup component) — hover, autocomplete and find-references for .rs in the editor.",
+  },
+];
+
+function LanguageServersSection() {
+  const [status, setStatus] = useState<Record<LspRowId, boolean> | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState<LspRowId | null>(null);
+  const [installError, setInstallError] = useState<Record<string, string>>({});
+
+  const runDetection = async () => {
+    setChecking(true);
+    try {
+      const [tsFound, rustPath] = await Promise.all([
+        checkCli(["typescript-language-server"]),
+        rustAnalyzerPath(),
+      ]);
+      setStatus({ ts: !!tsFound["typescript-language-server"], rust: !!rustPath });
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    void runDetection();
+  }, []);
+
+  const doInstall = async (id: LspRowId) => {
+    setInstalling(id);
+    setInstallError((e) => ({ ...e, [id]: "" }));
+    try {
+      if (id === "ts") await installCli("typescript-language-server");
+      else await installRustAnalyzer();
+      await runDetection();
+    } catch (err) {
+      setInstallError((e) => ({ ...e, [id]: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setInstalling(null);
+    }
+  };
+
+  return (
+    <div className="settings-apikeys">
+      <h3 className="settings-section-title"><Code2 size={14} /> Language servers · editor intelligence</h3>
+      <p className="apikeys-subtitle">
+        Powers real hover tooltips, autocomplete, and find-references in the code editor (separate from the chat
+        agents above). Detected on load — install a missing one with one click, or re-check after installing it
+        yourself.
+      </p>
+      {LSP_ROWS.map((row) => {
+        const found = status?.[row.id];
+        return (
+          <div key={row.id} className="apikeys-row">
+            <div className="apikeys-info">
+              <span className="apikeys-label">{row.label}</span>
+              <div className="apikeys-free">{row.note}</div>
+              {installError[row.id] && <div className="onb-install-error">{installError[row.id]}</div>}
+            </div>
+            <span className={`apikeys-status ${found ? "on" : ""}`}>
+              {checking ? "checking…" : found ? "installed" : "not found"}
+            </span>
+            {!checking && !found && (
+              <button className="onb-install-btn" disabled={installing === row.id} onClick={() => doInstall(row.id)}>
+                {installing === row.id ? <RotateCw size={11} className="spin" /> : <Download size={11} />}
+                {installing === row.id ? "Installing…" : "Install"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SettingsView() {
   const providers = useSettingsStore((s) => s.providers);
 
@@ -290,6 +379,7 @@ export function SettingsView() {
       <QuotaSection />
       <EconomySection />
       <SecuritySection />
+      <LanguageServersSection />
       <div className="providers-grid">
         {providers.map((p) => (
           <ProviderCard key={p.id} provider={p} />

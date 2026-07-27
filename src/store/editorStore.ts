@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { readTextFile, writeTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "./projectStore";
+import { warmServerFor, closeDocument } from "../lib/lspClient";
 
 // Una pestaña del editor de código. `content` es el buffer editable en vivo; `savedContent` es
 // lo último que hay en disco — la pestaña está "sucia" (cambios sin guardar) cuando difieren.
@@ -73,6 +74,11 @@ export const useEditorStore = create<EditorStore>()(
               t.path === path ? { ...t, content, savedContent: content, loading: false, error: null, externalChanged: false } : t
             ),
           }));
+          // Arranque perezoso del language server (LSP) para este archivo, si su lenguaje tiene uno
+          // mapeado — no bloquea la apertura, es fire-and-forget (ver lspClient.warmServerFor).
+          const projectId = get().tabs.find((t) => t.path === path)?.projectId;
+          const root = projectId ? useProjectStore.getState().projects[projectId]?.path : undefined;
+          if (root) warmServerFor(path, root);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           set((s) => ({
@@ -95,7 +101,14 @@ export const useEditorStore = create<EditorStore>()(
         await get().load(path);
       },
 
-      closeTab: (path) =>
+      closeTab: (path) => {
+        // Única señal real de "cierre" (a diferencia de simplemente cambiar de pestaña, que
+        // remonta CodeEditor pero no debería mandar textDocument/didClose) — ver lspClient.ts.
+        const closingForLsp = get().tabs.find((t) => t.path === path);
+        if (closingForLsp) {
+          const root = useProjectStore.getState().projects[closingForLsp.projectId]?.path;
+          if (root) void closeDocument(path, root);
+        }
         set((s) => {
           const closing = s.tabs.find((t) => t.path === path);
           const idx = s.tabs.findIndex((t) => t.path === path);
@@ -108,7 +121,8 @@ export const useEditorStore = create<EditorStore>()(
             activePathByProject[closing.projectId] = fallback ? fallback.path : null;
           }
           return { tabs, activePathByProject };
-        }),
+        });
+      },
 
       setActive: (path) =>
         set((s) => {
