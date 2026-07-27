@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { PROJECT_CWD } from "../lib/constants";
+import type { StackFingerprint } from "../lib/stackDetect";
+import type { TestStrategy } from "../lib/testStrategyCatalog";
 
 // ── Servicios (Frente 3, ahora scopeados por proyecto — Frente 4) ──
 // Un servicio es un proceso de larga duración (dev server, API, worker) que corre en una terminal
@@ -105,6 +107,17 @@ export type Project = {
   terminals: AppTerminal[]; // terminales independientes del proyecto (scope duro)
   testConfig?: TestConfig; // comando de test (a mano o auto-detectado) — ver testRunner.ts
   testRuns: TestRun[]; // historial de corridas (más reciente primero, acotado — ver MAX_TEST_RUNS)
+  testStrategy?: TestStrategyState; // última sugerencia de estrategia de testing — ver testStrategy.ts
+};
+
+// Fase 5 de la herramienta de testing nativa: sugerencia cacheada de estrategia (backend de
+// automatización + patrones de caso) para el stack detectado del proyecto. Es un único objeto (no una
+// lista acotada como testRuns) — una sugerencia vieja sobreviviendo un restart no es un problema, el
+// usuario la refresca con "Re-detectar".
+export type TestStrategyState = {
+  fingerprint: StackFingerprint;
+  strategy: TestStrategy;
+  detectedAt: number;
 };
 
 // Forma persistida (solo datos; projectPath es derivado, no se persiste — se recalcula del activo).
@@ -203,6 +216,7 @@ type ProjectStore = {
   addTestRun: (projectId: string, run: Omit<TestRun, "id">) => string;
   updateTestRun: (projectId: string, runId: string, patch: Partial<Omit<TestRun, "id">>) => void;
   clearTestRuns: (projectId: string) => void;
+  setTestStrategy: (projectId: string, state: TestStrategyState | undefined) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -388,6 +402,9 @@ export const useProjectStore = create<ProjectStore>()(
         ),
 
       clearTestRuns: (projectId) => set((s) => patchProject(s, projectId, () => ({ testRuns: [] }))),
+
+      setTestStrategy: (projectId, state) =>
+        set((s) => patchProject(s, projectId, () => ({ testStrategy: state }))),
     }),
     {
       name: "devflow-project",

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlaskConical, Play, CheckCircle2, XCircle, Loader2, Pencil, Search } from "lucide-react";
+import { FlaskConical, Play, CheckCircle2, XCircle, Loader2, Pencil, Search, Compass } from "lucide-react";
 import { useProjectStore, type TestFramework, type TestRun } from "../store/projectStore";
 import { detectTestCommand, runProjectTests, parseTestCounts } from "../lib/testRunner";
+import { TestStrategyPanel } from "./TestStrategyPanel";
 
 const FRAMEWORK_LABEL: Record<TestFramework, string> = {
   npm: "npm", pytest: "pytest", cargo: "cargo", go: "go", custom: "custom",
@@ -41,6 +42,7 @@ export function TestsView() {
   const project = useProjectStore((s) => s.projects[s.activeId]);
   const setTestConfig = useProjectStore((s) => s.setTestConfig);
 
+  const [tab, setTab] = useState<"runs" | "strategy">("runs");
   const [editing, setEditing] = useState(false);
   const [cmdDraft, setCmdDraft] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -103,12 +105,31 @@ export function TestsView() {
 
   if (!project) return null;
 
+  const header = (
+    <div className="tests-header">
+      <span className="tests-title"><FlaskConical size={14} /> Tests</span>
+      <div className="tests-tabs">
+        <button className={`tests-tab${tab === "runs" ? " active" : ""}`} onClick={() => setTab("runs")}>Corridas</button>
+        <button className={`tests-tab${tab === "strategy" ? " active" : ""}`} onClick={() => setTab("strategy")}><Compass size={11} /> Estrategia</button>
+      </div>
+    </div>
+  );
+
+  if (tab === "strategy") {
+    return (
+      <div className="tests-view">
+        <div className="tests-main tests-main--strategy">
+          {header}
+          <TestStrategyPanel project={project} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="tests-view">
       <div className="tests-sidebar">
-        <div className="tests-header">
-          <span className="tests-title"><FlaskConical size={14} /> Tests</span>
-        </div>
+        {header}
 
         <div className="tests-config">
           {editing ? (
