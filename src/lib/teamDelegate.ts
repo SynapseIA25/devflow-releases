@@ -130,6 +130,12 @@ function extractJsonArray(s: string): { area: string; subtask: string }[] | null
   }
 }
 
+// Overridea el taskProfile de un agente PARA ESTE LLAMADO, sin mutar el AgentConfig persistido. Si
+// el agente ya trae un taskProfile propio (ej. un experto), se respeta el suyo — este override es
+// para agentes sin uno (ej. el lead) o cuando el caller quiere un perfil puntual distinto (ver
+// specOrchestrator.ts: Specify/Plan piden "reasoning", Tasks pide "fast", Implement pide "code").
+export const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
+
 export async function autoDelegate(
   task: string,
   experts: AgentConfig[],
@@ -143,8 +149,8 @@ export async function autoDelegate(
 
   // El líder (opencode-agent) no trae taskProfile: overrideado a un provider multi-modelo (OpenCode) sin
   // perfil, newSession no rutea y cae al modelo DEFAULT del agente — que con key de OpenRouter es PAGO.
-  // Le damos perfil por turno: el plan es corto y estructurado (fast), la síntesis pide criterio (reasoning).
-  const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
+  // Le damos perfil por turno (withProfile, exportado arriba): el plan es corto y estructurado (fast),
+  // la síntesis pide criterio (reasoning).
 
   // 1. Descomponer (el líder arma el plan)
   emit({ kind: "stage", label: "The lead is breaking down the task…" });

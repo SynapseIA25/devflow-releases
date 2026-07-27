@@ -10,6 +10,7 @@ import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, 
 import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import * as opencodeClient from "../lib/opencodeClient";
+import * as ragEngine from "../lib/ragEngine";
 import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
 import { readTextFile, writeTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
@@ -585,6 +586,21 @@ export function ChatView() {
       sent.set(item.path, content);
       parts.push(`Attached file: ${item.path}\n\`\`\`\n${content}\n\`\`\``);
     }
+
+    // RAG opt-in (Settings): busca los chunks más relevantes del índice del proyecto para el mensaje
+    // actual — sin índice construido (o sin Ollama corriendo), falla en silencio, el turno sigue igual
+    // como si el toggle estuviera apagado (ver ragEngine.search/formatChunksForPrompt).
+    if (useSettingsStore.getState().ragEnabled) {
+      try {
+        const matches = await ragEngine.search(projectRoot, text, 6);
+        const relevant = matches.filter((m) => m.path !== editorPath && !fileItems.some((i) => i.path === m.path));
+        const block = await ragEngine.formatChunksForPrompt(relevant);
+        if (block) parts.push(block);
+      } catch {
+        /* índice no construido / Ollama no disponible — RAG es opt-in, no bloquea el turno */
+      }
+    }
+
     if (parts.length === 0) return text;
     return `${parts.join("\n\n")}\n\n${text}`;
   };

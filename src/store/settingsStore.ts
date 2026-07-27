@@ -38,6 +38,11 @@ type SettingsStore = {
   // "always" siempre, "off" nunca. Ver modelRouter.economyActive.
   promptEconomy: PromptEconomyMode;
   setPromptEconomy: (m: PromptEconomyMode) => void;
+  // Opt-in: inyecta un bloque [Related code] al prompt del chat con los chunks más relevantes del
+  // índice RAG del proyecto (ver ragEngine.ts). Off por default — requiere haber construido el
+  // índice (y tener Ollama corriendo) para hacer algo; sin índice, no-op silencioso.
+  ragEnabled: boolean;
+  setRagEnabled: (v: boolean) => void;
   setProviderKey: (id: string, key: string) => void;
   setOnboardingDone: (v: boolean) => void;
   setTeamProviderId: (id: string) => void;
@@ -64,11 +69,13 @@ export const useSettingsStore = create<SettingsStore>()(
       teamProviderId: "opencode",
       teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
+      ragEnabled: false,
 
       setTeamProviderId: (id) => set({ teamProviderId: id }),
       // Clamp defensivo: mínimo 30s (menos corta turnos sanos), máximo 30 min; NaN → default.
       setTeamTurnTimeoutSecs: (secs) => set({ teamTurnTimeoutSecs: Number.isFinite(secs) ? Math.min(Math.max(Math.round(secs), 30), 1800) : 240 }),
       setPromptEconomy: (m) => set({ promptEconomy: m }),
+      setRagEnabled: (v) => set({ ragEnabled: v }),
 
       setProviderKey: (id, key) =>
         set((s) => {
@@ -128,6 +135,7 @@ export const useSettingsStore = create<SettingsStore>()(
         teamProviderId: s.teamProviderId,
         teamTurnTimeoutSecs: s.teamTurnTimeoutSecs,
         promptEconomy: s.promptEconomy,
+        ragEnabled: s.ragEnabled,
       }),
     }
   )

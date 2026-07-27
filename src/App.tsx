@@ -24,6 +24,7 @@ import { ProjectsView } from "./views/ProjectsView";
 import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
 import { TeamView } from "./views/TeamView";
+import { SpecsView } from "./views/SpecsView";
 import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
 import { useSkillsStore } from "./store/skillsStore";
@@ -37,6 +38,7 @@ import { useUiStore } from "./store/uiStore";
 const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   workflow: <WorkflowView />,
   editor:   <EditorView />,
+  specs:    <SpecsView />,
   map:      <CodebaseMapView />,
   projects: <ProjectsView />,
   environments: <EnvironmentsView />,

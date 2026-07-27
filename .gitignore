@@ -38,3 +38,8 @@ mimocode.json
 
 # Config local de cargo (target-dir por-maquina) - NO commitear, rompe CI
 src-tauri/.cargo/config.toml
+
+# Índice RAG (embeddings) — derivado/regenerable con "Reconstruir índice" en Settings, puede pesar
+# varios MB y depende de la máquina que lo generó (Ollama local). .devflow/specs/ SÍ se commitea
+# (son la fuente de verdad de cada spec), esto no.
+.devflow/rag-index.json

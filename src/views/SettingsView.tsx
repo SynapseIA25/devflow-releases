@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search } from "lucide-react";
 import { useSettingsStore } from "../store/settingsStore";
 import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { useProjectStore } from "../store/projectStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
 import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
-import { checkCli, installCli, rustAnalyzerPath, installRustAnalyzer } from "../lib/tauriApi";
+import { checkCli, installCli, rustAnalyzerPath, installRustAnalyzer, ollamaCheck, ollamaPullModel } from "../lib/tauriApi";
+import { buildIndex, readIndexStatus, type BuildProgress } from "../lib/ragIndex";
+import { EMBED_MODEL } from "../lib/ragEngine";
 
 // DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
 // del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
@@ -275,6 +278,114 @@ function SecuritySection() {
   );
 }
 
+// RAG (retrieval-augmented generation) sobre el proyecto activo — embeddings locales vía Ollama,
+// índice plano en .devflow/rag-index.json, búsqueda por coseno en Rust (ver ragEngine.ts/ragIndex.ts
+// /rag.rs). Reconstrucción manual acá; el toggle de uso en el chat vive en el mismo lugar porque son
+// la misma feature, no dos.
+function RagSection() {
+  const ragEnabled = useSettingsStore((s) => s.ragEnabled);
+  const setRagEnabled = useSettingsStore((s) => s.setRagEnabled);
+  const projectPath = useProjectStore((s) => s.projects[s.activeId]?.path);
+
+  const [ollamaOk, setOllamaOk] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<{ exists: boolean; chunkCount?: number; builtAt?: number } | null>(null);
+  const [building, setBuilding] = useState<BuildProgress | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    if (!projectPath) return;
+    setOllamaOk(await ollamaCheck());
+    setStatus(await readIndexStatus(projectPath));
+  };
+
+  useEffect(() => {
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectPath]);
+
+  const doBuild = async () => {
+    if (!projectPath) return;
+    setError(null);
+    setBuilding({ stage: "scanning", done: 0, total: 0 });
+    try {
+      await buildIndex(projectPath, setBuilding);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuilding(null);
+    }
+  };
+
+  const doPull = async () => {
+    setPulling(true);
+    setError(null);
+    try {
+      await ollamaPullModel(EMBED_MODEL);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPulling(false);
+    }
+  };
+
+  return (
+    <div className="settings-security">
+      <h3 className="settings-section-title"><Search size={14} /> RAG · search over the project's code</h3>
+      <p className="apikeys-subtitle">
+        Grounds chat and Specs in the project's actual code via local embeddings (Ollama, {EMBED_MODEL}) — no
+        cloud API involved. Build the index once, rebuild after big changes.
+      </p>
+      <div className="security-row">
+        <label className={`security-toggle${ragEnabled ? " on" : ""}`} onClick={() => setRagEnabled(!ragEnabled)}>
+          <span className="security-toggle-dot" />
+        </label>
+        <div className="security-row-text">
+          <div className="security-row-title">Use RAG in the chat</div>
+          <div className="security-row-desc">
+            {ragEnabled
+              ? "On: every message includes the most relevant existing code found by semantic search."
+              : "Off: only manually attached files/folders are sent as context (as before)."}
+          </div>
+        </div>
+      </div>
+      <div className="apikeys-row">
+        <div className="apikeys-info">
+          <span className="apikeys-label">Ollama</span>
+          <div className="apikeys-free">
+            {ollamaOk === null ? "checking…" : ollamaOk ? "detected" : "not found — install Ollama first"}
+          </div>
+        </div>
+        {ollamaOk && (
+          <button className="onb-install-btn" disabled={pulling} onClick={doPull}>
+            {pulling ? <RotateCw size={11} className="spin" /> : <Download size={11} />}
+            {pulling ? "Pulling…" : `Pull ${EMBED_MODEL}`}
+          </button>
+        )}
+      </div>
+      <div className="apikeys-row">
+        <div className="apikeys-info">
+          <span className="apikeys-label">Index — {projectPath ?? "no project"}</span>
+          <div className="apikeys-free">
+            {building
+              ? `${building.stage} · ${building.done}/${building.total || "?"}`
+              : status?.exists
+              ? `${status.chunkCount} chunks · built ${status.builtAt ? new Date(status.builtAt).toLocaleString() : "?"}`
+              : "not built yet"}
+          </div>
+          {error && <div className="onb-install-error">{error}</div>}
+        </div>
+        <button className="onb-install-btn" disabled={!!building || !ollamaOk} onClick={doBuild}>
+          {building ? <RotateCw size={11} className="spin" /> : <Search size={11} />}
+          {building ? "Building…" : status?.exists ? "Rebuild index" : "Build index"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Detección/instalación de los language servers reales que potencian hover/autocompletado/find-
 // references en el editor de código (ver lspClient.ts) — no tiene nada que ver con los agentes de
 // chat de arriba. typescript-language-server es un paquete npm (reusa check_cli/install_cli tal
@@ -379,6 +490,7 @@ export function SettingsView() {
       <QuotaSection />
       <EconomySection />
       <SecuritySection />
+      <RagSection />
       <LanguageServersSection />
       <div className="providers-grid">
         {providers.map((p) => (

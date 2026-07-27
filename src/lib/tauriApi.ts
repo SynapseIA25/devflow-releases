@@ -308,3 +308,25 @@ export async function installRustAnalyzer(): Promise<string> {
   if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
   return invoke<string>("rust_analyzer_install");
 }
+
+// ── RAG (retrieval-augmented generation) — ver ragIndex.ts/ragEngine.ts y rag.rs.
+
+export async function ollamaCheck(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("ollama_check");
+}
+
+export async function ollamaPullModel(model: string): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("ollama_pull_model", { model });
+}
+
+export type RagMatch = { path: string; startLine: number; endLine: number; score: number };
+
+// Coseno por fuerza bruta sobre el índice ya construido (.devflow/rag-index.json) — corre en Rust
+// para no tener que mandar el índice completo (puede ser de varios MB) por IPC en cada búsqueda,
+// solo el embedding de la query cruza el límite JS→Rust.
+export async function ragSearch(indexPath: string, queryEmbedding: number[], topK: number): Promise<RagMatch[]> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<RagMatch[]>("rag_search", { indexPath, queryEmbedding, topK });
+}

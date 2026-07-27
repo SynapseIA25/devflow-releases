@@ -3,6 +3,8 @@ import { persist } from "zustand/middleware";
 import { PROJECT_CWD } from "../lib/constants";
 import type { StackFingerprint } from "../lib/stackDetect";
 import type { TestStrategy } from "../lib/testStrategyCatalog";
+import { slugify, type SpecArtifactKind, type SpecTaskState } from "../lib/specFiles";
+import type { TaskProfile } from "../lib/modelRouter";
 
 // ── Servicios (Frente 3, ahora scopeados por proyecto — Frente 4) ──
 // Un servicio es un proceso de larga duración (dev server, API, worker) que corre en una terminal
@@ -108,6 +110,32 @@ export type Project = {
   testConfig?: TestConfig; // comando de test (a mano o auto-detectado) — ver testRunner.ts
   testRuns: TestRun[]; // historial de corridas (más reciente primero, acotado — ver MAX_TEST_RUNS)
   testStrategy?: TestStrategyState; // última sugerencia de estrategia de testing — ver testStrategy.ts
+  specs: Spec[]; // Spec-Driven Development: specs del proyecto — ver specOrchestrator.ts
+};
+
+// ── Spec-Driven Development ──
+// Los artefactos (requirements.md/design.md/tasks.md) son la fuente de verdad en disco, bajo
+// .devflow/specs/<slug>/ (ver specFiles.ts) — mismo criterio que MEMORY.md: editable/versionable
+// fuera de DevFlow. Acá solo se guarda metadata liviana: fase actual, estado de cada artefacto, el
+// checklist de tareas ya parseado (para no releer el archivo en cada render), y qué agente+perfil
+// de modelo corre cada fase.
+export type SpecPhase = "specify" | "plan" | "tasks" | "implement" | "done";
+export type SpecArtifactStatus = "missing" | "draft" | "ready";
+// Override de agente+modelo por fase — esto reemplaza a "una regla global de qué modelo usa cada
+// agente": la regla vive por spec/fase, resuelta en runtime por specOrchestrator (ver PHASE_PROFILE).
+export type SpecPhaseAgent = { agentId: string; profile?: TaskProfile };
+export type Spec = {
+  id: string;
+  slug: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  phase: SpecPhase;
+  artifacts: Record<SpecArtifactKind, { status: SpecArtifactStatus; updatedAt?: number }>;
+  tasks: SpecTaskState[];
+  phaseAgents: Partial<Record<Exclude<SpecPhase, "done">, SpecPhaseAgent>>;
+  defaultAgentId?: string; // agente por defecto si una fase no tiene override propio (cae al lead si tampoco hay esto)
+  lastActivity?: string; // etiqueta corta para la barra de estado, ej. "Tasks: 3/10"
 };
 
 // Fase 5 de la herramienta de testing nativa: sugerencia cacheada de estrategia (backend de
@@ -133,6 +161,7 @@ const makeDebtId = () => `debt_${Math.random().toString(36).slice(2, 9)}`;
 const makeEnvId = () => `env_${Math.random().toString(36).slice(2, 9)}`;
 const makeTerminalId = () => `term_${Math.random().toString(36).slice(2, 9)}`;
 const makeTestRunId = () => `trun_${Math.random().toString(36).slice(2, 9)}`;
+const makeSpecId = () => `spec_${Math.random().toString(36).slice(2, 9)}`;
 const MAX_TEST_RUNS = 15; // los outputs pueden ser grandes — acotar el historial persistido
 
 // basename de una ruta Windows o POSIX (para nombrar un proyecto nuevo por su carpeta).
@@ -158,6 +187,15 @@ function makeProject(path: string, name?: string): Project {
     environments: [],
     terminals: [],
     testRuns: [],
+    specs: [],
+  };
+}
+
+function emptySpecArtifacts(): Spec["artifacts"] {
+  return {
+    requirements: { status: "missing" },
+    design: { status: "missing" },
+    tasks: { status: "missing" },
   };
 }
 
@@ -217,6 +255,12 @@ type ProjectStore = {
   updateTestRun: (projectId: string, runId: string, patch: Partial<Omit<TestRun, "id">>) => void;
   clearTestRuns: (projectId: string) => void;
   setTestStrategy: (projectId: string, state: TestStrategyState | undefined) => void;
+
+  // ── Specs (Spec-Driven Development) — projectId explícito, mismo criterio que Tests: un futuro
+  // tool del MCP bridge podría correr una fase para un proyecto que no es el visible en la UI. ──
+  createSpec: (projectId: string, name: string) => string;
+  updateSpec: (projectId: string, specId: string, patch: Partial<Omit<Spec, "id" | "slug">>) => void;
+  deleteSpec: (projectId: string, specId: string) => void;
 };
 
 // Aplica un cambio inmutable al proyecto activo.
@@ -405,6 +449,42 @@ export const useProjectStore = create<ProjectStore>()(
 
       setTestStrategy: (projectId, state) =>
         set((s) => patchProject(s, projectId, () => ({ testStrategy: state }))),
+
+      createSpec: (projectId, name) => {
+        const id = makeSpecId();
+        const now = Date.now();
+        set((s) => {
+          const proj = s.projects[projectId];
+          const base = slugify(name);
+          const existing = new Set((proj?.specs ?? []).map((sp) => sp.slug));
+          let slug = base;
+          let n = 2;
+          while (existing.has(slug)) slug = `${base}-${n++}`;
+          const spec: Spec = {
+            id,
+            slug,
+            name: name.trim() || "Untitled spec",
+            createdAt: now,
+            updatedAt: now,
+            phase: "specify",
+            artifacts: emptySpecArtifacts(),
+            tasks: [],
+            phaseAgents: {},
+          };
+          return patchProject(s, projectId, (p) => ({ specs: [spec, ...p.specs] }));
+        });
+        return id;
+      },
+
+      updateSpec: (projectId, specId, patch) =>
+        set((s) =>
+          patchProject(s, projectId, (p) => ({
+            specs: p.specs.map((sp) => (sp.id === specId ? { ...sp, ...patch, updatedAt: Date.now() } : sp)),
+          }))
+        ),
+
+      deleteSpec: (projectId, specId) =>
+        set((s) => patchProject(s, projectId, (p) => ({ specs: p.specs.filter((sp) => sp.id !== specId) }))),
     }),
     {
       name: "devflow-project",
@@ -447,7 +527,7 @@ export const useProjectStore = create<ProjectStore>()(
         const projects = Object.fromEntries(
           Object.entries(p.projects).map(([id, proj]) => [
             id,
-            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [], terminals: proj.terminals ?? [], testRuns: proj.testRuns ?? [] },
+            { ...proj, services: proj.services ?? [], contextItems: proj.contextItems ?? [], debt: proj.debt ?? [], environments: proj.environments ?? [], terminals: proj.terminals ?? [], testRuns: proj.testRuns ?? [], specs: proj.specs ?? [] },
           ])
         );
         return { ...current, ...p, projects, projectPath: p.projects[p.activeId].path };

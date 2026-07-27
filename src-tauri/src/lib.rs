@@ -22,6 +22,7 @@ pub(crate) fn no_window(cmd: &mut Command) -> &mut Command {
 }
 
 mod lsp;
+mod rag;
 
 pub struct McpProcesses(pub Mutex<HashMap<String, Child>>);
 // Keyed por provider ("mimo", "hermes", ...) — cada agente ACP corre en su propio proceso hijo,
@@ -1427,6 +1428,9 @@ pub fn run() {
             lsp::lsp_stop,
             lsp::rust_analyzer_path,
             lsp::rust_analyzer_install,
+            rag::ollama_check,
+            rag::ollama_pull_model,
+            rag::rag_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
