@@ -237,14 +237,23 @@ async function handlePermissionAsked(provider: string, props: any) {
 // Zen) más los de cualquier provider con una API key cargada en Settings (mismo criterio que ACP:
 // providerKeysEnv() define qué está "disponible"). El catálogo completo tiene cientos de providers
 // sin key configurada — listarlos todos sería ruido inútil en el selector.
-async function listAvailableModels(provider: string): Promise<ModelOption[]> {
+//
+// Se usa `client.config.providers()` (GET /config/providers, catálogo estático de config) en vez
+// de `client.provider.list()` (GET /provider) — verificado empíricamente (curl directo a cada
+// endpoint contra un `opencode serve` real): `/config/providers` responde en ~50ms, mientras que
+// `/provider` chequea conectividad/auth en vivo de CADA provider configurado (devuelve también
+// `connected: [...]`) y puede tardar varios segundos o directamente no resolver nunca si algún
+// provider configurado (ej. un servidor local que ya no está corriendo) no responde — eso colgaba
+// el selector de modelo indefinidamente. Misma forma de datos (`Provider[]` con `.models`), solo
+// cambia la clave del array en el body (`providers` acá, `all` en `/provider`).
+export async function listAvailableModels(provider: string): Promise<ModelOption[]> {
   const client = await ensureServer(provider);
-  if (!providersCache) providersCache = client.provider.list().catch(() => ({ data: { all: [] } }));
+  if (!providersCache) providersCache = client.config.providers().catch(() => ({ data: { providers: [] } }));
   const res = await providersCache;
   const keys = providerKeysEnv();
   const keyedIds = new Set(PROVIDER_KEY_SPECS.filter((s) => keys[s.envVar]).map((s) => s.id));
   const out: ModelOption[] = [];
-  for (const p of res?.data?.all ?? []) {
+  for (const p of res?.data?.providers ?? []) {
     if (p.id !== "opencode" && !keyedIds.has(p.id)) continue;
     for (const m of Object.values(p.models ?? {}) as any[]) {
       out.push({ value: `${p.id}/${m.id}`, label: `${p.name ?? p.id} · ${m.name ?? m.id}` });

@@ -441,6 +441,27 @@ export function ChatView() {
     return () => { unsub1(); unsub2(); };
   }, []);
 
+  // Descubre los modelos de DevFlow Code (OpenCode) apenas es el agente activo de la pestaña, SIN
+  // esperar a que se abra una sesión — a diferencia de ACP (Claude Code), donde el listado viene
+  // embebido recién en la respuesta de session/new y no hay forma de conocerlo antes (limitación
+  // real del protocolo, no algo que se pueda adelantar). Antes de este efecto, el selector de
+  // modelo quedaba oculto hasta el primer mensaje (availableModels.length === 0), lo cual obligaba
+  // a "empezar a trabajar" solo para poder elegir el modelo.
+  useEffect(() => {
+    if (activeProviderId !== "opencode") return;
+    if (useSettingsStore.getState().availableModelsByProvider["opencode"]?.length) return;
+    let cancelled = false;
+    opencodeClient.listAvailableModels("opencode").then((available) => {
+      if (cancelled || !available.length) return;
+      const preferred = useSettingsStore.getState().modelByProvider["opencode"];
+      const has = (v?: string) => !!v && v !== AUTO_MODEL && available.some((o) => o.value === v);
+      const zen = available.find((o) => o.value.startsWith("opencode/"));
+      const current = has(preferred) ? preferred! : zen?.value ?? available[0]?.value ?? null;
+      useSettingsStore.getState().reportModelOptions("opencode", available, current);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeProviderId]);
+
   // Cambia el modelo del agente activo: persiste la elección y, si ya hay sesión abierta en esta
   // pestaña, la aplica en vivo (si no, se aplica al abrir la próxima sesión). "Auto" no es un modelo
   // real: se persiste como preferencia y el router elige por turno (ver runAcp → classifyTask).
@@ -988,18 +1009,18 @@ export function ChatView() {
                     onClick={(e) => { e.stopPropagation(); selectModel(AUTO_MODEL); }}>
                     <div className="agent-option-name">✨ Auto — free model per task</div>
                   </div>
-                  {availableModels.map((m) => (
-                    <div key={m.value} className={`agent-option${!preferredIsAuto && m.value === currentModel ? " active" : ""}`}
-                      onClick={(e) => { e.stopPropagation(); selectModel(m.value); }}>
-                      <div className="agent-option-name">{m.label}</div>
-                    </div>
-                  ))}
                   {activeProviderId === "opencode" && (
                     <div className="agent-option agent-option--action"
                       onClick={(e) => { e.stopPropagation(); setShowModelMenu(false); setShowAddModelModal(true); }}>
                       <div className="agent-option-name">🔍 Buscar más modelos…</div>
                     </div>
                   )}
+                  {availableModels.map((m) => (
+                    <div key={m.value} className={`agent-option${!preferredIsAuto && m.value === currentModel ? " active" : ""}`}
+                      onClick={(e) => { e.stopPropagation(); selectModel(m.value); }}>
+                      <div className="agent-option-name">{m.label}</div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
