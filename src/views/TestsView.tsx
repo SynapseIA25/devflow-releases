@@ -79,7 +79,7 @@ export function TestsView() {
     try {
       const found = await detectTestCommand(project.path);
       if (!found) {
-        setDetectError("No se detectó un comando de test (sin package.json con script \"test\", Cargo.toml, go.mod ni pytest.ini/pyproject.toml/setup.py). Configurá uno manualmente.");
+        setDetectError("No test command detected (no package.json with a \"test\" script, Cargo.toml, go.mod, or pytest.ini/pyproject.toml/setup.py). Configure one manually.");
         setEditing(true);
         setCmdDraft("");
       } else {
@@ -109,8 +109,8 @@ export function TestsView() {
     <div className="tests-header">
       <span className="tests-title"><FlaskConical size={14} /> Tests</span>
       <div className="tests-tabs">
-        <button className={`tests-tab${tab === "runs" ? " active" : ""}`} onClick={() => setTab("runs")}>Corridas</button>
-        <button className={`tests-tab${tab === "strategy" ? " active" : ""}`} onClick={() => setTab("strategy")}><Compass size={11} /> Estrategia</button>
+        <button className={`tests-tab${tab === "runs" ? " active" : ""}`} onClick={() => setTab("runs")}>Runs</button>
+        <button className={`tests-tab${tab === "strategy" ? " active" : ""}`} onClick={() => setTab("strategy")}><Compass size={11} /> Strategy</button>
       </div>
     </div>
   );
@@ -136,15 +136,15 @@ export function TestsView() {
             <div className="svc-add-form">
               <input
                 className="svc-input"
-                placeholder="Comando de test (ej. npm test, pytest, cargo test)"
+                placeholder="Test command (e.g. npm test, pytest, cargo test)"
                 value={cmdDraft}
                 onChange={(e) => setCmdDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(false); }}
                 autoFocus
               />
               <div className="svc-add-actions">
-                <button className="svc-btn svc-btn--primary" onClick={saveEdit} disabled={!cmdDraft.trim()}>Guardar</button>
-                <button className="svc-btn" onClick={() => setEditing(false)}>Cancelar</button>
+                <button className="svc-btn svc-btn--primary" onClick={saveEdit} disabled={!cmdDraft.trim()}>Save</button>
+                <button className="svc-btn" onClick={() => setEditing(false)}>Cancel</button>
               </div>
             </div>
           ) : config ? (
@@ -153,16 +153,16 @@ export function TestsView() {
                 <span className="tests-config-badge">{FRAMEWORK_LABEL[config.framework]}</span>
                 <span className="tests-config-cmd">{config.command}</span>
               </div>
-              <button className="svc-icon" onClick={startEdit} title="Editar comando"><Pencil size={12} /></button>
+              <button className="svc-icon" onClick={startEdit} title="Edit command"><Pencil size={12} /></button>
             </div>
           ) : (
             <div className="tests-empty-config">
-              <p>Sin comando de test configurado para este proyecto.</p>
+              <p>No test command configured for this project.</p>
               <div className="svc-add-actions">
                 <button className="svc-btn svc-btn--primary" onClick={detect} disabled={detecting}>
-                  <Search size={12} /> {detecting ? "Detectando…" : "Auto-detectar"}
+                  <Search size={12} /> {detecting ? "Detecting…" : "Auto-detect"}
                 </button>
-                <button className="svc-btn" onClick={startEdit}>Configurar a mano</button>
+                <button className="svc-btn" onClick={startEdit}>Configure manually</button>
               </div>
               {detectError && <p className="tests-error">{detectError}</p>}
             </div>
@@ -170,14 +170,14 @@ export function TestsView() {
 
           <button className="tests-run-btn" onClick={runNow} disabled={running || !config && !editing}>
             {running ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
-            {running ? "Corriendo…" : "Correr tests"}
+            {running ? "Running…" : "Run tests"}
           </button>
           {runError && <p className="tests-error">{runError}</p>}
         </div>
 
         <div className="svc-list tests-runs-list">
           {runs.length === 0 && (
-            <div className="svc-empty">Sin corridas todavía. Tocá "Correr tests" para la primera.</div>
+            <div className="svc-empty">No runs yet. Tap "Run tests" for the first one.</div>
           )}
           {runs.map((run) => (
             <div
@@ -188,7 +188,7 @@ export function TestsView() {
               <StatusIcon status={run.status} />
               <div className="svc-row-info">
                 <div className="svc-row-name">
-                  {run.status === "running" ? "Corriendo…" : countsLabel(run) ?? (run.status === "passed" ? "Pasó" : "Falló")}
+                  {run.status === "running" ? "Running…" : countsLabel(run) ?? (run.status === "passed" ? "Passed" : "Failed")}
                   {run.status !== "running" && run.exitCode != null && ` (exit ${run.exitCode})`}
                 </div>
                 <div className="svc-row-cmd">{timeLabel(run.startedAt)}{run.finishedAt ? ` · ${durationLabel(run)}` : ""}</div>
@@ -206,14 +206,14 @@ export function TestsView() {
               <span className="svc-detail-name">{config?.command}</span>
               <span className="svc-detail-status">
                 {selectedRun.status === "running"
-                  ? "corriendo…"
+                  ? "running…"
                   : `${timeLabel(selectedRun.startedAt)} · ${durationLabel(selectedRun)}${countsLabel(selectedRun) ? ` · ${countsLabel(selectedRun)}` : ""}`}
               </span>
             </div>
-            <pre className="tests-output">{selectedRun.output || (selectedRun.status === "running" ? "…" : "(sin output)")}</pre>
+            <pre className="tests-output">{selectedRun.output || (selectedRun.status === "running" ? "…" : "(no output)")}</pre>
           </>
         ) : (
-          <div className="svc-logs-empty">Corré los tests para ver el output acá.</div>
+          <div className="svc-logs-empty">Run the tests to see the output here.</div>
         )}
       </div>
     </div>

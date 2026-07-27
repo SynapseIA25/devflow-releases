@@ -160,10 +160,10 @@ function uniqueTestName(pattern: TestCasePattern, targetHint: string, existingCo
 
 // ── 3. Cuerpo del caso: determinístico o agente (un solo hueco a llenar) ────
 function deterministicBody(fp: StackFingerprint, pattern: TestCasePattern): string {
-  const todo = `TODO: completar la aserción real de "${pattern.label}" — ${pattern.description}`;
+  const todo = `TODO: fill in the real assertion for "${pattern.label}" — ${pattern.description}`;
   switch (fp.language) {
     case "python": return `    # ${todo}\n    assert True`;
-    case "go": return `\t// ${todo}\n\tt.Skip("pendiente de implementar")`;
+    case "go": return `\t// ${todo}\n\tt.Skip("not implemented yet")`;
     case "rust": return `    // ${todo}`;
     case "java": return `        // ${todo}\n        org.junit.Assert.assertTrue(true);`;
     case "csharp": return `        // ${todo}\n        Assert.True(true);`;
@@ -204,40 +204,40 @@ function buildBodyPrompt(
   const refBlock =
     references.length > 0
       ? references.map((r) => `### ${r.path}\n\`\`\`\n${r.content}\n\`\`\``).join("\n\n")
-      : "(el proyecto no tiene tests existentes todavía — no hay archivo de referencia de estilo)";
+      : "(the project has no existing tests yet — no style-reference file available)";
   const sourceBlock =
     sourceFiles.length > 0
       ? sourceFiles.map((r) => `### ${r.path}\n\`\`\`\n${r.content}\n\`\`\``).join("\n\n")
       : null;
   const lines = [
-    `Necesito el CUERPO de un caso de test, nada más — la línea que lo declara (` +
-      `"it(...)"/"def test_...():"/"func Test...(t *testing.T) {"/"@Test public void ...()"/etc.) ya` +
-      ` está resuelta aparte, vos NO la escribís, solo lo que va DENTRO.`,
+    `I need the BODY of a test case, nothing more — the line that declares it (` +
+      `"it(...)"/"def test_...():"/"func Test...(t *testing.T) {"/"@Test public void ...()"/etc.) is` +
+      ` already resolved separately, you do NOT write it, only what goes INSIDE.`,
     ``,
-    `Patrón a implementar: "${pattern.label}" — ${pattern.description}`,
-    `Qué testear específicamente: ${targetHint || "(sin detalle adicional, usá tu criterio de QA)"}`,
+    `Pattern to implement: "${pattern.label}" — ${pattern.description}`,
+    `What to test specifically: ${targetHint || "(no extra detail, use your own QA judgment)"}`,
     `Stack: ${fp.language}${fp.uiFramework ? ` / ${fp.uiFramework}` : ""}`,
     ``,
-    `Archivo(s) de test existentes del proyecto, como referencia de estilo (imports, helpers, cómo se`,
-    `arman las aserciones acá):`,
+    `Existing test file(s) from the project, as a style reference (imports, helpers, how assertions`,
+    `are built here):`,
     refBlock,
   ];
   if (sourceBlock) {
     lines.push(
       ``,
-      `Código fuente REAL de lo que se está testeando (leélo antes de escribir una aserción — NO`,
-      `asumas comportamiento que no esté acá; si el comportamiento real difiere de lo que "debería"`,
-      `hacer, testeá lo que el código HACE de verdad):`,
+      `REAL source code of what's being tested (read it before writing an assertion — do NOT assume`,
+      `behavior that isn't here; if the real behavior differs from what it "should" do, test what the`,
+      `code ACTUALLY does):`,
       sourceBlock
     );
   }
   lines.push(
     ``,
-    `Respondé ÚNICAMENTE con un bloque de código fenced con el CUERPO del test — sin la línea`,
-    `declaradora, sin describe/class envolvente, nada de texto antes ni después del fence.`
+    `Respond ONLY with a fenced code block containing the test BODY — no declaring line, no`,
+    `wrapping describe/class, no text before or after the fence.`
   );
   if (previousViolation) {
-    lines.push(``, `Tu intento anterior falló exactamente por esto: ${previousViolation}`, `Corregilo y respondé de nuevo bajo las mismas reglas.`);
+    lines.push(``, `Your previous attempt failed exactly because of this: ${previousViolation}`, `Fix it and respond again under the same rules.`);
   }
   return lines.join("\n");
 }
@@ -251,14 +251,14 @@ async function agentFilledBody(
   previousViolation: string | undefined
 ): Promise<{ ok: true; code: string } | { ok: false; reason: string }> {
   const agent = useAgentsStore.getState().agents.find((a) => a.id === "expert-qa");
-  if (!agent) return { ok: false, reason: 'No se encontró el agente "expert-qa".' };
+  if (!agent) return { ok: false, reason: 'Could not find the "expert-qa" agent.' };
   const sourceFiles = references.length > 0 ? await resolveImportedSourceFiles(references[0]) : [];
   const prompt = buildBodyPrompt(pattern, fingerprint, targetHint, references, sourceFiles, previousViolation);
   const response = await runAgentTurn(agent, prompt, projectPath, AGENT_TIMEOUT_MS);
   const code = extractCodeFence(response);
-  if (!code) return { ok: false, reason: "el agente no devolvió un bloque de código fenced reconocible" };
+  if (!code) return { ok: false, reason: "the agent didn't return a recognizable fenced code block" };
   if (declaresWrapper(code)) {
-    return { ok: false, reason: "el agente redeclaró la función/it/describe contenedora en vez de escribir solo el cuerpo" };
+    return { ok: false, reason: "the agent redeclared the containing function/it/describe instead of writing only the body" };
   }
   return { ok: true, code };
 }
@@ -421,7 +421,7 @@ async function commitContent(fp: StackFingerprint, target: TargetFile, content: 
   const res = await runShellCommand(checker(target.path), projectPath);
   if (res.exitCode === 0) return { ok: true };
   await writeTextFile(target.path, target.existingContent); // revertir — nunca dejar un archivo roto
-  return { ok: false, reason: `el chequeo de sintaxis real falló (se revirtió el archivo): ${res.output.slice(0, 400)}` };
+  return { ok: false, reason: `the real syntax check failed (the file was reverted): ${res.output.slice(0, 400)}` };
 }
 
 // ── 6. Orquestador ───────────────────────────────────────────────────────────
@@ -442,7 +442,7 @@ async function tryOnce(
   if (!bodyResult.ok) return bodyResult;
 
   const composed = composeContent(fingerprint, target, testName, targetHint, bodyResult.code);
-  if (!bracesBalanced(composed)) return { ok: false, reason: "el código generado tiene llaves desbalanceadas" };
+  if (!bracesBalanced(composed)) return { ok: false, reason: "the generated code has unbalanced braces" };
 
   return commitContent(fingerprint, target, composed, projectPath);
 }

@@ -301,8 +301,8 @@ async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, i
 const VERIFY_SENTINEL = /VERIFY_RESULT:\s*(PASS|FAIL)/i;
 const VERIFY_REASON = /VERIFY_REASON:\s*(.+)/i;
 const VERIFY_INSTRUCTION =
-  "\n\nCuando termines de verificar, tu último párrafo tiene que tener EXACTAMENTE estas dos líneas " +
-  "(sin nada más en esas líneas):\nVERIFY_RESULT: PASS  (o FAIL)\nVERIFY_REASON: <una frase con la evidencia concreta que viste>";
+  "\n\nWhen you're done verifying, your last paragraph must have EXACTLY these two lines " +
+  "(nothing else on those lines):\nVERIFY_RESULT: PASS  (or FAIL)\nVERIFY_REASON: <one sentence with the concrete evidence you saw>";
 
 async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks, sessions: SessionCache): Promise<NodeResult> {
   // Modo "script": ya se generó un script determinístico de una exploración anterior (ver

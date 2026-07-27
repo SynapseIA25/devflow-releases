@@ -33,10 +33,10 @@ export type StrategyCatalogEntry = {
 export const KNOWN_MCP_SERVER_IDS = ["puppeteer", "desktop-cdp", "mobile-mcp"] as const;
 
 const MOBILE_PATTERNS: TestCasePattern[] = [
-  { id: "smoke", label: "Smoke", description: "La app abre y la pantalla principal se ve." },
-  { id: "tap-navigate", label: "Navegación por tap", description: "Tocar un elemento navega a la pantalla esperada." },
-  { id: "form-validation", label: "Validación de formulario", description: "Completar un formulario y confirmar el resultado (éxito o error de validación)." },
-  { id: "crash-check", label: "Chequeo de crashes", description: "No hay crashes reportados tras el flujo ejercitado." },
+  { id: "smoke", label: "Smoke", description: "The app opens and the home screen is visible." },
+  { id: "tap-navigate", label: "Tap navigation", description: "Tapping an element navigates to the expected screen." },
+  { id: "form-validation", label: "Form validation", description: "Filling out a form and confirming the result (success or validation error)." },
+  { id: "crash-check", label: "Crash check", description: "No crashes reported after exercising the flow." },
 ];
 
 export const CATALOG: StrategyCatalogEntry[] = [
@@ -48,9 +48,9 @@ export const CATALOG: StrategyCatalogEntry[] = [
       backend: "chromium-cdp-desktop",
       mcpServerIds: ["desktop-cdp"],
       casePatterns: [
-        { id: "smoke", label: "Smoke", description: "La ventana abre y un elemento clave del DOM renderiza." },
-        { id: "form-validation", label: "Validación de formulario", description: "Completar un formulario y confirmar que persiste/valida como se espera." },
-        { id: "navigation", label: "Navegación", description: "Cambiar de vista/tab deja el estado esperado en pantalla." },
+        { id: "smoke", label: "Smoke", description: "The window opens and a key DOM element renders." },
+        { id: "form-validation", label: "Form validation", description: "Filling out a form and confirming it persists/validates as expected." },
+        { id: "navigation", label: "Navigation", description: "Switching view/tab leaves the expected state on screen." },
       ],
     },
   },
@@ -62,9 +62,9 @@ export const CATALOG: StrategyCatalogEntry[] = [
       backend: "chromium-cdp-browser",
       mcpServerIds: ["puppeteer"],
       casePatterns: [
-        { id: "smoke", label: "Smoke", description: "La página carga y un elemento clave renderiza." },
-        { id: "form-validation", label: "Validación de formulario", description: "Completar un formulario y confirmar el resultado (éxito o error de validación)." },
-        { id: "api-contract", label: "Contrato de API", description: "Una request desde la página recibe la forma de respuesta esperada." },
+        { id: "smoke", label: "Smoke", description: "The page loads and a key element renders." },
+        { id: "form-validation", label: "Form validation", description: "Filling out a form and confirming the result (success or validation error)." },
+        { id: "api-contract", label: "API contract", description: "A request from the page receives the expected response shape." },
       ],
     },
   },
@@ -82,7 +82,7 @@ export const CATALOG: StrategyCatalogEntry[] = [
   },
   {
     id: "mobile-native",
-    label: "Mobile nativo (iOS/Android)",
+    label: "Native mobile (iOS/Android)",
     matches: (fp) => fp.isMobile && (fp.uiFramework === "native-ios" || fp.uiFramework === "native-android"),
     strategy: { backend: "mobile-mcp", mcpServerIds: ["mobile-mcp"], casePatterns: MOBILE_PATTERNS },
   },
@@ -94,9 +94,9 @@ export const CATALOG: StrategyCatalogEntry[] = [
       backend: "shell-cli",
       mcpServerIds: [], // runShellCommand ya cubre esto, sin backend nuevo — ver testRunner.ts
       casePatterns: [
-        { id: "cli-smoke", label: "Smoke de CLI", description: "--version/--help sale con exit code 0." },
-        { id: "cli-args", label: "Argumentos inválidos", description: "Un flag inválido sale con exit code distinto de 0 y un mensaje de uso en stderr." },
-        { id: "exit-code-contract", label: "Contrato de exit code", description: "El comando principal devuelve 0 en el caso feliz y no-0 en el de error, de forma consistente." },
+        { id: "cli-smoke", label: "CLI smoke", description: "--version/--help exits with code 0." },
+        { id: "cli-args", label: "Invalid arguments", description: "An invalid flag exits with a non-zero code and a usage message on stderr." },
+        { id: "exit-code-contract", label: "Exit code contract", description: "The main command returns 0 on the happy path and non-0 on error, consistently." },
       ],
     },
   },

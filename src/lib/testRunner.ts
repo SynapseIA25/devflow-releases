@@ -83,14 +83,14 @@ export function findProjectByPath(projectPath: string): Project | undefined {
 export async function runProjectTests(projectId: string): Promise<TestRun> {
   const store = useProjectStore.getState();
   const project = store.projects[projectId];
-  if (!project) throw new Error(`No existe el proyecto "${projectId}".`);
+  if (!project) throw new Error(`Project "${projectId}" doesn't exist.`);
 
   let config = project.testConfig;
   if (!config) {
     const detected = await detectTestCommand(project.path);
     if (!detected) {
       throw new Error(
-        "No se detectó un comando de test para este proyecto (sin package.json con script \"test\", Cargo.toml, go.mod ni pytest.ini/pyproject.toml/setup.py). Configurá uno manualmente en la vista Tests."
+        "No test command detected for this project (no package.json with a \"test\" script, Cargo.toml, go.mod, or pytest.ini/pyproject.toml/setup.py). Configure one manually in the Tests view."
       );
     }
     config = detected;
@@ -115,7 +115,7 @@ export async function runProjectTests(projectId: string): Promise<TestRun> {
     });
   }
   const finished = useProjectStore.getState().projects[projectId]?.testRuns.find((r) => r.id === runId);
-  if (!finished) throw new Error("La corrida de tests desapareció (¿se borró el proyecto mientras corría?).");
+  if (!finished) throw new Error("The test run vanished (was the project deleted while it was running?).");
   return finished;
 }
 
@@ -123,6 +123,6 @@ export async function runProjectTests(projectId: string): Promise<TestRun> {
 // ser el proyecto activo en la UI), no un id de store.
 export async function runTestsForPath(projectPath: string): Promise<TestRun> {
   const project = findProjectByPath(projectPath);
-  if (!project) throw new Error(`DevFlow no tiene abierto ningún proyecto en "${projectPath}".`);
+  if (!project) throw new Error(`DevFlow doesn't have any project open at "${projectPath}".`);
   return runProjectTests(project.id);
 }

@@ -147,17 +147,17 @@ export async function autoDelegate(
   const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
 
   // 1. Descomponer (el líder arma el plan)
-  emit({ kind: "stage", label: "El líder descompone la tarea…" });
+  emit({ kind: "stage", label: "The lead is breaking down the task…" });
   const planPrompt =
-    `Sos el líder de un equipo de expertos. Descomponé la siguiente tarea en sub-tareas, cada una asignada al área de UN experto de esta lista (usá EXACTAMENTE el identificador de área de la izquierda):\n${areaList}\n\n` +
-    `Tarea: "${task}"\n\n` +
-    `Respondé SOLO con un array JSON, sin texto extra ni explicación, con la forma: [{"area":"<area>","subtask":"<sub-tarea concreta>"}]. Máximo 4 items, un área por item (no repitas áreas), solo las realmente relevantes.`;
+    `You are the lead of a team of experts. Break down the following task into sub-tasks, each assigned to ONE expert's area from this list (use EXACTLY the area identifier on the left):\n${areaList}\n\n` +
+    `Task: "${task}"\n\n` +
+    `Respond ONLY with a JSON array, no extra text or explanation, shaped like: [{"area":"<area>","subtask":"<concrete sub-task>"}]. Max 4 items, one area per item (don't repeat areas), only the ones that are actually relevant.`;
   let planRaw: string;
   let planModel: string | undefined;
   try {
     planRaw = await runAgentTurn(withProfile(lead, "fast"), planPrompt, cwd, timeoutMs, (m) => { planModel = m; });
   } catch (e) {
-    emit({ kind: "error", message: e instanceof TurnTimeoutError ? `El líder no respondió a tiempo al armar el plan (${Math.round(timeoutMs / 1000)}s).` : (e instanceof Error ? e.message : String(e)) });
+    emit({ kind: "error", message: e instanceof TurnTimeoutError ? `The lead didn't respond in time while building the plan (${Math.round(timeoutMs / 1000)}s).` : (e instanceof Error ? e.message : String(e)) });
     return;
   }
   if (isCancelled()) return;
@@ -167,7 +167,7 @@ export async function autoDelegate(
     .map((it) => ({ ...it, expert: experts.find((e) => e.expertArea === it.area) }))
     .filter((it): it is typeof it & { expert: AgentConfig } => !!it.expert);
   if (plan.length === 0) {
-    emit({ kind: "error", message: `El líder no devolvió un plan válido:\n${planRaw.slice(0, 400)}` });
+    emit({ kind: "error", message: `The lead didn't return a valid plan:\n${planRaw.slice(0, 400)}` });
     return;
   }
   emit({ kind: "plan", items: plan.map((p) => ({ area: p.area, subtask: p.subtask })), model: planModel });
@@ -187,14 +187,14 @@ export async function autoDelegate(
       try {
         text = await runAgentTurn(
           item.expert,
-          `Tarea general: ${task}\n\nTu sub-tarea (${item.expert.name}): ${item.subtask}`,
+          `Overall task: ${task}\n\nYour sub-task (${item.expert.name}): ${item.subtask}`,
           cwd,
           timeoutMs,
           (m) => emit({ kind: "expert-model", index: i, model: m })
         );
       } catch (e) {
         timedOut = e instanceof TurnTimeoutError;
-        text = timedOut ? `⏱ ${e instanceof Error ? e.message : ""}` : `(error del experto: ${e instanceof Error ? e.message : String(e)})`;
+        text = timedOut ? `⏱ ${e instanceof Error ? e.message : ""}` : `(expert error: ${e instanceof Error ? e.message : String(e)})`;
       }
       emit({ kind: "expert-done", index: i, area: item.area, name: item.expert.name, text, timedOut });
       return { name: item.expert.name, text };
@@ -205,18 +205,18 @@ export async function autoDelegate(
   // 3. Sintetizar (el líder consolida). Truncamos cada aporte para acotar el contexto del turno de
   // síntesis: sin cap, juntar varias respuestas largas hace el prompt enorme (lento y caro). Con la
   // economía de prompts apagada en Settings el cap se relaja (el usuario prefirió fidelidad a tokens).
-  emit({ kind: "stage", label: "El líder consolida los aportes…" });
+  emit({ kind: "stage", label: "The lead is consolidating the contributions…" });
   const CAP = useSettingsStore.getState().promptEconomy === "off" ? 3000 : 1200;
   const synthPrompt =
-    `Sos el líder del equipo. La tarea era: "${task}".\n\nCada experto aportó lo suyo (resumido):\n\n` +
+    `You are the team lead. The task was: "${task}".\n\nEach expert contributed their part (summarized):\n\n` +
     results.map((r) => `### ${r.name}\n${r.text.length > CAP ? r.text.slice(0, CAP) + "…" : r.text}`).join("\n\n") +
-    `\n\nConsolidá todo en una respuesta final coherente y accionable para el usuario, en español. Sé conciso.`;
+    `\n\nConsolidate everything into one coherent, actionable final response for the user, in the same language the user's task above was written in. Be concise.`;
   let final: string;
   let synthModel: string | undefined;
   try {
     final = await runAgentTurn(withProfile(lead, "reasoning"), synthPrompt, cwd, timeoutMs, (m) => { synthModel = m; });
   } catch (e) {
-    emit({ kind: "error", message: e instanceof TurnTimeoutError ? `El líder no pudo sintetizar a tiempo (${Math.round(timeoutMs / 1000)}s); arriba quedan los aportes de cada experto.` : (e instanceof Error ? e.message : String(e)) });
+    emit({ kind: "error", message: e instanceof TurnTimeoutError ? `The lead couldn't synthesize in time (${Math.round(timeoutMs / 1000)}s); each expert's contribution is still shown above.` : (e instanceof Error ? e.message : String(e)) });
     return;
   }
   emit({ kind: "synthesis", text: final, model: synthModel });

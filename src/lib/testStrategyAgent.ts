@@ -35,18 +35,18 @@ async function gatherContext(projectPath: string): Promise<string> {
     if (raw != null) manifests.push(`### ${name}\n${raw.slice(0, MAX_MANIFEST_CHARS)}`);
   }
 
-  const rootListing = `raíz: ${[...fileNames, ...dirEntries.map((d) => `${d.name}/`)].join(", ") || "(vacía)"}`;
+  const rootListing = `root: ${[...fileNames, ...dirEntries.map((d) => `${d.name}/`)].join(", ") || "(empty)"}`;
   const subListings: string[] = [];
   for (const dir of dirEntries.slice(0, MAX_SUBDIRS_LISTED)) {
     const sub = await readDir(`${projectPath}/${dir.name}`).catch(() => []);
-    subListings.push(`${dir.name}/: ${sub.map((e) => e.name + (e.isDir ? "/" : "")).join(", ") || "(vacía)"}`);
+    subListings.push(`${dir.name}/: ${sub.map((e) => e.name + (e.isDir ? "/" : "")).join(", ") || "(empty)"}`);
   }
 
   return [
-    "Manifiestos encontrados en la raíz:",
-    manifests.length > 0 ? manifests.join("\n\n") : "(ninguno legible)",
+    "Manifests found at the root:",
+    manifests.length > 0 ? manifests.join("\n\n") : "(none readable)",
     "",
-    "Listado superficial (raíz + 1 nivel en las primeras subcarpetas relevantes):",
+    "Shallow listing (root + 1 level into the first relevant subfolders):",
     rootListing,
     ...subListings,
   ].join("\n");
@@ -54,32 +54,32 @@ async function gatherContext(projectPath: string): Promise<string> {
 
 function buildStrategyPrompt(fingerprint: StackFingerprint, context: string): string {
   return [
-    `El catálogo automático de estrategias de testing de DevFlow no reconoció el stack de este proyecto.`,
-    `Tu tarea: proponer una estrategia de testing razonable para él.`,
+    `DevFlow's automatic testing-strategy catalog didn't recognize this project's stack.`,
+    `Your task: propose a reasonable testing strategy for it.`,
     ``,
-    `Fingerprint detectado por heurística de archivos (puede ser incompleto/impreciso):`,
+    `Fingerprint detected by file heuristics (may be incomplete/imprecise):`,
     "```json",
     JSON.stringify(fingerprint, null, 2),
     "```",
     ``,
     context,
     ``,
-    `Los ÚNICOS MCP servers de automatización que existen de verdad en DevFlow son: ${KNOWN_MCP_SERVER_IDS.join(", ")}.`,
-    `Si ninguno aplica a este stack (ej. desktop nativo Qt/GTK/Swing/WinForms, que hoy no tiene backend`,
-    `de automatización propio en DevFlow), dejá "mcpServerIds" como un array vacío — NO INVENTES un`,
-    `nombre de servidor que no esté en esa lista exacta.`,
+    `The ONLY automation MCP servers that actually exist in DevFlow are: ${KNOWN_MCP_SERVER_IDS.join(", ")}.`,
+    `If none of them apply to this stack (e.g. native desktop Qt/GTK/Swing/WinForms, which today has no`,
+    `automation backend of its own in DevFlow), leave "mcpServerIds" as an empty array — DO NOT INVENT`,
+    `a server name that isn't in that exact list.`,
     ``,
-    `Respondé ÚNICAMENTE con un único objeto JSON fenced (\`\`\`json), sin texto antes ni después, con`,
-    `esta forma exacta:`,
+    `Respond ONLY with a single fenced JSON object (\`\`\`json), no text before or after, with exactly`,
+    `this shape:`,
     "```json",
     `{`,
-    `  "backend": "<nombre corto y descriptivo del enfoque, ej. \\"qt-test-nativo\\" o \\"manual, sin automatización disponible\\">",`,
-    `  "mcpServerIds": ["<solo ids de la lista de arriba, o array vacío>"],`,
-    `  "casePatterns": [{"id": "<slug único>", "label": "<título corto>", "description": "<qué verifica este caso>"}],`,
-    `  "rationale": "<2-3 frases en español explicando por qué esta estrategia>"`,
+    `  "backend": "<short descriptive name of the approach, e.g. \\"qt-native-testing\\" or \\"manual, no automation available\\">",`,
+    `  "mcpServerIds": ["<only ids from the list above, or an empty array>"],`,
+    `  "casePatterns": [{"id": "<unique slug>", "label": "<short title>", "description": "<what this case checks>"}],`,
+    `  "rationale": "<2-3 sentences in English explaining why this strategy>"`,
     `}`,
     "```",
-    `"casePatterns" tiene que tener al menos un elemento, con "id" únicos entre sí.`,
+    `"casePatterns" must have at least one element, with unique "id"s.`,
   ].join("\n");
 }
 
@@ -107,50 +107,50 @@ type ValidationResult =
 // real — es el "known failure mode" análogo al `require(`/`"ws"` de verifyScript.ts (acá: un id de MCP
 // server inventado en vez de uno real).
 function validateStrategyJson(obj: Record<string, unknown> | null): ValidationResult {
-  if (!obj) return { ok: false, reason: "la respuesta no tenía un objeto JSON fenced reconocible" };
+  if (!obj) return { ok: false, reason: "the response didn't have a recognizable fenced JSON object" };
 
   const backend = obj.backend;
   if (typeof backend !== "string" || !backend.trim()) {
-    return { ok: false, reason: '"backend" tiene que ser un string no vacío' };
+    return { ok: false, reason: '"backend" must be a non-empty string' };
   }
 
   const mcpServerIdsRaw = obj.mcpServerIds;
   if (!Array.isArray(mcpServerIdsRaw)) {
-    return { ok: false, reason: '"mcpServerIds" tiene que ser un array (puede estar vacío)' };
+    return { ok: false, reason: '"mcpServerIds" must be an array (can be empty)' };
   }
   const known: readonly string[] = KNOWN_MCP_SERVER_IDS;
   const invalidIds = mcpServerIdsRaw.filter((id) => typeof id !== "string" || !known.includes(id));
   if (invalidIds.length > 0) {
     return {
       ok: false,
-      reason: `"mcpServerIds" tiene ids inventados que no existen: ${JSON.stringify(invalidIds)} — los únicos válidos son ${known.join(", ")} (o array vacío)`,
+      reason: `"mcpServerIds" has invented ids that don't exist: ${JSON.stringify(invalidIds)} — the only valid ones are ${known.join(", ")} (or an empty array)`,
     };
   }
   const mcpServerIds = mcpServerIdsRaw as string[];
 
   const casePatternsRaw = obj.casePatterns;
   if (!Array.isArray(casePatternsRaw) || casePatternsRaw.length === 0) {
-    return { ok: false, reason: '"casePatterns" tiene que ser un array no vacío de objetos {id,label,description}' };
+    return { ok: false, reason: '"casePatterns" must be a non-empty array of {id,label,description} objects' };
   }
   const casePatterns: TestCasePattern[] = [];
   const seenIds = new Set<string>();
   for (const raw of casePatternsRaw) {
     if (typeof raw !== "object" || raw === null) {
-      return { ok: false, reason: 'cada elemento de "casePatterns" tiene que ser un objeto {id,label,description}' };
+      return { ok: false, reason: 'each element of "casePatterns" must be an {id,label,description} object' };
     }
     const { id, label, description } = raw as Record<string, unknown>;
     if (typeof id !== "string" || !id.trim()) {
-      return { ok: false, reason: 'cada elemento de "casePatterns" necesita un "id" string no vacío' };
+      return { ok: false, reason: 'each element of "casePatterns" needs a non-empty string "id"' };
     }
     if (seenIds.has(id)) {
-      return { ok: false, reason: `"casePatterns" tiene ids repetidos: "${id}" — cada patrón necesita un id único` };
+      return { ok: false, reason: `"casePatterns" has duplicate ids: "${id}" — each pattern needs a unique id` };
     }
     seenIds.add(id);
     if (typeof label !== "string" || !label.trim()) {
-      return { ok: false, reason: `el patrón "${id}" necesita un "label" string no vacío` };
+      return { ok: false, reason: `pattern "${id}" needs a non-empty string "label"` };
     }
     if (typeof description !== "string" || !description.trim()) {
-      return { ok: false, reason: `el patrón "${id}" necesita una "description" string no vacía` };
+      return { ok: false, reason: `pattern "${id}" needs a non-empty string "description"` };
     }
     casePatterns.push({ id, label, description });
   }
@@ -161,7 +161,7 @@ function validateStrategyJson(obj: Record<string, unknown> | null): ValidationRe
 
 export async function suggestStrategyViaAgent(fingerprint: StackFingerprint, projectPath: string): Promise<TestStrategy> {
   const agent = useAgentsStore.getState().agents.find((a) => a.id === "expert-qa");
-  if (!agent) throw new Error('No se encontró el agente "expert-qa" — no se puede pedir una estrategia de testing.');
+  if (!agent) throw new Error('Could not find the "expert-qa" agent — can\'t request a testing strategy.');
 
   const context = await gatherContext(projectPath);
   const prompt = buildStrategyPrompt(fingerprint, context);
@@ -174,12 +174,12 @@ export async function suggestStrategyViaAgent(fingerprint: StackFingerprint, pro
   // inválida (con un id de MCP server inventado, por ejemplo).
   if (!result.ok) {
     const retryPrompt =
-      `${prompt}\n\nTu respuesta anterior no cumplió el formato pedido — el problema exacto fue:\n` +
-      `${result.reason}\n\nRespondé de nuevo con ÚNICAMENTE el objeto JSON fenced corregido, nada más.`;
+      `${prompt}\n\nYour previous response didn't match the requested format — the exact problem was:\n` +
+      `${result.reason}\n\nRespond again with ONLY the corrected fenced JSON object, nothing else.`;
     const retryResponse = await runAgentTurn(agent, retryPrompt, projectPath, AGENT_TIMEOUT_MS);
     result = validateStrategyJson(extractJsonObject(retryResponse));
     if (!result.ok) {
-      throw new Error(`El agente QA no pudo proponer una estrategia válida tras un reintento: ${result.reason}`);
+      throw new Error(`The QA agent couldn't propose a valid strategy after one retry: ${result.reason}`);
     }
   }
 

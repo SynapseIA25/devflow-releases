@@ -215,7 +215,7 @@ async function runTestsTool(projectPath: string) {
 // en el fallback), y la UI (TestStrategyPanel.tsx) la ve actualizada si el usuario la mira después.
 async function suggestTestStrategyTool(projectPath: string) {
   const project = findProjectByPath(projectPath);
-  if (!project) throw new Error(`DevFlow no tiene abierto ningún proyecto en "${projectPath}".`);
+  if (!project) throw new Error(`DevFlow doesn't have any project open at "${projectPath}".`);
   const { fingerprint, strategy } = await suggestTestStrategy(projectPath);
   useProjectStore.getState().setTestStrategy(project.id, { fingerprint, strategy, detectedAt: Date.now() });
   return { fingerprint, strategy };
@@ -223,16 +223,16 @@ async function suggestTestStrategyTool(projectPath: string) {
 
 async function insertTestCaseTool(projectPath: string, args: Record<string, unknown>) {
   const project = findProjectByPath(projectPath);
-  if (!project) throw new Error(`DevFlow no tiene abierto ningún proyecto en "${projectPath}".`);
+  if (!project) throw new Error(`DevFlow doesn't have any project open at "${projectPath}".`);
   const cached = project.testStrategy;
   if (!cached) {
-    throw new Error('No hay una estrategia detectada para este proyecto todavía — llamá a "devflow_suggest_test_strategy" primero.');
+    throw new Error('No strategy detected for this project yet — call "devflow_suggest_test_strategy" first.');
   }
   const patternId = String(args.patternId ?? "");
   const pattern = cached.strategy.casePatterns.find((p) => p.id === patternId);
   if (!pattern) {
-    const available = cached.strategy.casePatterns.map((p) => p.id).join(", ") || "(ninguno)";
-    throw new Error(`patternId "${patternId}" no reconocido. Patrones disponibles: ${available}.`);
+    const available = cached.strategy.casePatterns.map((p) => p.id).join(", ") || "(none)";
+    throw new Error(`patternId "${patternId}" not recognized. Available patterns: ${available}.`);
   }
   const targetHint = String(args.targetHint ?? "");
   return generateAndInsertCase(projectPath, pattern, cached.fingerprint, targetHint);

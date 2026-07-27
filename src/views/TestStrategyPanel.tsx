@@ -9,10 +9,10 @@ import type { StackFingerprint } from "../lib/stackDetect";
 const RENDER_ENGINE_LABEL: Record<string, string> = {
   chromium: "Chromium",
   webkit: "WebKit",
-  "native-skia": "Nativo (Skia)",
-  "qt-gtk-swing": "Nativo (Qt/GTK/Swing)",
+  "native-skia": "Native (Skia)",
+  "qt-gtk-swing": "Native (Qt/GTK/Swing)",
   "none-cli": "CLI / shell",
-  unknown: "Desconocido",
+  unknown: "Unknown",
 };
 
 type CaseGenState = { open: boolean; hint: string; generating: boolean; result?: InsertCaseResult; error?: string };
@@ -72,15 +72,15 @@ export function TestStrategyPanel({ project }: { project: Project }) {
       <div className="strategy-toolbar">
         <button className="svc-btn svc-btn--primary" onClick={detect} disabled={detecting}>
           <RefreshCw size={12} className={detecting ? "spin" : ""} />
-          {detecting ? "Detectando…" : cached ? "Re-detectar" : "Detectar stack"}
+          {detecting ? "Detecting…" : cached ? "Re-detect" : "Detect stack"}
         </button>
-        {cached && <span className="strategy-detected-at">detectado {new Date(cached.detectedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+        {cached && <span className="strategy-detected-at">detected {new Date(cached.detectedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
       </div>
 
       {error && <p className="tests-error">{error}</p>}
 
       {!cached && !error && (
-        <div className="svc-empty">Todavía no se detectó el stack de este proyecto. Tocá "Detectar stack" para empezar.</div>
+        <div className="svc-empty">This project's stack hasn't been detected yet. Tap "Detect stack" to get started.</div>
       )}
 
       {cached && (
@@ -98,7 +98,7 @@ export function TestStrategyPanel({ project }: { project: Project }) {
             {cached.fingerprint.markers.length > 0 && (
               <div className="strategy-collapsible">
                 <button className="strategy-collapsible-toggle" onClick={() => setMarkersOpen((v) => !v)}>
-                  {markersOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} ¿por qué? ({cached.fingerprint.markers.length} señales)
+                  {markersOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} why? ({cached.fingerprint.markers.length} signals)
                 </button>
                 {markersOpen && (
                   <ul className="strategy-markers">
@@ -111,31 +111,31 @@ export function TestStrategyPanel({ project }: { project: Project }) {
 
           <div className="strategy-section">
             <div className="strategy-section-title">
-              Backend sugerido
+              Suggested backend
               <span className={`strategy-source-badge strategy-source-badge--${cached.strategy.source}`}>
-                {cached.strategy.source === "catalog" ? "catálogo" : "agente QA"}
+                {cached.strategy.source === "catalog" ? "catalog" : "QA agent"}
               </span>
             </div>
             <p className="strategy-backend">{cached.strategy.backend}</p>
             {cached.strategy.rationale && (
               <div className="strategy-collapsible">
                 <button className="strategy-collapsible-toggle" onClick={() => setRationaleOpen((v) => !v)}>
-                  {rationaleOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} ver razonamiento
+                  {rationaleOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} see reasoning
                 </button>
                 {rationaleOpen && <p className="strategy-rationale">{cached.strategy.rationale}</p>}
               </div>
             )}
             {cached.strategy.mcpServerIds.length > 0 && (
               <p className="strategy-hint">
-                MCP servers recomendados: {cached.strategy.mcpServerIds.join(", ")} — habilitalos en la pestaña MCP.
+                Recommended MCP servers: {cached.strategy.mcpServerIds.join(", ")} — enable them in the MCP tab.
               </p>
             )}
           </div>
 
           <div className="strategy-section">
-            <div className="strategy-section-title">Patrones de caso sugeridos</div>
+            <div className="strategy-section-title">Suggested case patterns</div>
             {cached.strategy.casePatterns.length === 0 ? (
-              <p className="strategy-hint">Sin patrones sugeridos para este stack todavía.</p>
+              <p className="strategy-hint">No patterns suggested for this stack yet.</p>
             ) : (
               <div className="strategy-patterns">
                 {cached.strategy.casePatterns.map((pattern) => {
@@ -146,14 +146,14 @@ export function TestStrategyPanel({ project }: { project: Project }) {
                       <div className="strategy-pattern-desc">{pattern.description}</div>
                       <div className="strategy-pattern-actions">
                         <button className="svc-btn" onClick={() => toggleCase(pattern.id)}>
-                          {gen?.open ? "Cancelar" : "Generar e insertar"}
+                          {gen?.open ? "Cancel" : "Generate and insert"}
                         </button>
                       </div>
                       {gen?.open && (
                         <div className="strategy-case-form">
                           <input
                             className="svc-input"
-                            placeholder="Qué testear específicamente (módulo, componente, endpoint)…"
+                            placeholder="What to test specifically (module, component, endpoint)…"
                             value={gen.hint}
                             onChange={(e) => setHint(pattern.id, e.target.value)}
                             disabled={gen.generating}
@@ -165,14 +165,14 @@ export function TestStrategyPanel({ project }: { project: Project }) {
                             onClick={() => generateCase(pattern, cached.fingerprint)}
                             disabled={gen.generating}
                           >
-                            {gen.generating ? "Generando…" : "Confirmar"}
+                            {gen.generating ? "Generating…" : "Confirm"}
                           </button>
                           {gen.error && <p className="tests-error">{gen.error}</p>}
                           {gen.result && (
                             gen.result.inserted ? (
-                              <p className="strategy-case-ok">✓ Insertado en {gen.result.filePath}</p>
+                              <p className="strategy-case-ok">✓ Inserted into {gen.result.filePath}</p>
                             ) : (
-                              <p className="tests-error">No se pudo insertar: {gen.result.warning}</p>
+                              <p className="tests-error">Couldn't insert: {gen.result.warning}</p>
                             )
                           )}
                         </div>
