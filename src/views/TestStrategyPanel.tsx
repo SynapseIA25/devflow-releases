@@ -2,6 +2,9 @@ import { useState } from "react";
 import { RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import { useProjectStore, type Project } from "../store/projectStore";
 import { suggestTestStrategy } from "../lib/testStrategy";
+import { generateAndInsertCase, type InsertCaseResult } from "../lib/testCaseInsert";
+import type { TestCasePattern } from "../lib/testStrategyCatalog";
+import type { StackFingerprint } from "../lib/stackDetect";
 
 const RENDER_ENGINE_LABEL: Record<string, string> = {
   chromium: "Chromium",
@@ -12,17 +15,19 @@ const RENDER_ENGINE_LABEL: Record<string, string> = {
   unknown: "Desconocido",
 };
 
-// Fase 5 de la herramienta de testing nativa (Test Strategy Advisor — ver memoria
-// devflow-testing-tool-design). Panel de solo lectura: detecta el stack del proyecto y muestra la
-// estrategia sugerida (backend de automatización + patrones de caso). La generación/inserción de
-// casos (Fase 7) y el fallback real al agente QA (Fase 6) llegan después — acá solo se muestra lo que
-// el catálogo estático ya sabe resolver.
+type CaseGenState = { open: boolean; hint: string; generating: boolean; result?: InsertCaseResult; error?: string };
+
+// Fase 5-7 de la herramienta de testing nativa (Test Strategy Advisor — ver memoria
+// devflow-testing-tool-design). Detecta el stack del proyecto, muestra la estrategia sugerida
+// (backend de automatización + patrones de caso) y permite generar+insertar un caso real para cada
+// patrón (Fase 7) — determinístico para smoke/cli-smoke, un turno de agente para el resto.
 export function TestStrategyPanel({ project }: { project: Project }) {
   const setTestStrategy = useProjectStore((s) => s.setTestStrategy);
   const [detecting, setDetecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rationaleOpen, setRationaleOpen] = useState(false);
   const [markersOpen, setMarkersOpen] = useState(false);
+  const [caseGen, setCaseGen] = useState<Record<string, CaseGenState>>({});
 
   const cached = project.testStrategy;
 
@@ -36,6 +41,29 @@ export function TestStrategyPanel({ project }: { project: Project }) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setDetecting(false);
+    }
+  };
+
+  const toggleCase = (id: string) =>
+    setCaseGen((prev) => {
+      const existing = prev[id] ?? { open: false, hint: "", generating: false };
+      return { ...prev, [id]: { ...existing, open: !existing.open } };
+    });
+
+  const setHint = (id: string, hint: string) =>
+    setCaseGen((prev) => {
+      const existing = prev[id] ?? { open: true, hint: "", generating: false };
+      return { ...prev, [id]: { ...existing, open: true, hint } };
+    });
+
+  const generateCase = async (pattern: TestCasePattern, fingerprint: StackFingerprint) => {
+    const hint = caseGen[pattern.id]?.hint ?? "";
+    setCaseGen((prev) => ({ ...prev, [pattern.id]: { open: true, hint, generating: true, error: undefined, result: undefined } }));
+    try {
+      const result = await generateAndInsertCase(project.path, pattern, fingerprint, hint);
+      setCaseGen((prev) => ({ ...prev, [pattern.id]: { ...prev[pattern.id], generating: false, result } }));
+    } catch (e) {
+      setCaseGen((prev) => ({ ...prev, [pattern.id]: { ...prev[pattern.id], generating: false, error: e instanceof Error ? e.message : String(e) } }));
     }
   };
 
@@ -110,12 +138,48 @@ export function TestStrategyPanel({ project }: { project: Project }) {
               <p className="strategy-hint">Sin patrones sugeridos para este stack todavía.</p>
             ) : (
               <div className="strategy-patterns">
-                {cached.strategy.casePatterns.map((pattern) => (
-                  <div key={pattern.id} className="strategy-pattern">
-                    <div className="strategy-pattern-label">{pattern.label}</div>
-                    <div className="strategy-pattern-desc">{pattern.description}</div>
-                  </div>
-                ))}
+                {cached.strategy.casePatterns.map((pattern) => {
+                  const gen = caseGen[pattern.id];
+                  return (
+                    <div key={pattern.id} className="strategy-pattern">
+                      <div className="strategy-pattern-label">{pattern.label}</div>
+                      <div className="strategy-pattern-desc">{pattern.description}</div>
+                      <div className="strategy-pattern-actions">
+                        <button className="svc-btn" onClick={() => toggleCase(pattern.id)}>
+                          {gen?.open ? "Cancelar" : "Generar e insertar"}
+                        </button>
+                      </div>
+                      {gen?.open && (
+                        <div className="strategy-case-form">
+                          <input
+                            className="svc-input"
+                            placeholder="Qué testear específicamente (módulo, componente, endpoint)…"
+                            value={gen.hint}
+                            onChange={(e) => setHint(pattern.id, e.target.value)}
+                            disabled={gen.generating}
+                            onKeyDown={(e) => { if (e.key === "Enter") generateCase(pattern, cached.fingerprint); }}
+                            autoFocus
+                          />
+                          <button
+                            className="svc-btn svc-btn--primary"
+                            onClick={() => generateCase(pattern, cached.fingerprint)}
+                            disabled={gen.generating}
+                          >
+                            {gen.generating ? "Generando…" : "Confirmar"}
+                          </button>
+                          {gen.error && <p className="tests-error">{gen.error}</p>}
+                          {gen.result && (
+                            gen.result.inserted ? (
+                              <p className="strategy-case-ok">✓ Insertado en {gen.result.filePath}</p>
+                            ) : (
+                              <p className="tests-error">No se pudo insertar: {gen.result.warning}</p>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -1381,6 +1381,9 @@ html, body, #root {
 .strategy-pattern { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-2, #0d1117); }
 .strategy-pattern-label { font-size: 12px; font-weight: 600; color: var(--text-1); }
 .strategy-pattern-desc { font-size: 11px; color: var(--text-3); line-height: 1.5; margin-top: 2px; }
+.strategy-pattern-actions { margin-top: 8px; }
+.strategy-case-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.strategy-case-ok { font-size: 11px; color: #4ade80; line-height: 1.5; margin: 0; }
 .tests-config { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .tests-config-row { display: flex; align-items: center; gap: 6px; }
 .tests-config-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
