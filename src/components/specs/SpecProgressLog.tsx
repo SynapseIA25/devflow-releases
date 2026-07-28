@@ -27,7 +27,17 @@ export function SpecProgressLog({ steps, running }: { steps: SpecStep[]; running
             case "task-delegate":
               return <DelegateStepList key={i} steps={[s.step]} running={running} />;
             case "task-done":
-              return <div key={i} className="specs-log-line specs-log-line--ok">✓ Task {s.index + 1} done</div>;
+              // changed === false: el turno terminó sin errores pero SIN llamar ninguna herramienta
+              // de escritura — el agente puede haber dicho "listo" sin haber tocado nada. No es un
+              // fallo (puede ser un false negative real, ej. una tarea que de verdad no tocaba
+              // código), pero se marca distinto para que se note sin ir al diff a mano.
+              return s.changed === false ? (
+                <div key={i} className="specs-log-line specs-log-line--warn">
+                  ⚠ Task {s.index + 1} finished, but the agent doesn't seem to have written/edited any file — review it.
+                </div>
+              ) : (
+                <div key={i} className="specs-log-line specs-log-line--ok">✓ Task {s.index + 1} done</div>
+              );
             case "task-error":
               return <div key={i} className="specs-log-line specs-log-line--err">✖ {s.message}</div>;
             default:

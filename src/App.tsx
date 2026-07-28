@@ -23,7 +23,6 @@ import { TestsView } from "./views/TestsView";
 import { ProjectsView } from "./views/ProjectsView";
 import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
-import { TeamView } from "./views/TeamView";
 import { SpecsView } from "./views/SpecsView";
 import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
@@ -43,7 +42,6 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   projects: <ProjectsView />,
   environments: <EnvironmentsView />,
   terminals: <TerminalsView />,
-  team: <TeamView />,
   skills: <SkillsView />,
   services: <ServicesView />,
   tests: <TestsView />,

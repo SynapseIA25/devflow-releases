@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
-export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "projects" | "environments" | "terminals" | "team" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
 
 type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
 type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
@@ -36,7 +36,6 @@ const GROUPS: NavGroup[] = [
   {
     key: "agents", icon: Users, label: "Agents",
     items: [
-      { id: "team",   icon: Users,    label: "Team",          hint: "experts" },
       { id: "agents", icon: Bot,      label: "Agent catalog", hint: "config" },
       { id: "skills", icon: Sparkles, label: "Skills",        hint: "library" },
       { id: "mcp",    icon: Server,   label: "MCP servers",   hint: "tools" },

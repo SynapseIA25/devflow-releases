@@ -2467,6 +2467,13 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
   display: flex; flex-direction: column; padding: 12px;
 }
 .specs-sidebar-head { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.specs-template-row { margin-bottom: 8px; }
+.specs-template-select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 6px 8px; color: var(--text); font-size: 11px; font-family: inherit; outline: none; cursor: pointer;
+}
+.specs-template-select:focus { border-color: var(--accent); }
+.specs-template-hint { font-size: 10px; color: var(--text-3); margin: 4px 2px 0; line-height: 1.4; }
 .specs-new-row { display: flex; gap: 6px; margin-bottom: 10px; }
 .specs-new-input {
   flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
@@ -2495,6 +2502,56 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .specs-title { font-size: 18px; font-weight: 700; }
 .specs-sub { font-size: 12px; color: var(--text-2); max-width: 70ch; line-height: 1.5; }
 .specs-error { font-size: 11px; color: var(--red); background: rgba(248,81,73,0.1); border: 1px solid rgba(248,81,73,0.3); border-radius: var(--radius); padding: 6px 10px; margin-top: 4px; }
+.specs-note { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+.specs-env-banner {
+  display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-2);
+  background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.3); border-radius: var(--radius);
+  padding: 7px 10px; margin-top: 4px;
+}
+.specs-env-banner svg { color: var(--green); flex-shrink: 0; }
+.specs-env-banner-btn {
+  margin-left: auto; background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+  font-size: 10px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+}
+.specs-env-banner-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+
+/* Tarea rápida (sidebar) */
+.specs-quick-task { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin-bottom: 10px; background: var(--bg-card); }
+.specs-quick-task-label { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); margin-bottom: 6px; }
+.specs-quick-task-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+  font-size: 11px; font-family: inherit; padding: 5px 7px; outline: none; resize: none;
+}
+.specs-quick-task-input:focus { border-color: var(--accent); }
+.specs-quick-task-btn {
+  width: 100%; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 5px; border-radius: 5px; border: 1px solid var(--accent); background: none; color: var(--accent-2);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.specs-quick-task-btn:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.specs-quick-task-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Config de ejecución de Implement */
+.specs-run-settings { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.specs-run-setting { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); }
+.specs-run-setting svg { color: var(--text-3); }
+.specs-run-setting select {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+  font-size: 11px; font-family: inherit; padding: 3px 5px; outline: none;
+}
+.specs-run-timeout-input {
+  width: 55px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+  font-size: 11px; font-family: inherit; padding: 3px 5px; outline: none;
+}
+.specs-run-setting--checkbox { gap: 6px; }
+
+/* Chip de experto sugerido por tarea (reemplaza el modo Router de Team) */
+.specs-task-suggest {
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 999px;
+  background: var(--bg-card); border: 1px solid var(--border); font-size: 9.5px; font-weight: 600;
+  cursor: pointer; flex-shrink: 0; white-space: nowrap;
+}
+.specs-task-suggest:hover { border-color: currentColor; }
 
 .specs-body-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items: start; }
 @media (max-width: 1000px) { .specs-body-grid { grid-template-columns: 1fr; } }
@@ -2555,6 +2612,17 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 /* Live preview panels */
 .specs-live-panel { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .specs-winbar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: var(--bg-card); border-bottom: 1px solid var(--border); }
+.specs-winbar-actions { margin-left: auto; display: flex; gap: 4px; }
+.specs-winbar-btn {
+  display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px;
+  background: none; border: 1px solid transparent; color: var(--text-3); cursor: pointer;
+}
+.specs-winbar-btn:hover:not(:disabled) { color: var(--accent-2); border-color: var(--border); }
+.specs-winbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.specs-artifact-edit {
+  width: 100%; min-height: 180px; background: none; border: none; outline: none; resize: vertical;
+  color: var(--text); font-family: inherit; font-size: inherit; line-height: inherit;
+}
 .specs-dot { width: 8px; height: 8px; border-radius: 50%; display: block; }
 .specs-dot--r { background: #f85149; }
 .specs-dot--y { background: #fbbf24; }
@@ -2565,17 +2633,45 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .specs-artifact-empty { color: var(--text-3); font-style: italic; }
 
 .specs-task-line { display: flex; align-items: flex-start; gap: 7px; padding: 2px 0; }
-.specs-task-box { width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid var(--text-3); flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #08130b; }
+.specs-task-box {
+  width: 13px; height: 13px; border-radius: 3px; border: 1.5px solid var(--text-3); flex-shrink: 0; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center; font-size: 9px; color: #08130b;
+  background: none; cursor: pointer; padding: 0; font-family: inherit;
+}
 .specs-task-line.done .specs-task-box { background: var(--green); border-color: var(--green); }
 .specs-task-line.done .specs-task-text { color: var(--text-3); text-decoration: line-through; }
-.specs-task-text { color: var(--text-2); }
+.specs-task-text { color: var(--text-2); cursor: pointer; flex: 1; }
+.specs-task-text:hover { color: var(--text); }
 .specs-task-area { color: var(--text-3); font-style: italic; }
+.specs-task-edit-input {
+  flex: 1; background: var(--bg-card); border: 1px solid var(--accent); border-radius: 4px; color: var(--text);
+  font-family: inherit; font-size: inherit; padding: 1px 4px; outline: none;
+}
+.specs-task-remove {
+  display: flex; align-items: center; justify-content: center; width: 15px; height: 15px; flex-shrink: 0;
+  background: none; border: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity 0.1s;
+}
+.specs-task-line:hover .specs-task-remove { opacity: 1; }
+.specs-task-remove:hover { color: var(--red); }
+.specs-task-add-row { display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.specs-task-add-input {
+  flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+  font-family: inherit; font-size: inherit; padding: 3px 6px; outline: none;
+}
+.specs-task-add-input:focus { border-color: var(--accent); }
+.specs-task-add-btn {
+  display: flex; align-items: center; justify-content: center; width: 22px; border-radius: 4px;
+  background: none; border: 1px solid var(--border); color: var(--text-2); cursor: pointer;
+}
+.specs-task-add-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-2); }
+.specs-task-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .specs-progress-log { display: flex; flex-direction: column; gap: 3px; }
 .specs-log-line { color: var(--text-2); }
 .specs-log-line--dim { color: var(--text-3); padding-left: 12px; }
 .specs-log-line--ok { color: var(--green); }
 .specs-log-line--err { color: var(--red); }
+.specs-log-line--warn { color: var(--yellow); }
 
 /* Status bar */
 .specs-statusbar { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 9px 14px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); font-size: 11px; color: var(--text-2); }
