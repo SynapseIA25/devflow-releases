@@ -7,6 +7,7 @@ import { useProjectStore } from "../store/projectStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
 import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
+import * as acpClient from "../lib/acpClient";
 import { checkCli, installCli, rustAnalyzerPath, installRustAnalyzer, ollamaCheck, ollamaPullModel } from "../lib/tauriApi";
 import { buildIndex, readIndexStatus, type BuildProgress } from "../lib/ragIndex";
 import { EMBED_MODEL } from "../lib/ragEngine";
@@ -73,10 +74,13 @@ function ApiKeysSection() {
         if (drafts[spec.id] !== undefined) setProviderKey(spec.id, drafts[spec.id]);
       }
       setDrafts({});
-      // El proceso de OpenCode captura el env al spawnear: lo reiniciamos para que tome las keys
-      // nuevas. Las sesiones de chat viejas de ese provider quedan huérfanas → se recrean solas.
+      // Los procesos agente capturan el env al spawnear: reiniciamos ambos para que tomen las keys
+      // nuevas (OpenCode vía su servidor HTTP+SSE, Claude Code vía ACP genérico). Las sesiones de
+      // chat viejas de esos providers quedan huérfanas → se recrean solas.
       await opencodeClient.restart("opencode");
+      await acpClient.restart("anthropic");
       useWorkspaceStore.getState().resetSessions("opencode");
+      useWorkspaceStore.getState().resetSessions("anthropic");
       setAppliedAt(Date.now());
     } finally {
       setApplying(false);
@@ -87,9 +91,9 @@ function ApiKeysSection() {
     <div className="settings-apikeys">
       <h3 className="settings-section-title"><KeyRound size={14} /> Inference providers · API keys</h3>
       <p className="apikeys-subtitle">
-        Add a key to unlock that provider's models in DevFlow Code (chat model selector).
-        No key at all? DevFlow Code still includes free models out of the box. Keys are stored
-        locally on this machine.
+        Add a key to enable that provider — Anthropic unlocks the Claude Code agent, the rest add
+        models to DevFlow Code's chat model selector. No key at all? DevFlow Code still includes
+        free models out of the box. Keys are stored locally on this machine.
       </p>
       {PROVIDER_KEY_SPECS.map((spec) => {
         const saved = providerKeys[spec.id] ?? "";
@@ -120,7 +124,7 @@ function ApiKeysSection() {
       <div className="apikeys-actions">
         <button className="apikeys-save" disabled={!dirty || applying} onClick={apply}>
           {applying ? <RotateCw size={12} className="spin" /> : null}
-          {applying ? "Applying…" : "Save & restart DevFlow Code"}
+          {applying ? "Applying…" : "Save & restart agents"}
         </button>
         {appliedAt && !dirty && (
           <span className="apikeys-applied">✓ Applied — new models appear on the next chat session.</span>

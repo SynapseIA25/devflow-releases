@@ -25,12 +25,15 @@ export type ProviderConfig = {
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
   {
     // Claude Code vía el adaptador ACP oficial de Zed (@zed-industries/claude-code-acp): envuelve el
-    // Claude Code SDK y habla ACP protocolVersion 1 (verificado por handshake). Auth: usa la sesión del
-    // CLI `claude` (correr `claude /login` una vez). En Windows, acp_start lo spawnea vía `cmd /C npx …`.
-    // npx -y baja el paquete la primera vez (cacheado después) — la primera sesión puede tardar unos seg.
+    // Claude Agent SDK (dependencia propia del paquete, no requiere el CLI `claude` instalado aparte) y
+    // habla ACP protocolVersion 1 (verificado por handshake). Auth: API key (ANTHROPIC_API_KEY, ver
+    // PROVIDER_KEY_SPECS) en vez de la sesión OAuth de `claude /login` — evita rutear por credenciales
+    // de suscripción Pro/Max en un producto de terceros (no permitido por los términos de Anthropic).
+    // En Windows, acp_start lo spawnea vía `cmd /C npx …`. npx -y baja el paquete la primera vez
+    // (cacheado después) — la primera sesión puede tardar unos seg.
     id: "anthropic",
     name: "Claude Code",
-    description: "Anthropic's agent via the ACP adapter. Requires the `claude` CLI logged in (`claude /login`).",
+    description: "Anthropic's agent via the ACP adapter. Add an API key in Settings to enable it.",
     color: "#d4a574",
     icon: "◈",
     docsUrl: "https://docs.anthropic.com",
@@ -57,9 +60,10 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
   },
 ];
 
-// Providers de inferencia cuya API key se carga en Settings y se inyecta como env var al proceso
-// del agente OpenCode (acp_start → envs). OpenCode los detecta solo por la presencia de la var
-// (verificado con `opencode acp` 1.18.3: los modelos del provider aparecen en configOptions).
+// Keys que se cargan en Settings y se inyectan como env var a TODOS los procesos ACP al spawnearlos
+// (acpClient.providerKeysEnv → acp_start → envs). OpenCode detecta los suyos solo por la presencia
+// de la var (verificado con `opencode acp` 1.18.3: los modelos del provider aparecen en
+// configOptions); el adaptador claude-code-acp lee ANTHROPIC_API_KEY vía el Claude Agent SDK.
 // keyed por id estable — settingsStore.providerKeys usa estos ids.
 export type ProviderKeySpec = {
   id: string;
@@ -72,6 +76,14 @@ export type ProviderKeySpec = {
 };
 
 export const PROVIDER_KEY_SPECS: ProviderKeySpec[] = [
+  {
+    id: "anthropic",
+    label: "Anthropic (Claude Code)",
+    envVar: "ANTHROPIC_API_KEY",
+    placeholder: "sk-ant-…",
+    keyUrl: "https://console.anthropic.com/settings/keys",
+    freeTier: "Pay-as-you-go via Anthropic Console — no subscription needed, billed per token.",
+  },
   {
     id: "openrouter",
     label: "OpenRouter",
