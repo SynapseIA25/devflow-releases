@@ -1,25 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, FileText, Zap, Boxes, Cpu, Timer } from "lucide-react";
-import { useProjectStore, type Spec, type SpecPhase } from "../store/projectStore";
+import { Plus, FileText, Zap, Boxes, Cpu, Timer, RotateCw } from "lucide-react";
+import { useProjectStore, type Spec } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useSettingsStore } from "../store/settingsStore";
 import { useChatStore } from "../store/chatStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useUiStore } from "../store/uiStore";
-import { DEFAULT_PROVIDERS, isExpertAgent, type AgentConfig } from "../lib/providers";
+import { useSpecRunStore } from "../store/specRunStore";
+import { isExpertAgent, DEFAULT_PROVIDERS, type AgentConfig } from "../lib/providers";
 import type { TaskProfile } from "../lib/modelRouter";
-import { createWorktree } from "../lib/environments";
-import * as acpClient from "../lib/acpClient";
-import * as opencodeClient from "../lib/opencodeClient";
 import { readSpecArtifact, writeSpecArtifact, serializeTasksMarkdown, specArtifactPath, type SpecTaskState } from "../lib/specFiles";
 import { SPEC_TEMPLATES } from "../lib/specTemplates";
-import {
-  runSpecifyPhase,
-  runPlanPhase,
-  runTasksPhase,
-  runImplementPhase,
-  type SpecStep,
-} from "../lib/specOrchestrator";
+import { runSpecPhase } from "../lib/specRuns";
+import type { NonDonePhase } from "../lib/specOrchestrator";
 import { SpecHeroCard } from "../components/specs/SpecHeroCard";
 import { SpecFlowDiagram } from "../components/specs/SpecFlowDiagram";
 import { SpecArtifactPreview } from "../components/specs/SpecArtifactPreview";
@@ -27,14 +20,6 @@ import { SpecTasksPreview } from "../components/specs/SpecTasksPreview";
 import { SpecProgressLog } from "../components/specs/SpecProgressLog";
 import { SpecContextStrip } from "../components/specs/SpecContextStrip";
 import { SpecStatusBar } from "../components/specs/SpecStatusBar";
-
-type NonDonePhase = Exclude<SpecPhase, "done">;
-const NEXT_PHASE: Record<NonDonePhase, SpecPhase> = {
-  specify: "plan",
-  plan: "tasks",
-  tasks: "implement",
-  implement: "done", // se corrige a "implement" si quedan tareas sin tildar (ver runPhase)
-};
 
 // Spec-Driven Development unifica lo que antes era la vista Equipo separada: "Auto-delegar" ahora es
 // una tarea rápida (crea una spec real de un solo paso, salta directo a Implement — a diferencia de
@@ -137,15 +122,7 @@ export function SpecsView() {
         </div>
         <div className="specs-list">
           {specs.map((s) => (
-            <button
-              key={s.id}
-              className={`specs-list-item${s.id === selectedId ? " active" : ""}`}
-              onClick={() => setSelectedId(s.id)}
-              title={s.slug}
-            >
-              <FileText size={13} />
-              <span>{s.name}</span>
-            </button>
+            <SpecListItem key={s.id} spec={s} active={s.id === selectedId} onClick={() => setSelectedId(s.id)} />
           ))}
           {specs.length === 0 && <div className="specs-empty-hint">No specs yet — create one above, or run a quick task.</div>}
         </div>
@@ -170,6 +147,21 @@ export function SpecsView() {
         )}
       </div>
     </div>
+  );
+}
+
+// Fila del sidebar como componente propio: se suscribe SOLO a si ESTA spec está corriendo, para que
+// el progreso de una corrida (que actualiza el store en cada paso) no re-renderice la lista entera —
+// y, más importante, para que quede visible cuál spec está corriendo aunque no sea la seleccionada:
+// la prueba visual de que dos specs pueden correr a la vez (ver specRunStore.ts).
+function SpecListItem({ spec, active, onClick }: { spec: Spec; active: boolean; onClick: () => void }) {
+  const running = useSpecRunStore((s) => s.runs[spec.id]?.running ?? null);
+  return (
+    <button className={`specs-list-item${active ? " active" : ""}`} onClick={onClick} title={spec.slug}>
+      {running ? <RotateCw size={13} className="spin" /> : <FileText size={13} />}
+      <span>{spec.name}</span>
+      {running && <span className="specs-list-item-running">{running}</span>}
+    </button>
   );
 }
 
@@ -201,16 +193,14 @@ function SpecDetail({
   const teamTurnTimeoutSecs = useSettingsStore((s) => s.teamTurnTimeoutSecs);
   const setTeamTurnTimeoutSecs = useSettingsStore((s) => s.setTeamTurnTimeoutSecs);
   const [isolate, setIsolate] = useState(true);
-  const [envName, setEnvName] = useState<string | null>(null);
-  const onTeamProvider = (a: AgentConfig): AgentConfig =>
-    a.providerId === teamProviderId ? a : { ...a, providerId: teamProviderId, model: "" };
+
+  // Estado de la corrida — vive en useSpecRunStore (keyed por spec.id), NO en useState local: así
+  // arrancar Implement en otra spec no depende de que ESTA siga siendo la seleccionada, y esta spec
+  // sigue mostrando su progreso si sigue corriendo cuando volvés a seleccionarla (ver specRunStore.ts).
+  const run = useSpecRunStore((s) => s.getRun(spec.id));
+  const { running, note, error, envName, steps } = run;
 
   const [artifacts, setArtifacts] = useState({ requirements: "", design: "" });
-  const [running, setRunning] = useState<NonDonePhase | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [steps, setSteps] = useState<SpecStep[]>([]);
-  const cancelRef = useRef(false);
   const autoRanRef = useRef(false);
 
   // Releer los artefactos de disco cuando cambia la spec seleccionada o alguno se acaba de escribir.
@@ -262,76 +252,19 @@ function SpecDetail({
     useUiStore.getState().setView("chat");
   };
 
-  const runPhase = async (phase: NonDonePhase) => {
-    if (running || !lead) return;
-    setRunning(phase);
-    setError(null);
-    try {
-      if (phase === "specify") {
-        await runSpecifyPhase(spec, projectRoot, agents, lead);
-        updateSpec(projectId, spec.id, {
-          artifacts: { ...spec.artifacts, requirements: { status: "ready", updatedAt: Date.now() } },
-          phase: NEXT_PHASE.specify,
-        });
-      } else if (phase === "plan") {
-        await runPlanPhase(spec, projectRoot, agents, lead);
-        updateSpec(projectId, spec.id, {
-          artifacts: { ...spec.artifacts, design: { status: "ready", updatedAt: Date.now() } },
-          phase: NEXT_PHASE.plan,
-        });
-      } else if (phase === "tasks") {
-        const tasks = await runTasksPhase(spec, projectRoot, agents, lead);
-        updateSpec(projectId, spec.id, {
-          tasks,
-          artifacts: { ...spec.artifacts, tasks: { status: "ready", updatedAt: Date.now() } },
-          phase: NEXT_PHASE.tasks,
-        });
-      } else {
-        setSteps([]);
-        setEnvName(null);
-        cancelRef.current = false;
-        let cwd = projectRoot;
-        const mappedLead = onTeamProvider(lead);
-        const mappedAgents = agents.map(onTeamProvider);
-
-        // Reinicia los procesos ACP/OpenCode involucrados ANTES de correr: un turno colgado previo
-        // puede dejar el proceso compartido wedgeado — arrancar fresco lo evita (mismo criterio que
-        // ya usaba Team).
-        setNote("Restarting the agent to start fresh…");
-        const providers = [...new Set([mappedLead, ...mappedAgents].map((a) => a.providerId))];
-        for (const p of providers) {
-          await (p === "opencode" ? opencodeClient.restart(p) : acpClient.restart(p));
-          useWorkspaceStore.getState().resetSessions(p);
-        }
-
-        if (isolate) {
-          const wtName = `spec-${spec.slug.slice(0, 24)}-${new Date().toTimeString().slice(0, 8).replace(/:/g, "")}`;
-          setNote(`Creating isolated environment "${wtName}" (worktree)…`);
-          const wt = await createWorktree(projectRoot, wtName);
-          useProjectStore.getState().addEnvironment(wt);
-          cwd = wt.path;
-          setEnvName(wt.name);
-        }
-        setNote(null);
-
-        const tasks = await runImplementPhase(
-          spec,
-          projectRoot,
-          mappedAgents,
-          mappedLead,
-          (step) => setSteps((prev) => [...prev, step]),
-          () => cancelRef.current,
-          { cwd, timeoutMs: teamTurnTimeoutSecs * 1000 }
-        );
-        const allDone = tasks.length > 0 && tasks.every((t) => t.done);
-        updateSpec(projectId, spec.id, { tasks, phase: allDone ? "done" : "implement" });
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setNote(null);
-      setRunning(null);
-    }
+  // La ejecución real vive en runSpecPhase (specRuns.ts), desacoplada de este componente — escribe el
+  // progreso en useSpecRunStore por spec.id en vez de useState local, así sigue corriendo (y siendo
+  // visible al volver) aunque cambies de spec seleccionada mientras tanto. Acá solo se arma la config
+  // de la corrida con lo que este componente ya tiene a mano.
+  const runPhase = (phase: NonDonePhase) => {
+    if (!lead) return;
+    void runSpecPhase(spec, projectId, projectRoot, phase, {
+      agents,
+      lead,
+      teamProviderId,
+      teamTurnTimeoutSecs,
+      isolate,
+    });
   };
 
   // Dispara Implement solo (no las otras fases) para una tarea rápida recién creada — una sola vez.
@@ -339,7 +272,7 @@ function SpecDetail({
     if (autoRun && !autoRanRef.current && spec.phase === "implement" && spec.tasks.some((t) => !t.done)) {
       autoRanRef.current = true;
       onAutoRunConsumed();
-      void runPhase("implement");
+      runPhase("implement");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRun]);
@@ -372,7 +305,7 @@ function SpecDetail({
             agents={experts}
             lead={lead}
             running={running}
-            onRun={(p) => void runPhase(p)}
+            onRun={runPhase}
             onPhaseAgentChange={onPhaseAgentChange}
           />
           <div className="specs-panel">

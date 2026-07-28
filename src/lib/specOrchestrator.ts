@@ -33,16 +33,18 @@ async function relatedCodeBlock(projectRoot: string, query: string): Promise<str
 // número — cada fase de spec es, en esencia, el mismo tipo de turno largo que un experto de Team).
 const DEFAULT_TIMEOUT_MS = 240_000;
 
-export const PHASE_ORDER: Exclude<SpecPhase, "done">[] = ["specify", "plan", "tasks", "implement"];
+export type NonDonePhase = Exclude<SpecPhase, "done">;
 
-export const PHASE_LABEL: Record<Exclude<SpecPhase, "done">, { label: string; desc: string }> = {
+export const PHASE_ORDER: NonDonePhase[] = ["specify", "plan", "tasks", "implement"];
+
+export const PHASE_LABEL: Record<NonDonePhase, { label: string; desc: string }> = {
   specify: { label: "Specify", desc: "EARS requirements — what has to happen." },
   plan: { label: "Plan", desc: "Architecture and technical decisions." },
   tasks: { label: "Tasks", desc: "Executable checklist, one commit-sized task at a time." },
   implement: { label: "Implement", desc: "The agent executes each task and checks it off." },
 };
 
-export const PHASE_PROFILE: Record<Exclude<SpecPhase, "done">, TaskProfile> = {
+export const PHASE_PROFILE: Record<NonDonePhase, TaskProfile> = {
   specify: "reasoning", // arquitectura/alcance — mismo perfil que el experto Architect
   plan: "reasoning",
   tasks: "fast", // transformación corta y estructurada — mismo perfil que el paso de plan de autoDelegate
@@ -54,7 +56,7 @@ export const PHASE_PROFILE: Record<Exclude<SpecPhase, "done">, TaskProfile> = {
 // sino un override por spec/fase resuelto acá en runtime.
 export function resolvePhaseAgent(
   spec: Spec,
-  phase: Exclude<SpecPhase, "done">,
+  phase: NonDonePhase,
   agents: AgentConfig[],
   lead: AgentConfig
 ): { agent: AgentConfig; profile: TaskProfile } {
