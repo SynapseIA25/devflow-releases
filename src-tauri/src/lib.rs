@@ -535,6 +535,17 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+// Borra un archivo (ej. una entrada de memoria individual, ver memoryFiles.ts). No falla si ya no
+// existe — un remove sobre algo ya borrado no debería tumbar el flujo que lo llama.
+fn remove_file(path: String) -> Result<(), String> {
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HttpResponse {
@@ -1404,6 +1415,7 @@ pub fn run() {
             opencode_events_stop,
             read_text_file,
             write_text_file,
+            remove_file,
             http_request,
             http_load_test,
             mcp_call_tool,

@@ -1,33 +1,50 @@
-// Memoria persistente de proyecto (Fase 3 del roadmap "herramienta nativa" — ver memoria del
-// proyecto devflow-opencode-nativo): la pieza de MiMo Code de más valor y más portable sin forkear
-// el motor de OpenCode. A diferencia de la memoria real de MiMo (SQLite, checkpoints automáticos,
-// gestión de contexto), esto es 100% capa de DevFlow — un MEMORY.md por proyecto que se inyecta
-// solo al abrir sesión y se actualiza a pedido (/remember en ChatView), por eso funciona igual para
-// agentes ACP (MiMo/Claude) y para el path nativo de OpenCode: no depende de nada del motor.
+// Memoria persistente de proyecto — capa de prompts sobre memoryFiles.ts (la capa de archivos:
+// entradas individuales + índice regenerado). Funciona igual para agentes ACP (Claude Code) y para
+// el path nativo de OpenCode, porque no depende de nada del motor — solo lee/escribe archivos y arma
+// texto para el prompt, igual que antes.
 import { readTextFile } from "./tauriApi";
+import {
+  listMemoryEntries,
+  memoryIndexPath,
+  buildIndexContent,
+  MEMORY_CATEGORIES,
+  type MemoryEntry,
+} from "./memoryFiles";
 import type { DocBlockData } from "../store/workspaceStore";
 
-// Un archivo más en la raíz del proyecto, al mismo nivel que README.md — aparece solo en la
-// pestaña Documentación de Project Hub (ya escanea *.md ahí), sin tocar esa vista.
 export function memoryPath(projectRoot: string): string {
-  return `${projectRoot}/MEMORY.md`;
+  return memoryIndexPath(projectRoot);
 }
 
+// Contenido crudo de MEMORY.md tal cual está en disco. Con la arquitectura por entradas esto es
+// normalmente el índice regenerado — pero también es cómo se detecta memoria VIEJA sin migrar (un
+// proyecto con MEMORY.md en formato prosa de antes de este rediseño, sin .devflow/memory/ todavía):
+// buildDistillationPrompt se la manda al agente para que la divida en entradas la primera vez.
 export async function readProjectMemory(projectRoot: string): Promise<string> {
   try {
-    return await readTextFile(memoryPath(projectRoot));
+    return await readTextFile(memoryIndexPath(projectRoot));
   } catch {
-    return ""; // no existe todavía — no es un error, el proyecto simplemente no tiene memoria aún
+    return ""; // no existe todavía — el proyecto simplemente no tiene memoria aún
   }
 }
 
-// Se manda el contenido COMPLETO (no un índice+path como el preámbulo de skills): la memoria es
-// chica por diseño — cada /remember la re-resume, no crece sin límite — y no vale la pena pagar un
-// tool-call de lectura aparte para algo que ya tenemos a mano al armar el prompt.
+// [Memory]: el índice completo (compacto — una línea por entrada, no crece con el CONTENIDO de cada
+// memoria) más el cuerpo ENTERO de las entradas "pinned" inline, para que nada marcado como crítico
+// dependa de que el agente decida leer un archivo aparte. El resto lo lee bajo demanda con su propia
+// herramienta de lectura — mismo mecanismo ya probado por buildSkillsPreamble (skills.ts) para el
+// mismo problema (un índice que no crece sin límite, en vez de inyectar todo siempre).
 export async function buildMemoryPreamble(projectRoot: string): Promise<string> {
-  const content = (await readProjectMemory(projectRoot)).trim();
-  if (!content) return "";
-  return `[Memory]\nProject memory from previous sessions:\n\n${content}`;
+  const entries = await listMemoryEntries(projectRoot);
+  if (entries.length === 0) return "";
+  const index = buildIndexContent(entries);
+  const pinned = entries.filter((e) => e.pinned);
+  const pinnedBlock = pinned.length
+    ? `\n\n[Pinned memory — always relevant, full content]\n${pinned.map((e) => `### ${e.hook || e.slug}\n${e.body}`).join("\n\n")}`
+    : "";
+  return (
+    `[Memory]\nProject memory from previous sessions. READ a file below (path relative to the ` +
+    `project root) if it looks relevant to the current task.\n\n${index}${pinnedBlock}`
+  );
 }
 
 // Transcript acotado de los bloques recientes del workspace para el turno de destilación (/remember)
@@ -43,17 +60,39 @@ export function summarizeWorkspaceBlocks(blocks: DocBlockData[], maxBlocks = 40,
   return lines.join("\n\n");
 }
 
-export function buildDistillationPrompt(existingMemory: string, transcript: string): string {
+// legacyRaw: contenido crudo de un MEMORY.md viejo (formato prosa) sin migrar todavía — se le pasa
+// al agente SOLO si no hay entradas estructuradas aún, pidiéndole que también lo divida en entradas
+// en la misma pasada (evita necesitar un comando/migración aparte: /remember migra sola la primera
+// vez que corre sobre un proyecto viejo).
+export function buildDistillationPrompt(entries: MemoryEntry[], legacyRaw: string, transcript: string): string {
+  const categories = MEMORY_CATEGORIES.join(" | ");
+  const existingBlock = entries.length
+    ? entries
+        .map((e) => `- slug: ${e.slug} | category: ${e.category} | tags: [${e.tags.join(", ")}] | pinned: ${e.pinned}\n  ${e.hook}`)
+        .join("\n")
+    : "(none yet)";
+  const legacyBlock =
+    entries.length === 0 && legacyRaw.trim()
+      ? `\n\nThis project has OLD unstructured memory that hasn't been migrated to entries yet — split ` +
+        `it into proper entries too, don't discard it:\n${legacyRaw.trim()}`
+      : "";
   return (
-    `Mantenés el archivo de memoria persistente de un proyecto (MEMORY.md), que se inyecta ` +
-    `completo al principio de CADA sesión nueva de chat sobre este proyecto — tiene que quedar ` +
-    `conciso y realmente útil, no un log de todo lo que pasó.\n\n` +
-    `Memoria actual:\n${existingMemory.trim() || "(vacía — todavía no hay memoria para este proyecto)"}\n\n` +
-    `Conversación reciente:\n${transcript || "(sin mensajes de usuario/agente para resumir)"}\n\n` +
-    `Actualizá la memoria: agregá decisiones, contexto de negocio, convenciones o gotchas ` +
-    `durables que aprendiste en esta conversación y que le servirían a una sesión futura para no ` +
-    `arrancar de cero; sacá lo que haya quedado obsoleto o irrelevante; no dupliques lo que ya está. ` +
-    `Respondé ÚNICAMENTE con el contenido Markdown completo y actualizado del archivo, sin comentario ` +
-    `extra, sin fences de código alrededor de todo el archivo.`
+    `You maintain this project's persistent memory as structured entries (not one prose file) — each ` +
+    `entry is its own file, injected compactly into future sessions: always as one index line, and in ` +
+    `full ONLY if marked "pinned".\n\n` +
+    `Existing entries:\n${existingBlock}${legacyBlock}\n\n` +
+    `Recent conversation:\n${transcript || "(no user/agent messages to summarize)"}\n\n` +
+    `Decide what's worth remembering long-term from this conversation: decisions, conventions, gotchas, ` +
+    `business context, or preferences that would help a future session avoid starting from scratch. ` +
+    `Reuse an existing slug to UPDATE an entry instead of duplicating it. Mark "pinned": true ONLY for ` +
+    `something that must never be missed (e.g. a hard rule) — most entries should NOT be pinned, since ` +
+    `pinned entries are always injected in full, defeating the point of keeping the rest compact. Remove ` +
+    `entries that are now wrong or obsolete.\n\n` +
+    `Respond ONLY with a JSON array of operations, as your message text — no extra commentary, no fences ` +
+    `around the whole response. Each item is one of:\n` +
+    `{"op": "upsert", "slug": "kebab-case-id", "category": "${categories}", "tags": ["short","tags"], ` +
+    `"pinned": false, "hook": "one-line summary for the index", "body": "full Markdown content"}\n` +
+    `{"op": "remove", "slug": "kebab-case-id"}\n` +
+    `If there's nothing worth remembering from this conversation, respond with an empty array: []`
   );
 }

@@ -12,12 +12,13 @@ import * as acpClient from "../lib/acpClient";
 import * as opencodeClient from "../lib/opencodeClient";
 import * as ragEngine from "../lib/ragEngine";
 import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
-import { readTextFile, writeTextFile } from "../lib/tauriApi";
+import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useSettingsStore } from "../store/settingsStore";
 import * as teamDelegate from "../lib/teamDelegate";
-import { memoryPath, readProjectMemory, buildMemoryPreamble, summarizeWorkspaceBlocks, buildDistillationPrompt } from "../lib/projectMemory";
+import { readProjectMemory, buildMemoryPreamble, summarizeWorkspaceBlocks, buildDistillationPrompt } from "../lib/projectMemory";
+import { listMemoryEntries, extractMemoryOps, applyMemoryOps } from "../lib/memoryFiles";
 
 // Referencia estable para el selector de settingsStore (evita re-render por array nuevo en cada llamada).
 const EMPTY_MODELS: acpClient.ModelOption[] = [];
@@ -851,12 +852,24 @@ export function ChatView() {
       return;
     }
     try {
-      const existing = await readProjectMemory(projectRoot);
+      const entries = await listMemoryEntries(projectRoot);
+      // legacy: MEMORY.md viejo en prosa, sin migrar todavía — se manda solo si no hay entradas
+      // estructuradas aún (ver buildDistillationPrompt).
+      const legacyRaw = entries.length === 0 ? await readProjectMemory(projectRoot) : "";
       const transcript = summarizeWorkspaceBlocks(w?.blocks ?? []);
-      const prompt = buildDistillationPrompt(existing, transcript);
-      const updated = await teamDelegate.runAgentTurn(agent, prompt, projectRoot, 120_000);
-      await writeTextFile(memoryPath(projectRoot), `${updated.trim()}\n`);
-      addBlockToWs(wsId, { type: "ai", agentId: agent.id, content: "✓ Project memory updated (`MEMORY.md`)." });
+      const prompt = buildDistillationPrompt(entries, legacyRaw, transcript);
+      const raw = await teamDelegate.runAgentTurn(agent, prompt, projectRoot, 120_000);
+      const ops = extractMemoryOps(raw);
+      if (ops.length === 0) {
+        addBlockToWs(wsId, { type: "ai", agentId: agent.id, content: "Nothing new worth remembering from this conversation." });
+      } else {
+        const { added, updated, removed } = await applyMemoryOps(projectRoot, ops);
+        addBlockToWs(wsId, {
+          type: "ai",
+          agentId: agent.id,
+          content: `✓ Project memory updated — ${added} added, ${updated} updated, ${removed} removed.`,
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       addBlockToWs(wsId, { type: "ai", agentId: agent.id, content: `**Error:** ${msg}` });

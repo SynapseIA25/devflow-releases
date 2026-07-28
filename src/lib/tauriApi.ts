@@ -113,6 +113,11 @@ export async function writeTextFile(path: string, content: string): Promise<void
   return invoke<void>("write_text_file", { path, content });
 }
 
+export async function removeFile(path: string): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri).");
+  return invoke<void>("remove_file", { path });
+}
+
 export type HttpResponse = { status: number; body: string };
 
 // Request HTTP corrido en Rust (reqwest) — sin CORS, para el nodo "http" de los workflows.
