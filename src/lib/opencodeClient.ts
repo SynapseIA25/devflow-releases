@@ -246,9 +246,28 @@ async function handlePermissionAsked(provider: string, props: any) {
 // provider configurado (ej. un servidor local que ya no está corriendo) no responde — eso colgaba
 // el selector de modelo indefinidamente. Misma forma de datos (`Provider[]` con `.models`), solo
 // cambia la clave del array en el body (`providers` acá, `all` en `/provider`).
+// `/config/providers` responde en ~50ms contra un server ya asentado (ver comentario arriba), PERO
+// encontrado en la práctica corriendo Specs en paralelo: un fetch() real desde WebView2 contra un
+// `opencode serve` recién resucitado (proceso nuevo, puerto TCP ya confirmado escuchando por el lado
+// de Rust) puede quedarse colgado sin resolver NUNCA — un curl directo al mismo puerto respondía al
+// instante mientras el fetch() del webview seguía esperando (mismo tipo de quirk de WebView2 ya
+// documentado para el streaming SSE en este archivo, no algo específico de este endpoint). Como
+// `newSession` llama a esta función en CADA sesión nueva, un cuelgue acá tumba cualquier turno que
+// arranque justo después de un restart. Timeout corto con fallback vacío: newSession ya tolera
+// `available` vacío (cae a `available[0]?.value ?? null` / sin modelo preferido).
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
 export async function listAvailableModels(provider: string): Promise<ModelOption[]> {
   const client = await ensureServer(provider);
-  if (!providersCache) providersCache = client.config.providers().catch(() => ({ data: { providers: [] } }));
+  if (!providersCache) {
+    providersCache = withTimeout(
+      client.config.providers().catch(() => ({ data: { providers: [] } })),
+      8000,
+      { data: { providers: [] } }
+    );
+  }
   const res = await providersCache;
   const keys = providerKeysEnv();
   const keyedIds = new Set(PROVIDER_KEY_SPECS.filter((s) => keys[s.envVar]).map((s) => s.id));

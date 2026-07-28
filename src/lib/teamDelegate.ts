@@ -49,48 +49,58 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
   // otro según el transporte del provider sin duplicar el resto de esta función.
   const client = isNative ? opencodeClient : acpClient;
   const sys = agent.systemPrompt?.trim();
-  // Path nativo: el system prompt va por el campo real de OpenCode, no prepend de texto — los
-  // expertos (isExpertAgent) corren como agente REAL registrado (permission-scoping por skills
-  // incluido), el resto usa el campo `system` simple. El path ACP sigue con el prepend (no tiene
-  // campo de sistema propio). OJO orden: ensureExpertAgent puede reiniciar el server de OpenCode
-  // (invalida TODAS las sesiones nativas) — tiene que correr ANTES de abrir la sesión de este
-  // turno, si no la dejaría colgando de un sessionId que ya no existe.
-  let nativeOpts: { system?: string; agent?: string } = {};
-  if (isNative) {
-    nativeOpts = isExpertAgent(agent)
-      ? { agent: await opencodeClient.ensureExpertAgent(agent.providerId, agent) }
-      : sys
-      ? { system: sys }
-      : {};
-  }
-  const sessionId = isNative
-    ? await opencodeClient.newSession(agent.providerId, cwd, agent.model || undefined, agent.taskProfile)
-    : await acpClient.newSession(agent.providerId, provider!.acp!, cwd, agent.model || undefined, agent.taskProfile);
-  const sessionModel = client.getSessionModel(agent.providerId, sessionId);
-  if (sessionModel && onModel) onModel(sessionModel);
-  let text = "";
-  const unsub = client.onUpdate((prov, sid, update) => {
-    if (prov !== agent.providerId || sid !== sessionId) return;
-    if (update.sessionUpdate === "agent_message_chunk") {
-      const content = update.content as { type?: string; text?: string } | string | undefined;
-      if (typeof content === "string") text += content;
-      else if (content?.type === "text" && content.text) text += content.text;
-    }
-  });
+
+  // TODO el armado de sesión (ensureExpertAgent/newSession) vive ADENTRO del try — antes solo el
+  // prompt() estaba cubierto por el reintento de abajo, pero en la práctica "Failed to fetch" pasa
+  // seguido DURANTE newSession() (session.create/listAvailableModels contra un server recién
+  // reiniciado), no solo durante prompt() — con el reintento afuera de ese tramo, esos casos nunca
+  // se reintentaban, se colaban directo como error final aunque el código "pareciera" reintentar.
+  let sessionId: string | undefined;
+  let unsub: (() => void) | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
+    // Path nativo: el system prompt va por el campo real de OpenCode, no prepend de texto — los
+    // expertos (isExpertAgent) corren como agente REAL registrado (permission-scoping por skills
+    // incluido), el resto usa el campo `system` simple. El path ACP sigue con el prepend (no tiene
+    // campo de sistema propio). OJO orden: ensureExpertAgent puede reiniciar el server de OpenCode
+    // (invalida TODAS las sesiones nativas) — tiene que correr ANTES de abrir la sesión de este
+    // turno, si no la dejaría colgando de un sessionId que ya no existe.
+    let nativeOpts: { system?: string; agent?: string } = {};
+    if (isNative) {
+      nativeOpts = isExpertAgent(agent)
+        ? { agent: await opencodeClient.ensureExpertAgent(agent.providerId, agent) }
+        : sys
+        ? { system: sys }
+        : {};
+    }
+    sessionId = isNative
+      ? await opencodeClient.newSession(agent.providerId, cwd, agent.model || undefined, agent.taskProfile)
+      : await acpClient.newSession(agent.providerId, provider!.acp!, cwd, agent.model || undefined, agent.taskProfile);
+    const sid = sessionId;
+    const sessionModel = client.getSessionModel(agent.providerId, sid);
+    if (sessionModel && onModel) onModel(sessionModel);
+    let text = "";
+    unsub = client.onUpdate((prov, updSid, update) => {
+      if (prov !== agent.providerId || updSid !== sid) return;
+      if (update.sessionUpdate === "agent_message_chunk") {
+        const content = update.content as { type?: string; text?: string } | string | undefined;
+        if (typeof content === "string") text += content;
+        else if (content?.type === "text" && content.text) text += content.text;
+      }
+    });
+
     let promptP: Promise<{ stopReason: string }>;
     if (isNative) {
-      promptP = opencodeClient.prompt(agent.providerId, sessionId, cwd, promptText, nativeOpts);
+      promptP = opencodeClient.prompt(agent.providerId, sid, cwd, promptText, nativeOpts);
     } else {
       const fullText = sys ? `[System]\n${sys}\n\n${promptText}` : promptText;
-      promptP = acpClient.prompt(agent.providerId, sessionId, fullText);
+      promptP = acpClient.prompt(agent.providerId, sid, fullText);
     }
     if (timeoutMs > 0) {
       const timeoutP = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           // Cancelar SOLO esta sesión (el cancel del Frente 1 es selectivo) → los otros expertos siguen.
-          client.cancel(agent.providerId, sessionId);
+          client.cancel(agent.providerId, sid);
           reject(new TurnTimeoutError(timeoutMs));
         }, timeoutMs);
       });
@@ -98,21 +108,34 @@ export async function runAgentTurn(agent: AgentConfig, promptText: string, cwd: 
     } else {
       await promptP;
     }
+    return text.trim();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!retried && !(e instanceof TurnTimeoutError) && isQuotaError(msg)) {
-      const model = client.getSessionModel(agent.providerId, sessionId);
+      const model = sessionId ? client.getSessionModel(agent.providerId, sessionId) : null;
       if (model) reportQuotaError(model, msg);
       if (timer) clearTimeout(timer);
-      unsub();
+      unsub?.();
+      return runAgentTurn(agent, promptText, cwd, timeoutMs, onModel, true);
+    }
+    // "Failed to fetch": encontrado en la práctica que un fetch() real desde WebView2 contra un
+    // server local recién resucitado (ej. tras el restart de "arrancar fresco" antes de Implement)
+    // puede fallar de forma intermitente incluso con el puerto TCP ya confirmado escuchando del lado
+    // de Rust — un curl directo al mismo puerto responde al instante mientras el fetch() del webview
+    // no (mismo quirk de WebView2 ya documentado para streaming SSE en opencodeClient.ts). No es
+    // cuota (no reporta cooldown de provider) — un reintento corto casi siempre alcanza. Puede pasar
+    // durante newSession() (arriba) o prompt() (más abajo) — este catch cubre las dos.
+    if (!retried && !(e instanceof TurnTimeoutError) && /failed to fetch/i.test(msg)) {
+      if (timer) clearTimeout(timer);
+      unsub?.();
+      await new Promise((r) => setTimeout(r, 1500));
       return runAgentTurn(agent, promptText, cwd, timeoutMs, onModel, true);
     }
     throw e;
   } finally {
     if (timer) clearTimeout(timer);
-    unsub();
+    unsub?.();
   }
-  return text.trim();
 }
 
 // Extrae el primer array JSON de una respuesta (tolera ```json ... ``` y texto alrededor).

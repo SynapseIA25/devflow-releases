@@ -98,12 +98,15 @@ export async function runSpecPhase(
       for (const p of providers) {
         await passProviderGate(p, async () => {
           if (!providersNeedingRestart.has(p)) return;
+          // restart() (opencode) YA espera activamente a que el proceso nuevo tenga el puerto TCP
+          // escuchando antes de resolver (ver el comentario en opencode_serve_ensure, lib.rs) — eso
+          // alcanza. Se probó agregar acá una confirmación extra a nivel HTTP (listAvailableModels)
+          // y se encontró, en la práctica, que ES ELLA la que puede quedarse colgada — un fetch()
+          // real desde WebView2 contra el server recién levantado, no el server en sí (un curl directo
+          // al mismo puerto respondía al instante mientras el fetch() del webview seguía colgado);
+          // mismo tipo de quirk de WebView2 ya documentado para el streaming SSE en este archivo.
           await (p === "opencode" ? opencodeClient.restart(p) : acpClient.restart(p));
           useWorkspaceStore.getState().resetSessions(p);
-          // Confirma que el server nuevo ya responde antes de soltar la puerta — sin esto, la corrida
-          // que estaba esperando en la cola (isProviderBusyElsewhere) sigue de largo contra un server
-          // que recién está terminando de levantar.
-          if (p === "opencode") await opencodeClient.listAvailableModels(p).catch(() => {});
         });
       }
       useSpecRunStore.getState().setNote(spec.id, null);
