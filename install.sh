@@ -1,13 +1,13 @@
 #!/bin/sh
 # DevFlow terminal installer (macOS and Linux).
-#   curl -fsSL https://raw.githubusercontent.com/pab-1984/devflow-releases/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/SynapseIA25/devflow-releases/main/install.sh | sh
 #
 # Downloads the latest public release, installs it and — on macOS — avoids the Gatekeeper
 # block (files downloaded via curl are not quarantined; we clear it anyway just in case).
 # Windows: download the .exe installer from the releases page.
 set -eu
 
-REPO="pab-1984/devflow-releases"
+REPO="SynapseIA25/devflow-releases"
 API="https://api.github.com/repos/${REPO}/releases/latest"
 
 say()  { printf '\033[36m%s\033[0m\n' "$*"; }
