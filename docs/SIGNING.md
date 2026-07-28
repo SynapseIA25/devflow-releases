@@ -1,7 +1,7 @@
 # Code signing — Windows and macOS
 
 The signing pipeline is already **wired up**. Builds ship unsigned until you add the credentials
-as **secrets in the public repo `pab-1984/devflow-releases`** (Settings → Secrets and variables →
+as **secrets in the public repo `SynapseIA25/devflow-releases`** (Settings → Secrets and variables →
 Actions). Once they're there, the next release signs itself. No code changes needed.
 
 > The **auto-updater** signing (`TAURI_SIGNING_PRIVATE_KEY` secret) is already configured and is a
