@@ -718,6 +718,14 @@ html, body, #root {
 .provider-meta-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .provider-meta-val { font-size: 12px; font-family: 'Cascadia Code','Consolas',monospace; color: var(--text); text-align: right; word-break: break-all; }
 .provider-note { font-size: 11px; color: var(--text-2); line-height: 1.5; }
+.provider-model-control { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; justify-content: flex-end; }
+.provider-model-select, .provider-model-input {
+  min-width: 0; max-width: 320px; background: var(--bg-2, #0d1117); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: 11.5px; color: var(--text-1);
+  font-family: 'Cascadia Code','Consolas',monospace;
+}
+.provider-model-input { flex: 1; }
+.provider-model-select:focus, .provider-model-input:focus { outline: none; border-color: var(--accent); }
 .provider-note code { font-size: 10.5px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 .provider-input {
   width: 100%; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -1206,6 +1214,9 @@ html, body, #root {
   margin: 4px 0 20px; padding: 14px 16px; border: 1px solid var(--border);
   border-radius: 10px; background: var(--bg-card);
 }
+/* Nested inside ModelsSection's own card (Bloque 4: fusión de Cuotas) — sin borde/fondo propio para
+   no duplicar la caja exterior. */
+.settings-quota--nested { margin: 4px 0 0; padding: 14px 0 0; border: none; border-top: 1px solid var(--border); border-radius: 0; background: none; }
 .quota-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
 .quota-name {
   width: 90px; flex-shrink: 0; font-size: 12px; color: var(--text-1);

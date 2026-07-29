@@ -6,19 +6,46 @@ import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useProjectStore } from "../store/projectStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
-import { ECONOMY_EDITOR_MAX_LINES, type PromptEconomyMode } from "../lib/modelRouter";
+import { ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, type PromptEconomyMode } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
 import * as acpClient from "../lib/acpClient";
+import type { ModelOption } from "../lib/acpClient";
 import { checkCli, installCli, rustAnalyzerPath, installRustAnalyzer, ollamaCheck, ollamaPullModel } from "../lib/tauriApi";
 import { buildIndex, readIndexStatus, type BuildProgress } from "../lib/ragIndex";
 import { EMBED_MODEL } from "../lib/ragEngine";
 
-// DevFlow es un host de agentes ACP: no guarda API keys ni elige el modelo por acá (eso lo hace el CLI
-// del agente, y el modelo se elige en el selector del chat). Esta tarjeta solo informa el estado real.
+// Elegir el modelo por default de un provider desde Settings, en vez de solo poder hacerlo ad-hoc
+// en el selector del chat (mismo modelByProvider que lee ese selector — ver ChatView.tsx). Solo
+// OpenCode tiene un endpoint liviano para listar modelos SIN abrir sesión (opencodeClient.
+// listAvailableModels, ~50ms contra /config/providers); Claude Code (ACP) solo expone su catálogo
+// dentro de la respuesta de session/new, así que para ese provider no hay nada barato que listar
+// acá — se deja como texto libre (el usuario escribe el model id de Claude que quiera, o lo deja
+// vacío para el default del agente).
 function ProviderCard({ provider }: { provider: ProviderConfig }) {
+  const modelByProvider = useSettingsStore((s) => s.modelByProvider);
+  const setModelForProvider = useSettingsStore((s) => s.setModelForProvider);
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[provider.id]);
   const connected = !!provider.acp || !!provider.nativeHttp;
-  const cliName = provider.acp?.command.split(/[\\/]/).pop();
+  // "npx" en sí no dice nada (es el wrapper, no el adaptador real) — mostrar el último arg, que es
+  // el paquete que npx efectivamente corre (ej. "@zed-industries/claude-code-acp").
+  const cliName =
+    provider.acp?.command === "npx" ? provider.acp.args[provider.acp.args.length - 1] : provider.acp?.command.split(/[\\/]/).pop();
+  const canListModels = !!provider.nativeHttp;
+
+  const [catalog, setCatalog] = useState<ModelOption[] | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const preferred = modelByProvider[provider.id] ?? "";
+
+  const fetchModels = async () => {
+    if (!canListModels) return;
+    setLoadingModels(true);
+    try {
+      setCatalog(await opencodeClient.listAvailableModels(provider.id));
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+  useEffect(() => { if (canListModels) void fetchModels(); }, [canListModels, provider.id]);
 
   return (
     <div className="provider-card">
@@ -36,14 +63,46 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
       {connected ? (
         <div className="provider-meta">
           <div className="provider-meta-row">
-            <span className="provider-label">Active model</span>
-            <span className="provider-meta-val">{currentModel ?? "— (set in the chat)"}</span>
+            <span className="provider-label">Default model</span>
+            <div className="provider-model-control">
+              {canListModels ? (
+                <select
+                  className="provider-model-select"
+                  value={preferred || AUTO_MODEL}
+                  onChange={(e) => setModelForProvider(provider.id, e.target.value)}
+                >
+                  <option value={AUTO_MODEL}>✨ Auto — free model per task</option>
+                  {(catalog ?? []).map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="provider-model-input"
+                  placeholder="e.g. claude-sonnet-4-6 — empty uses the agent's own default"
+                  value={preferred}
+                  onChange={(e) => setModelForProvider(provider.id, e.target.value)}
+                />
+              )}
+              {canListModels && (
+                <button className="proj-icon" onClick={() => void fetchModels()} disabled={loadingModels} title="Refresh model list">
+                  <RotateCw size={11} className={loadingModels ? "spin" : ""} />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="provider-note">
-            {provider.nativeHttp
-              ? <>Runs natively inside DevFlow — nothing to install separately. The model is switched from the chat selector.</>
-              : <>Authentication and models are managed by the <code>{cliName}</code> CLI. The model is switched from the chat selector.</>}
+          {canListModels && (
+            <div className="provider-note">
+              {loadingModels ? "Loading models…" : `${(catalog ?? []).length} model(s) available with your current keys.`}
+            </div>
+          )}
+          <div className="provider-meta-row">
+            <span className="provider-label">Currently running</span>
+            <span className="provider-meta-val">{currentModel ?? "— (starts on the first chat message)"}</span>
           </div>
+          {!provider.nativeHttp && (
+            <div className="provider-note">Authentication is managed by the <code>{cliName}</code> adapter (API key, see Cloud API keys below).</div>
+          )}
         </div>
       ) : (
         <div className="provider-meta">
@@ -64,6 +123,7 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
 // (acpClient.providerKeysEnv). Guardar reinicia el proceso de OpenCode para que los modelos del
 // provider nuevo aparezcan en el selector del chat en la próxima sesión.
 function ModelsSection() {
+  const providers = useSettingsStore((s) => s.providers);
   const providerKeys = useSettingsStore((s) => s.providerKeys);
   const setProviderKey = useSettingsStore((s) => s.setProviderKey);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -169,6 +229,19 @@ function ModelsSection() {
           <span className="apikeys-applied">✓ Applied — new models appear on the next chat session.</span>
         )}
       </div>
+
+      <h4 className="settings-subsection-title">Default model per agent</h4>
+      <p className="apikeys-subtitle">
+        Set which model each agent starts with — the same choice you'd otherwise only make ad-hoc
+        from the chat's model selector. Takes effect on the next new chat session for that agent.
+      </p>
+      <div className="providers-grid">
+        {providers.map((p) => (
+          <ProviderCard key={p.id} provider={p} />
+        ))}
+      </div>
+
+      <QuotaSection />
     </div>
   );
 }
@@ -224,8 +297,8 @@ function QuotaSection() {
   const anyUse = rows.some((p) => isToday && (counts[p] ?? 0) > 0);
 
   return (
-    <div className="settings-quota">
-      <h3 className="settings-section-title"><Gauge size={14} /> Free-tier quotas · today's usage & budgets</h3>
+    <div className="settings-quota settings-quota--nested">
+      <h4 className="settings-subsection-title"><Gauge size={14} /> Free-tier quotas · today's usage & budgets</h4>
       <p className="apikeys-subtitle">
         Requests counted locally per inference provider (providers don't expose remaining quota over ACP).
         The model router skips a provider once it hits its daily budget. Counters reset at local midnight.
@@ -518,28 +591,20 @@ function LanguageServersSection() {
 }
 
 export function SettingsView() {
-  const providers = useSettingsStore((s) => s.providers);
-
   return (
     <div className="settings-view">
       <div className="settings-header">
         <h2 className="settings-title">AI agents</h2>
         <p className="settings-subtitle">
-          DevFlow embeds agents over ACP: authentication and models are managed by each CLI. The active
-          model is chosen from the chat.
+          DevFlow embeds agents over ACP: authentication is managed by each provider. Set a default
+          model per agent below, or override it ad-hoc from the chat's model selector.
         </p>
       </div>
       <ModelsSection />
-      <QuotaSection />
       <EconomySection />
       <SecuritySection />
       <RagSection />
       <LanguageServersSection />
-      <div className="providers-grid">
-        {providers.map((p) => (
-          <ProviderCard key={p.id} provider={p} />
-        ))}
-      </div>
     </div>
   );
 }
