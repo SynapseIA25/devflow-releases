@@ -786,7 +786,6 @@ html, body, #root {
 
 /* ── Context Panel ───────────────────────────────────── */
 .context-panel { padding: 12px 14px; overflow-y: auto; height: 100%; }
-.ctx-task { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .ctx-section { margin-bottom: 14px; }
 .ctx-section-title { display: flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-3); margin-bottom: 6px; }
 .ctx-text { font-size: 11px; color: var(--text-2); line-height: 1.6; }

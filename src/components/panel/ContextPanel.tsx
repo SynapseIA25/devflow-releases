@@ -1,41 +1,52 @@
-import { FolderOpen, FileText, Folder, Info, BookOpen, Paperclip, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FolderOpen, FileText, Folder, Info, Paperclip, X } from "lucide-react";
 import { useProjectStore } from "../../store/projectStore";
+import { detectStackFingerprint, type StackFingerprint } from "../../lib/stackDetect";
 
-type ContextPanelProps = {
-  task?: string;
-  context?: string;
-  instructions?: string;
+const LANGUAGE_LABELS: Record<string, string> = {
+  typescript: "TypeScript", javascript: "JavaScript", dart: "Dart", rust: "Rust",
+  go: "Go", python: "Python", csharp: "C#", cpp: "C++", c: "C", java: "Java/Kotlin", swift: "Swift",
 };
 
-const DEFAULT: Required<ContextPanelProps> = {
-  task: "Analizar repo actual",
-  context: "Proyecto TypeScript con Tauri + React. Stack: Vite, React Flow, Zustand. El agente tiene acceso al sistema de archivos local y puede ejecutar comandos de terminal.",
-  instructions: "Leer la estructura del proyecto, identificar patrones y sugerir mejoras de arquitectura.",
-};
+// Reusa el mismo fingerprint que el Test Strategy Advisor (stackDetect.ts) en vez de un texto fijo:
+// antes esta descripción era un string hardcodeado (siempre el de mimo-agent, sin importar el
+// proyecto activo). "Tarea"/"Instrucciones" (también hardcodeadas antes) se sacaron directamente —
+// no había ningún campo en Project que las respaldara, eran decorativas.
+function describeStack(fp: StackFingerprint): string {
+  if (fp.language === "unknown") {
+    return "No se pudo detectar el stack de este proyecto — el agente igual tiene acceso a sus archivos y puede ejecutar comandos de terminal.";
+  }
+  const lang = LANGUAGE_LABELS[fp.language] ?? fp.language;
+  const label = fp.uiFramework ? `${lang} + ${fp.uiFramework}` : lang;
+  const testing = fp.existingTestFrameworks.length ? ` · tests: ${fp.existingTestFrameworks.join(", ")}` : "";
+  return `Proyecto ${label}${testing} — el agente tiene acceso a los archivos de este proyecto y puede ejecutar comandos de terminal.`;
+}
 
-export function ContextPanel(props: ContextPanelProps) {
-  const d = { ...DEFAULT, ...props };
+export function ContextPanel() {
   const items = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
   const removeItem = useProjectStore((s) => s.removeContextItem);
   const projectPath = useProjectStore((s) => s.projectPath);
+  const [stackDesc, setStackDesc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStackDesc(null); // limpiar ya: evita mostrar la descripción del proyecto anterior mientras detecta
+    detectStackFingerprint(projectPath).then((fp) => {
+      if (!cancelled) setStackDesc(describeStack(fp));
+    });
+    return () => { cancelled = true; };
+  }, [projectPath]);
 
   return (
     <div className="context-panel">
-      <div className="ctx-task">{d.task}</div>
-
       <div className="ctx-section">
         <div className="ctx-section-title"><Info size={11} /> Contexto</div>
-        <p className="ctx-text">{d.context}</p>
+        <p className="ctx-text">{stackDesc ?? "Detectando…"}</p>
       </div>
 
       <div className="ctx-section">
         <div className="ctx-section-title"><FolderOpen size={11} /> Directorio de trabajo</div>
         <code className="ctx-path">{projectPath}</code>
-      </div>
-
-      <div className="ctx-section">
-        <div className="ctx-section-title"><BookOpen size={11} /> Instrucciones</div>
-        <p className="ctx-text">{d.instructions}</p>
       </div>
 
       <div className="ctx-section">
