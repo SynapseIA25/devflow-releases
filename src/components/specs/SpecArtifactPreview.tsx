@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pencil, ExternalLink, Check, X } from "lucide-react";
 import { useUiStore } from "../../store/uiStore";
+import { CodeEditor } from "../editor/CodeEditor";
 
 // Panel "ventana en vivo" (header con puntos estilo mac) que previsualiza un artefacto de texto
 // (requirements.md/design.md) — reusado tal cual para ambos, dos instancias en SpecsView. Editable
@@ -66,9 +67,9 @@ export function SpecArtifactPreview({
           )}
         </div>
       </div>
-      <div className="specs-winbody">
+      <div className={`specs-winbody${editing ? " specs-winbody--editing" : ""}`}>
         {editing ? (
-          <textarea className="specs-artifact-edit" value={draft} onChange={(e) => setDraft(e.target.value)} rows={12} autoFocus />
+          <CodeEditor path={path} value={draft} onChange={setDraft} onSave={() => void save()} />
         ) : content.trim() ? (
           <pre className="specs-artifact-text">{content}</pre>
         ) : (

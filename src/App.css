@@ -2014,6 +2014,13 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .proj-docs { height: 100%; display: flex; }
 .proj-docs-list { flex: 0 0 240px; border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
 .proj-docs-list-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 11px; color: var(--text-3); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.proj-docs-new { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.proj-docs-new-input {
+  flex: 1; min-width: 0; background: var(--bg-2, #0d1117); border: 1px solid var(--border);
+  border-radius: 5px; padding: 4px 7px; font-size: 11px; color: var(--text-1);
+  font-family: 'Cascadia Code','Consolas',monospace;
+}
+.proj-docs-new-input:focus { outline: none; border-color: var(--accent); }
 .proj-docs-none { padding: 10px; }
 .proj-docs-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px; border: none; background: none; color: var(--text-2); font-size: 12px; text-align: left; cursor: pointer; }
 .proj-docs-item:hover { background: var(--bg-card); color: var(--text-1); }
@@ -2026,7 +2033,6 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .proj-docs-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .proj-docs-actions .proj-btn { padding: 5px 10px; align-self: auto; }
 .proj-docs-body { flex: 1; overflow-y: auto; min-height: 0; }
-.proj-docs-editor { display: block; width: 100%; height: 100%; box-sizing: border-box; resize: none; border: none; outline: none; background: var(--bg); color: var(--text-1); font-family: 'Cascadia Code','Consolas',monospace; font-size: 13px; line-height: 1.6; padding: 16px 20px; }
 
 /* Render markdown de la documentación (reusa el look de .doc-ai + tablas) */
 .proj-md { padding: 18px 24px; max-width: 860px; color: var(--text); font-size: 14px; line-height: 1.7; }
@@ -2647,16 +2653,13 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 }
 .specs-winbar-btn:hover:not(:disabled) { color: var(--accent-2); border-color: var(--border); }
 .specs-winbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.specs-artifact-edit {
-  width: 100%; min-height: 180px; background: none; border: none; outline: none; resize: vertical;
-  color: var(--text); font-family: inherit; font-size: inherit; line-height: inherit;
-}
 .specs-dot { width: 8px; height: 8px; border-radius: 50%; display: block; }
 .specs-dot--r { background: #f85149; }
 .specs-dot--y { background: #fbbf24; }
 .specs-dot--g { background: #4ade80; }
 .specs-wintitle { font-size: 11px; color: var(--text-2); font-family: 'Cascadia Code','Consolas',monospace; margin-left: 2px; }
 .specs-winbody { background: var(--bg); padding: 10px 12px; max-height: 220px; overflow-y: auto; font-family: 'Cascadia Code','Consolas',monospace; font-size: 11px; line-height: 1.6; }
+.specs-winbody--editing { height: 260px; max-height: none; padding: 0; }
 .specs-artifact-text { white-space: pre-wrap; color: var(--text-2); }
 .specs-artifact-empty { color: var(--text-3); font-style: italic; }
 

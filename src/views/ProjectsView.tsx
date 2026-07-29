@@ -12,6 +12,7 @@ import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useUiStore } from "../store/uiStore";
 import { FileExplorer } from "../components/panel/FileExplorer";
+import { CodeEditor } from "../components/editor/CodeEditor";
 import { ServicesView } from "./ServicesView";
 import { AgentDetail, NewAgentForm } from "./AgentsView";
 import { pickFolder, runShellCommand, createDir, writeTextFile, readDir, readTextFile, isTauri } from "../lib/tauriApi";
@@ -344,6 +345,13 @@ function EstructuraTab() {
 }
 
 // Recorrido BFS del proyecto juntando archivos .md (read_dir ya omite node_modules/target/.git/dist/etc.).
+// Carpetas que nunca tienen documentación relevante y pueden tener miles de archivos (node_modules
+// trae un README.md por paquete) — sin esto, el BFS agota el límite con ruido antes de llegar a la
+// documentación real del proyecto. .devflow SÍ se recorre a propósito: ahí viven la memoria
+// (.devflow/memory/*.md) y las specs (.devflow/specs/**/*.md), que son justamente "documentación del
+// proyecto" para este tab.
+const MARKDOWN_SCAN_SKIP = new Set(["node_modules", ".git", "target", "dist", "build", ".venv", "__pycache__"]);
+
 async function collectMarkdownFiles(root: string, limit: number): Promise<string[]> {
   const out: string[] = [];
   const queue: string[] = [root];
@@ -352,8 +360,9 @@ async function collectMarkdownFiles(root: string, limit: number): Promise<string
     let entries;
     try { entries = await readDir(dir); } catch { continue; }
     for (const e of entries) {
-      if (e.isDir) queue.push(e.path);
-      else if (e.name.toLowerCase().endsWith(".md")) {
+      if (e.isDir) {
+        if (!MARKDOWN_SCAN_SKIP.has(e.name)) queue.push(e.path);
+      } else if (e.name.toLowerCase().endsWith(".md")) {
         out.push(e.path);
         if (out.length >= limit) break;
       }
@@ -377,6 +386,8 @@ function DocsTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [newDocName, setNewDocName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const scan = useCallback(async () => {
     if (!path || !isTauri()) { setFiles([]); return; }
@@ -421,6 +432,33 @@ function DocsTab({ projectId }: { projectId: string }) {
 
   const dirty = content !== saved;
 
+  // Crea un .md nuevo (subcarpetas permitidas, ej. "docs/architecture.md" o
+  // ".devflow/memory/my-note.md") y lo abre en modo edición. Precarga un título derivado del nombre
+  // en vez de dejarlo vacío — un documento nuevo sin nada adentro es más difícil de arrancar.
+  const createDoc = async () => {
+    if (!path || !newDocName.trim()) return;
+    setCreating(true); setFileError(null);
+    try {
+      const cleaned = newDocName.trim().replace(/^[\\/]+/, "");
+      const withExt = cleaned.toLowerCase().endsWith(".md") ? cleaned : `${cleaned}.md`;
+      const segments = withExt.split(/[\\/]/).filter(Boolean);
+      const fileName = segments.pop()!;
+      const dirPart = segments.length ? `${path}/${segments.join("/")}` : path;
+      const full = `${dirPart}/${fileName}`;
+      const title = fileName.replace(/\.md$/i, "").replace(/[-_]+/g, " ");
+      await createDir(dirPart);
+      await writeTextFile(full, `# ${title}\n\n`);
+      setNewDocName("");
+      await scan();
+      await open(full);
+      setMode("edit");
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (!isTauri()) {
     return <div className="proj-placeholder"><span className="proj-placeholder-icon">🖥️</span><div>Documentation requires the desktop app.</div></div>;
   }
@@ -432,6 +470,18 @@ function DocsTab({ projectId }: { projectId: string }) {
           <span>{scanning ? "scanning…" : `${files.length} doc(s)`}</span>
           <button className="proj-icon" onClick={() => void scan()} disabled={scanning} title="Rescan">
             <RefreshCw size={12} className={scanning ? "spin" : ""} />
+          </button>
+        </div>
+        <div className="proj-docs-new">
+          <input
+            className="proj-docs-new-input"
+            placeholder="new-doc.md or docs/notes.md…"
+            value={newDocName}
+            onChange={(e) => setNewDocName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void createDoc()}
+          />
+          <button className="proj-icon" onClick={() => void createDoc()} disabled={creating || !newDocName.trim()} title="Create document">
+            {creating ? <Loader size={12} className="spin" /> : <FilePlus2 size={12} />}
           </button>
         </div>
         {scanError && <div className="proj-modal-error">{scanError}</div>}
@@ -470,7 +520,7 @@ function DocsTab({ projectId }: { projectId: string }) {
               ) : mode === "view" ? (
                 <div className="proj-md"><ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown></div>
               ) : (
-                <textarea className="proj-docs-editor" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="Empty document…" />
+                <CodeEditor path={selected} value={content} onChange={setContent} onSave={() => void save()} />
               )}
             </div>
           </>
