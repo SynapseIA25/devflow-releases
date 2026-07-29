@@ -35,6 +35,8 @@ function slugify(label: string): string {
   return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "local";
 }
 
+const DEFAULT_CUSTOM_LABEL = "Local server";
+
 type Mode = "catalog" | "local";
 
 // Buscador de modelos: agrega cualquier modelo de models.dev al config de OpenCode sin editar JSON a
@@ -95,7 +97,7 @@ export function AddModelModal({
 
   const localProviderId = presetId === "custom" ? slugify(customLabel) : presetId;
   const localProviderLabel =
-    presetId === "custom" ? customLabel.trim() || "Server local" : LOCAL_PROVIDER_PRESETS.find((p) => p.id === presetId)?.label ?? presetId;
+    presetId === "custom" ? customLabel.trim() || DEFAULT_CUSTOM_LABEL : LOCAL_PROVIDER_PRESETS.find((p) => p.id === presetId)?.label ?? presetId;
 
   const scanLocal = async () => {
     setLocalLoading(true);
@@ -144,7 +146,7 @@ export function AddModelModal({
     <div className="model-search-overlay" onClick={onClose}>
       <div className="model-search-modal" onClick={(e) => e.stopPropagation()}>
         <div className="model-search-header">
-          <span className="model-search-title">Buscar modelo</span>
+          <span className="model-search-title">Search models</span>
           <button className="model-search-close" onClick={onClose}>×</button>
         </div>
         <div className="model-search-body">
@@ -153,13 +155,13 @@ export function AddModelModal({
               className={`model-search-modebtn ${mode === "catalog" ? "active" : ""}`}
               onClick={() => setMode("catalog")}
             >
-              <Search size={12} /> Catálogo
+              <Search size={12} /> Catalog
             </button>
             <button
               className={`model-search-modebtn ${mode === "local" ? "active" : ""}`}
               onClick={() => setMode("local")}
             >
-              <Server size={12} /> Server local
+              <Server size={12} /> Local server
             </button>
           </div>
 
@@ -172,29 +174,29 @@ export function AddModelModal({
           {mode === "catalog" ? (
             <>
               <p className="model-search-hint">
-                Catálogo completo de OpenRouter, Google, Groq y Mistral (models.dev) — no solo la lista
-                curada de DevFlow Code. Agregar un modelo edita tu configuración por vos y reinicia
-                DevFlow Code.
+                Full catalog from OpenRouter, Google, Groq and Mistral (models.dev) — not just DevFlow
+                Code's curated list. Adding a model edits your config for you and restarts DevFlow
+                Code.
               </p>
               <div className="model-search-inputrow">
                 <Search size={13} />
                 <input
                   autoFocus
                   className="model-search-input"
-                  placeholder="ej. kimi, gemini flash, deepseek…"
+                  placeholder="e.g. kimi, gemini flash, deepseek…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              {loading && <div className="model-search-status">Cargando catálogo…</div>}
+              {loading && <div className="model-search-status">Loading catalog…</div>}
               {loadError && (
                 <div className="model-search-status model-search-status--error">
-                  <AlertCircle size={12} /> No se pudo cargar el catálogo: {loadError}
+                  <AlertCircle size={12} /> Couldn't load the catalog: {loadError}
                 </div>
               )}
               {!loading && !loadError && (
                 <div className="model-search-results">
-                  {results.length === 0 && <div className="model-search-empty">Sin resultados.</div>}
+                  {results.length === 0 && <div className="model-search-empty">No results.</div>}
                   {results.map((m) => {
                     const key = `${m.providerId}/${m.modelId}`;
                     return (
@@ -203,11 +205,11 @@ export function AddModelModal({
                           <span className="model-search-row-name">{m.name}</span>
                           <span className="model-search-row-meta">
                             {keyLabel(m.providerId)} · {fmtCost(m)}{fmtContext(m) ? ` · ${fmtContext(m)}` : ""}
-                            {!hasKey(m.providerId) && <span className="model-search-nokey"> · sin key configurada</span>}
+                            {!hasKey(m.providerId) && <span className="model-search-nokey"> · no key configured</span>}
                           </span>
                         </div>
                         {addedKey === key ? (
-                          <span className="model-search-added"><CheckCircle2 size={13} /> Agregado</span>
+                          <span className="model-search-added"><CheckCircle2 size={13} /> Added</span>
                         ) : (
                           <button
                             className="model-search-add"
@@ -217,7 +219,7 @@ export function AddModelModal({
                             {addingKey === key
                               ? <RotateCw size={12} className="spin" />
                               : <Plus size={12} />}
-                            {addingKey === key ? (restarting ? "Reiniciando…" : "Agregando…") : "Agregar"}
+                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : "Add"}
                           </button>
                         )}
                       </div>
@@ -229,9 +231,9 @@ export function AddModelModal({
           ) : (
             <>
               <p className="model-search-hint">
-                Conectá un motor de inferencia local (Ollama, LM Studio, o cualquier server
-                OpenAI-compatible) — DevFlow Code lo agrega como provider y lo deja elegible desde el
-                selector de modelo.
+                Connect a local inference engine (Ollama, LM Studio, or any OpenAI-compatible
+                server) — DevFlow Code adds it as a provider and makes it selectable from the
+                model selector.
               </p>
               <div className="model-search-presets">
                 {LOCAL_PROVIDER_PRESETS.map((p) => (
@@ -247,14 +249,14 @@ export function AddModelModal({
                   className={`model-search-modebtn ${presetId === "custom" ? "active" : ""}`}
                   onClick={() => selectPreset("custom")}
                 >
-                  Personalizado
+                  Custom
                 </button>
               </div>
               {presetId === "custom" && (
                 <div className="model-search-inputrow">
                   <input
                     className="model-search-input"
-                    placeholder="Nombre (ej. Mi server local)"
+                    placeholder={`Name (e.g. My ${DEFAULT_CUSTOM_LABEL.toLowerCase()})`}
                     value={customLabel}
                     onChange={(e) => setCustomLabel(e.target.value)}
                   />
@@ -269,7 +271,7 @@ export function AddModelModal({
                 />
                 <button className="model-search-add" disabled={localLoading || !baseUrl.trim()} onClick={scanLocal}>
                   {localLoading ? <RotateCw size={12} className="spin" /> : <Search size={12} />}
-                  {localLoading ? "Buscando…" : "Buscar modelos"}
+                  {localLoading ? "Searching…" : "Search models"}
                 </button>
               </div>
               {localError && (
@@ -279,7 +281,7 @@ export function AddModelModal({
               )}
               {localModels && (
                 <div className="model-search-results">
-                  {localModels.length === 0 && <div className="model-search-empty">El server no devolvió modelos.</div>}
+                  {localModels.length === 0 && <div className="model-search-empty">The server didn't return any models.</div>}
                   {localModels.map((m) => {
                     const key = `${localProviderId}/${m.id}`;
                     return (
@@ -289,7 +291,7 @@ export function AddModelModal({
                           <span className="model-search-row-meta">{localProviderLabel} · {baseUrl}</span>
                         </div>
                         {addedKey === key ? (
-                          <span className="model-search-added"><CheckCircle2 size={13} /> Agregado</span>
+                          <span className="model-search-added"><CheckCircle2 size={13} /> Added</span>
                         ) : (
                           <button
                             className="model-search-add"
@@ -299,7 +301,7 @@ export function AddModelModal({
                             {addingKey === key
                               ? <RotateCw size={12} className="spin" />
                               : <Plus size={12} />}
-                            {addingKey === key ? (restarting ? "Reiniciando…" : "Agregando…") : "Agregar"}
+                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : "Add"}
                           </button>
                         )}
                       </div>

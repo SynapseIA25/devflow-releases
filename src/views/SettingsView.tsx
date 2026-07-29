@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search, Sparkles, HardDrive, Cloud } from "lucide-react";
+import { AddModelModal } from "../components/AddModelModal";
 import { useSettingsStore } from "../store/settingsStore";
 import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
@@ -53,15 +54,22 @@ function ProviderCard({ provider }: { provider: ProviderConfig }) {
   );
 }
 
+// Punto único de "cómo conecto un modelo" en Settings: hoy estaba repartido en 3 lugares sin
+// relación entre sí (esta sección solo mostraba las cloud keys; conectar un server local o buscar
+// en el catálogo de models.dev solo era alcanzable escondido en "Buscar más modelos…" del selector
+// de modelo del chat, ver AddModelModal). Acá se explican los 3 niveles juntos y se reusa el mismo
+// AddModelModal para local/catálogo en vez de duplicar esa lógica.
+//
 // API keys de providers de inferencia: se inyectan como env vars al agente OpenCode al spawnearlo
 // (acpClient.providerKeysEnv). Guardar reinicia el proceso de OpenCode para que los modelos del
 // provider nuevo aparezcan en el selector del chat en la próxima sesión.
-function ApiKeysSection() {
+function ModelsSection() {
   const providerKeys = useSettingsStore((s) => s.providerKeys);
   const setProviderKey = useSettingsStore((s) => s.setProviderKey);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [applying, setApplying] = useState(false);
   const [appliedAt, setAppliedAt] = useState<number | null>(null);
+  const [showAddModelModal, setShowAddModelModal] = useState(false);
 
   const dirty = PROVIDER_KEY_SPECS.some(
     (spec) => drafts[spec.id] !== undefined && drafts[spec.id] !== (providerKeys[spec.id] ?? "")
@@ -89,11 +97,42 @@ function ApiKeysSection() {
 
   return (
     <div className="settings-apikeys">
-      <h3 className="settings-section-title"><KeyRound size={14} /> Inference providers · API keys</h3>
+      <h3 className="settings-section-title"><KeyRound size={14} /> Models</h3>
+      <p className="apikeys-subtitle">
+        Three ways to bring a model into DevFlow — from zero setup to full control. They're not
+        exclusive: use as many as you want at once.
+      </p>
+      <div className="models-tiers">
+        <div className="models-tier">
+          <div className="models-tier-head"><Sparkles size={13} /> Free &amp; built-in</div>
+          <p className="models-tier-desc">
+            DevFlow Code works right away with free models — nothing to configure, nothing to pay.
+          </p>
+        </div>
+        <div className="models-tier">
+          <div className="models-tier-head"><HardDrive size={13} /> Local (free, on your machine)</div>
+          <p className="models-tier-desc">
+            Ollama, LM Studio, or any OpenAI-compatible server — DevFlow finds the models it serves.
+          </p>
+        </div>
+        <div className="models-tier">
+          <div className="models-tier-head"><Cloud size={13} /> Cloud API keys</div>
+          <p className="models-tier-desc">
+            Pay-as-you-go with a provider of your own — more models, or the Claude Code agent.
+          </p>
+        </div>
+      </div>
+      <button className="apikeys-save apikeys-save--ghost" onClick={() => setShowAddModelModal(true)}>
+        <Search size={12} /> Connect a local model or browse the full catalog…
+      </button>
+      {showAddModelModal && (
+        <AddModelModal onClose={() => setShowAddModelModal(false)} onAdded={() => {}} />
+      )}
+
+      <h4 className="settings-subsection-title">Cloud API keys</h4>
       <p className="apikeys-subtitle">
         Add a key to enable that provider — Anthropic unlocks the Claude Code agent, the rest add
-        models to DevFlow Code's chat model selector. No key at all? DevFlow Code still includes
-        free models out of the box. Keys are stored locally on this machine.
+        models to DevFlow Code's chat model selector. Keys are stored locally on this machine.
       </p>
       {PROVIDER_KEY_SPECS.map((spec) => {
         const saved = providerKeys[spec.id] ?? "";
@@ -490,7 +529,7 @@ export function SettingsView() {
           model is chosen from the chat.
         </p>
       </div>
-      <ApiKeysSection />
+      <ModelsSection />
       <QuotaSection />
       <EconomySection />
       <SecuritySection />
