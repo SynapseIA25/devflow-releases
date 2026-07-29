@@ -11,6 +11,7 @@ import { useProjectStore, type DebtItem, type DebtSeverity } from "../store/proj
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { useUiStore } from "../store/uiStore";
+import { useEditorStore } from "../store/editorStore";
 import { FileExplorer } from "../components/panel/FileExplorer";
 import { CodeEditor } from "../components/editor/CodeEditor";
 import { ServicesView } from "./ServicesView";
@@ -380,14 +381,22 @@ function DocsTab({ projectId }: { projectId: string }) {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [selected, setSelected] = useState("");
-  const [content, setContent] = useState("");
-  const [saved, setSaved] = useState("");
   const [mode, setMode] = useState<"view" | "edit">("view");
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [newDocName, setNewDocName] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // El buffer del doc abierto vive en editorStore (misma pestaña que usaría la vista Código) en vez
+  // de estado local: es lo único que hace que el chip "editing: …" del chat refleje ESTE documento,
+  // con los cambios sin guardar incluidos (ChatView.buildPromptWithContext lee tab.content, no el
+  // disco). Un estado local paralelo se hubiera desincronizado del buffer que el chat realmente lee.
+  const tab = useEditorStore((s) => s.tabs.find((t) => t.path === selected));
+  const content = tab?.content ?? "";
+  const saved = tab?.savedContent ?? "";
+  const loading = tab?.loading ?? false;
+  const fileError = tab?.error ?? createError;
+  const setContent = (text: string) => selected && useEditorStore.getState().setContent(selected, text);
 
   const scan = useCallback(async () => {
     if (!path || !isTauri()) { setFiles([]); return; }
@@ -406,25 +415,19 @@ function DocsTab({ projectId }: { projectId: string }) {
   const rel = (p: string) => (path && p.startsWith(path) ? p.slice(path.length).replace(/^[\\/]+/, "") : p);
 
   const open = async (p: string) => {
-    setSelected(p); setMode("view"); setLoading(true); setFileError(null);
-    try {
-      const text = await readTextFile(p);
-      setContent(text); setSaved(text);
-    } catch (e) {
-      setFileError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    setSelected(p); setMode("view"); setCreateError(null);
+    // Registra el doc como archivo activo del editor (mismo store que usa la vista Código) SIN
+    // navegar ahí — es lo que alimenta el chip "editing: …" del chat (ver ChatView). Sin esto, un
+    // documento abierto/editado acá era invisible para el chat: seguía mostrando lo último abierto
+    // en Código, sin relación con lo que el usuario tenía puesto en pantalla en Documentación.
+    await useEditorStore.getState().openFile(p);
   };
 
   const save = async () => {
     if (!selected) return;
-    setSaving(true); setFileError(null);
+    setSaving(true);
     try {
-      await writeTextFile(selected, content);
-      setSaved(content);
-    } catch (e) {
-      setFileError(e instanceof Error ? e.message : String(e));
+      await useEditorStore.getState().save(selected);
     } finally {
       setSaving(false);
     }
@@ -437,7 +440,7 @@ function DocsTab({ projectId }: { projectId: string }) {
   // en vez de dejarlo vacío — un documento nuevo sin nada adentro es más difícil de arrancar.
   const createDoc = async () => {
     if (!path || !newDocName.trim()) return;
-    setCreating(true); setFileError(null);
+    setCreating(true); setCreateError(null);
     try {
       const cleaned = newDocName.trim().replace(/^[\\/]+/, "");
       const withExt = cleaned.toLowerCase().endsWith(".md") ? cleaned : `${cleaned}.md`;
@@ -453,7 +456,7 @@ function DocsTab({ projectId }: { projectId: string }) {
       await open(full);
       setMode("edit");
     } catch (e) {
-      setFileError(e instanceof Error ? e.message : String(e));
+      setCreateError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreating(false);
     }
