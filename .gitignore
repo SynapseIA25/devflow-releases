@@ -22,8 +22,15 @@ src-tauri/binaries/
 # Ad-hoc debug scripts
 .acp-raw-test*.cjs
 
-# Config MCP por-proyecto del agente MiMo — puede contener secrets (env de brave/slack/postgres/etc.)
+# Config MCP por-proyecto — mimocode.json era del agente MiMo (retirado, Fase 4), opencode.json es su
+# reemplazo nativo (mismo rol). Ambos pueden tener rutas absolutas de la máquina y secrets (env de
+# brave/slack/postgres/etc.) inyectados por McpView — se regeneran solos (ver mcpBridge.ts), no se
+# edita a mano ni se commitea.
 mimocode.json
+opencode.json
+
+# Artefacto de build de la landing (zip empaquetado para subir a Hostinger), no es fuente
+landing/index.zip
 
 # Editor directories and files
 .vscode/*
