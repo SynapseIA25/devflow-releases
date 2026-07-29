@@ -1,6 +1,6 @@
 name: release
 
-# PUBLIC releases-only repo. The source code lives in the private repo pab-1984/devflow.
+# PUBLIC releases-only repo. The source code lives in the private repo SynapseIA25/devflow.
 # This workflow checks out the private code (read-only deploy key), builds it for the three
 # platforms and publishes the Release + latest.json (auto-updater) here, in public.
 #
@@ -73,7 +73,7 @@ jobs:
       - name: checkout private code (devflow)
         uses: actions/checkout@v4
         with:
-          repository: pab-1984/devflow
+          repository: SynapseIA25/devflow
           ref: ${{ github.event.inputs.ref || github.ref_name }}
           ssh-key: ${{ secrets.CODE_REPO_SSH_KEY }}
 
