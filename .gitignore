@@ -50,3 +50,6 @@ src-tauri/.cargo/config.toml
 # varios MB y depende de la máquina que lo generó (Ollama local). .devflow/specs/ SÍ se commitea
 # (son la fuente de verdad de cada spec), esto no.
 .devflow/rag-index.json
+
+# Scrollback persistido de terminales (Terminal Splits) — local a la máquina, se regenera solo.
+.devflow/terminal-scrollback/

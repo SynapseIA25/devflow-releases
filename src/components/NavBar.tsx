@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks, CalendarClock } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks, CalendarClock, GitPullRequest } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
-export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "planner" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "planner" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings" | "github";
 
 export type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
 type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
@@ -40,6 +40,12 @@ const GROUPS: NavGroup[] = [
       { id: "agents", icon: Bot,      label: "Agent catalog", hint: "config" },
       { id: "skills", icon: Sparkles, label: "Skills",        hint: "library" },
       { id: "mcp",    icon: Server,   label: "MCP servers",   hint: "tools" },
+    ],
+  },
+  {
+    key: "review", icon: GitPullRequest, label: "Review",
+    items: [
+      { id: "github", icon: GitPullRequest, label: "GitHub", hint: "PRs & issues" },
     ],
   },
 ];

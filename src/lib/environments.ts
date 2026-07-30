@@ -28,3 +28,29 @@ export async function createWorktree(projectPath: string, name: string): Promise
   if (res.exitCode !== 0) throw new Error(`No se pudo crear el ambiente:\n${res.output.slice(-500)}`);
   return { name, branch, path: wtPath, baseBranch };
 }
+
+// GitHub nativo ("Open as environment" de un PR): a diferencia de createWorktree (rama NUEVA desde
+// la base), acá el worktree tiene que terminar en la rama DEL PR — que puede venir de un fork, así
+// que en vez de armar el nombre de rama remota a mano se reusa `gh pr checkout` (ya maneja forks,
+// fetch, tracking) corriéndolo DENTRO del worktree recién creado. El worktree arranca en una rama
+// descartable desde la base; gh pr checkout lo reapunta al branch real, que leemos de vuelta para
+// que `TestEnv.branch` quede correcto (lo necesita el promote/diff de más arriba).
+export async function createWorktreeFromPr(projectPath: string, prNumber: number, name: string): Promise<CreatedWorktree> {
+  const base = await runShellCommand("git rev-parse --abbrev-ref HEAD", projectPath);
+  if (base.exitCode !== 0) throw new Error("El proyecto no es un repositorio git (o no tiene commits). Los ambientes usan git worktree.");
+  const baseBranch = base.output.trim();
+  const envsRoot = `${toPosix(parentDir(projectPath))}/.devflow-envs`;
+  const wtPath = `${envsRoot}/${safeEnvName(baseName(projectPath))}__pr-${prNumber}`;
+  try { await createDir(envsRoot); } catch { /* ya existe */ }
+  const placeholder = `pr-${prNumber}-tmp`;
+  const add = await runShellCommand(`git worktree add "${wtPath}" -b "${placeholder}" "${baseBranch}"`, projectPath);
+  if (add.exitCode !== 0) throw new Error(`No se pudo crear el worktree:\n${add.output.slice(-500)}`);
+  const checkout = await runShellCommand(`gh pr checkout ${prNumber}`, wtPath);
+  if (checkout.exitCode !== 0) {
+    await runShellCommand(`git worktree remove --force "${wtPath}"`, projectPath).catch(() => undefined);
+    throw new Error(`No se pudo hacer checkout del PR #${prNumber} (¿"gh" está instalado y autenticado?):\n${checkout.output.slice(-500)}`);
+  }
+  const branchRes = await runShellCommand("git rev-parse --abbrev-ref HEAD", wtPath);
+  const branch = branchRes.output.trim() || placeholder;
+  return { name, branch, path: wtPath, baseBranch };
+}
