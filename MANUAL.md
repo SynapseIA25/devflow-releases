@@ -70,7 +70,11 @@ hand-editing configuration files.
 - **Build** — spec-driven development: Specify, Plan, Tasks, Implement.
 - **Run** — start, stop and watch your project's own processes without leaving DevFlow.
 - **Agents** — your team of agents (built-in + area experts) and their configuration.
-- **Settings** — API keys, local model connections, permissions, and app preferences.
+- **Project hub** (click your project's name) — overview, file structure, and a **Documentation**
+  tab with a real markdown editor (live preview, create new files) for writing and keeping your
+  project's docs.
+- **Settings** — API keys, local model connections, a default model per agent, permissions, and
+  app preferences.
 
 ## FAQ
 
