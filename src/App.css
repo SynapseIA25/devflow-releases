@@ -2313,6 +2313,35 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .env-diff--meta { color: var(--text-3); }
 .env-term { flex: 1; min-height: 0; background: #0d1117; }
 
+/* Fan-out (prompt a N agentes en paralelo) + Comparar (diffs lado a lado, estilo Orca). */
+.env-fanout-btn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 11px; cursor: pointer;
+}
+.env-fanout-btn:hover { color: var(--accent-2); border-color: var(--accent); }
+.env-fanout-form { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px; }
+.env-fanout-prompt {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+  font-size: 12px; padding: 8px; resize: vertical; font-family: inherit;
+}
+.env-fanout-agents { display: flex; flex-wrap: wrap; gap: 8px; }
+.env-fanout-agent { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); cursor: pointer; }
+.env-compare-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 14px 10px;
+  padding: 6px; border-radius: 6px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-2); font-size: 11.5px; cursor: pointer;
+}
+.env-compare-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.env-row-compare { flex-shrink: 0; cursor: pointer; }
+.env-compare-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.env-compare-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 12px; color: var(--text-2); border-bottom: 1px solid var(--border); }
+.env-compare-head button { background: none; border: none; color: var(--text-2); cursor: pointer; }
+.env-compare-cols { flex: 1; min-height: 0; display: flex; overflow-x: auto; }
+.env-compare-col { flex: 1; min-width: 320px; display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow-y: auto; }
+.env-compare-col:last-child { border-right: none; }
+.env-compare-col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--bg-card); border-bottom: 1px solid var(--border-2); position: sticky; top: 0; }
+.env-compare-col-name { font-size: 12px; font-weight: 600; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* --- Banner de auto-actualización --- */
 .update-banner {
   display: flex;

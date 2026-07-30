@@ -214,6 +214,7 @@ export function ChatView() {
   const updateWsSteps = useWorkspaceStore((s) => s.updateSteps);
   const upsertToolBlock = useWorkspaceStore((s) => s.upsertToolBlock);
   const setSession = useWorkspaceStore((s) => s.setSession);
+  const clearPendingInitialPrompt = useWorkspaceStore((s) => s.clearPendingInitialPrompt);
   const setRunning = useWorkspaceStore((s) => s.setRunning);
   const enqueue = useWorkspaceStore((s) => s.enqueue);
   const shiftQueue = useWorkspaceStore((s) => s.shiftQueue);
@@ -906,6 +907,20 @@ export function ChatView() {
       void runAI(wsId, text);
     }
   };
+
+  // Fan-out de Ambientes: workspaces creados con un prompt ya cargado (ver EnvironmentsView) se
+  // auto-envían apenas aparecen, sin que el usuario tenga que tipearlo en cada pestaña — mismo
+  // camino que un mensaje tipeado a mano (startMessage), no duplica lógica de envío. No dispara para
+  // un workspace que ya está corriendo (evita doble envío si el efecto corre dos veces).
+  useEffect(() => {
+    for (const w of workspaces) {
+      if (w.pendingInitialPrompt && !w.running) {
+        clearPendingInitialPrompt(w.id);
+        startMessage(w.id, w.pendingInitialPrompt);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaces]);
 
   // Detener el turno en curso del workspace activo: avisa al agente ACP (session/cancel, selectivo por
   // sesión) y marca la señal de cancelación. No baja `running` directamente: el runner cae a su finally

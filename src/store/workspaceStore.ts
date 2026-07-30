@@ -47,6 +47,10 @@ export type Workspace = {
   // globales que antes vivían en ChatView (loading/turnCancelledRef) y que rompían el multi-workspace.
   running?: boolean;   // hay un turno en curso en este workspace
   queue?: string[];    // mensajes del usuario encolados mientras el turno corre (cola transitoria)
+  // Prompt a auto-enviar apenas se monta ChatView (ver el useEffect ahí) — usado por el fan-out de
+  // Ambientes para arrancar N workspaces con el mismo prompt sin que el usuario tenga que tipearlo
+  // en cada pestaña. Se limpia solo una vez enviado.
+  pendingInitialPrompt?: string;
 };
 
 const makeId = () => Math.random().toString(36).slice(2);
@@ -92,7 +96,8 @@ type WorkspaceStore = {
   // Recuerda la pestaña activa por proyecto → al volver a un proyecto se restaura su última pestaña.
   activeWsByProject: Record<string, string>;
   setActiveWs: (id: string) => void;
-  newWorkspace: (agentId: string, projectId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string }) => string;
+  newWorkspace: (agentId: string, projectId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string; pendingInitialPrompt?: string }) => string;
+  clearPendingInitialPrompt: (wsId: string) => void;
   closeWorkspace: (id: string) => void;
   // Cambia el agente de UN workspace (el turno usa ws.agentId, no un global). Habilita tener MiMo en
   // una pestaña y un experto en otra a la vez.
@@ -145,12 +150,18 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             cwd: opts?.cwd,
             envId: opts?.envId,
             envName: opts?.envName,
+            pendingInitialPrompt: opts?.pendingInitialPrompt,
           }],
           activeWs: id,
           activeWsByProject: { ...s.activeWsByProject, [projectId]: id },
         }));
         return id;
       },
+
+      clearPendingInitialPrompt: (wsId) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, pendingInitialPrompt: undefined } : w)),
+        })),
 
       closeWorkspace: (id) =>
         set((s) => {
@@ -297,7 +308,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         activeWsByProject: state.activeWsByProject,
         // running/queue son transitorios: al reiniciar la app no hay ningún turno en curso ni
         // sesión ACP viva, así que se resetean (no se persisten) igual que sessionId/sessionProvider.
-        workspaces: state.workspaces.map((w) => ({ ...w, sessionId: undefined, sessionProvider: undefined, running: false, queue: [] })),
+        // pendingInitialPrompt tampoco: si se cerró la app antes de mandarlo, no queremos que se
+        // auto-envíe solo al reabrir sin que el usuario lo vea venir.
+        workspaces: state.workspaces.map((w) => ({ ...w, sessionId: undefined, sessionProvider: undefined, running: false, queue: [], pendingInitialPrompt: undefined })),
       }),
     }
   )

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare, ShieldAlert, FileWarning } from "lucide-react";
+import { Boxes, Plus, Loader, GitBranch, RefreshCw, Check, Trash2, X, ArrowUpFromLine, MessageSquare, ShieldAlert, FileWarning, Rows3, Columns3 } from "lucide-react";
 import { useProjectStore, type TestEnv } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
@@ -36,6 +36,19 @@ export function EnvironmentsView() {
   // Conflictos de merge al promover: si el merge falla por conflictos, listamos los archivos afectados
   // para resolverlos en el editor o abortar el merge (en vez de solo avisar). El ambiente NO se descarta.
   const [conflict, setConflict] = useState<{ envId: string; files: string[] } | null>(null);
+
+  // Fan-out: un mismo prompt a N agentes en paralelo, cada uno en su propio worktree (estilo Orca).
+  const [showFanout, setShowFanout] = useState(false);
+  const [fanoutPrompt, setFanoutPrompt] = useState("");
+  const [fanoutAgentIds, setFanoutAgentIds] = useState<Set<string>>(new Set());
+  const [fanning, setFanning] = useState(false);
+
+  // Comparar: selección múltiple de ambientes → diffs lado a lado, con la opción de promover uno y
+  // descartar el resto en un solo paso (sin re-confirmar variante por variante).
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareDiffs, setCompareDiffs] = useState<{ envId: string; name: string; text: string }[] | null>(null);
+  const [comparing, setComparing] = useState(false);
 
   const selectedEnv = environments.find((e) => e.id === selected) ?? null;
   // Une la raíz del proyecto con una ruta relativa que devuelve git (forward-slashes, que Tauri acepta en Windows).
@@ -89,6 +102,12 @@ export function EnvironmentsView() {
 
   const promote = async (env: TestEnv) => {
     if (!confirm(`Promote environment "${env.name}"?\nIts changes are committed and ${env.branch} is merged into ${env.baseBranch}, then the environment is discarded.`)) return;
+    await promoteCore(env);
+  };
+
+  // Sin confirm() propio — usado por `promote` (con su confirm de a uno) y por el fan-out
+  // (una sola confirmación para promover el ganador + descartar el resto del lote).
+  const promoteCore = async (env: TestEnv) => {
     setBusy("promote"); setError(null); setConflict(null);
     try {
       await git("git add -A", env.path);
@@ -147,23 +166,121 @@ export function EnvironmentsView() {
     // Ambientes (PTY id = env.id) Y las de los workspaces del chat atados a este ambiente (PTY id =
     // workspace id). En Windows, un proceso con esa carpeta abierta impide que `git worktree remove`
     // borre el directorio (queda vacío pero huérfano). Con los PTYs muertos, git la elimina del todo.
-    await ptyKill(env.id).catch(() => {});
-    for (const w of useWorkspaceStore.getState().workspaces.filter((w) => w.envId === env.id)) {
-      await ptyKill(w.id).catch(() => {});
-    }
+    const killPtys = async () => {
+      await ptyKill(env.id).catch(() => {});
+      for (const w of useWorkspaceStore.getState().workspaces.filter((w) => w.envId === env.id)) {
+        await ptyKill(w.id).catch(() => {});
+      }
+    };
+    await killPtys();
     await new Promise((r) => setTimeout(r, 400));
-    await git(`git worktree remove --force "${env.path}"`, projectPath);
+    let res = await git(`git worktree remove --force "${env.path}"`, projectPath);
+    if (res.exitCode !== 0) {
+      // Reintento: visto en el fan-out (varios ambientes con terminal montada a la vez) que 400ms no
+      // alcanza siempre para que Windows libere el handle. Antes esto se ignoraba en silencio y el
+      // ambiente se sacaba de la lista igual, dejando el worktree huérfano en disco.
+      await killPtys();
+      await new Promise((r) => setTimeout(r, 1200));
+      res = await git(`git worktree remove --force "${env.path}"`, projectPath);
+      if (res.exitCode !== 0) {
+        throw new Error(`No se pudo borrar el worktree (¿una terminal sigue con la carpeta abierta?):\n${res.output.slice(-400)}`);
+      }
+    }
     await git(`git branch -D "${env.branch}"`, projectPath);
   };
 
   const discard = async (env: TestEnv) => {
     if (!confirm(`Discard environment "${env.name}"?\nThe worktree and branch ${env.branch} are deleted (unpromoted changes are lost).`)) return;
+    await discardCore(env);
+  };
+
+  // Sin confirm() propio — mismo motivo que promoteCore.
+  const discardCore = async (env: TestEnv) => {
     setBusy("discard"); setError(null);
     try {
       await discardWorktree(env);
       useWorkspaceStore.getState().unbindEnv(env.id);
       removeEnvironment(env.id);
       if (selected === env.id) { setSelected(null); setDiff(null); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Fan-out: crea un worktree + workspace de chat por cada agente elegido, todos con el MISMO prompt
+  // ya cargado (ChatView lo auto-envía, ver pendingInitialPrompt). Errores parciales (ej. un worktree
+  // que falla) no abortan el resto — se acumulan y se muestran juntos.
+  const runFanout = async () => {
+    const prompt = fanoutPrompt.trim();
+    if (!prompt || fanoutAgentIds.size === 0 || !isTauri()) return;
+    setFanning(true); setError(null);
+    const fanoutGroupId = crypto.randomUUID();
+    const errors: string[] = [];
+    for (const agentId of fanoutAgentIds) {
+      const agentName = agents.find((a) => a.id === agentId)?.name ?? agentId;
+      const name = `fanout-${fanoutGroupId.slice(0, 6)}-${agentName}`.replace(/\s+/g, "-").toLowerCase();
+      try {
+        const wt = await createWorktree(projectPath, name);
+        const envId = addEnvironment({ ...wt, agentId, fanoutGroupId });
+        useWorkspaceStore.getState().newWorkspace(agentId, activeId, {
+          title: name,
+          cwd: wt.path,
+          envId,
+          envName: name,
+          pendingInitialPrompt: prompt,
+        });
+      } catch (e) {
+        errors.push(`${agentName}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (errors.length) setError(`Some variants failed to start:\n${errors.join("\n")}`);
+    setFanning(false);
+    setShowFanout(false);
+    setFanoutPrompt("");
+    setFanoutAgentIds(new Set());
+  };
+
+  const toggleCompare = (envId: string) => {
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(envId)) next.delete(envId);
+      else next.add(envId);
+      return next;
+    });
+  };
+
+  const runCompare = async () => {
+    setComparing(true); setError(null);
+    try {
+      const diffs = await Promise.all(
+        [...compareIds].map(async (id) => {
+          const env = environments.find((e) => e.id === id)!;
+          await git("git add -A -N", env.path);
+          const d = await git("git diff", env.path);
+          return { envId: id, name: env.name, text: d.output };
+        })
+      );
+      setCompareDiffs(diffs);
+      setCompareMode(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const promoteWinnerDiscardRest = async (winner: TestEnv) => {
+    const others = [...compareIds].filter((id) => id !== winner.id).map((id) => environments.find((e) => e.id === id)).filter((e): e is TestEnv => !!e);
+    if (!confirm(`Promote "${winner.name}" and discard the other ${others.length} variant(s)?\nThis can't be undone.`)) return;
+    setBusy("promote"); setError(null);
+    try {
+      await promoteCore(winner);
+      for (const env of others) await discardCore(env);
+      setCompareIds(new Set());
+      setCompareDiffs(null);
+      setCompareMode(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -178,6 +295,9 @@ export function EnvironmentsView() {
       <div className="env-sidebar">
         <div className="env-header">
           <span className="env-title"><Boxes size={14} /> Environments</span>
+          <button className="env-fanout-btn" title="Fan out a prompt to several agents in parallel" onClick={() => setShowFanout((v) => !v)}>
+            <Rows3 size={13} /> Fan out
+          </button>
         </div>
         <div className="env-create">
           <input
@@ -193,10 +313,59 @@ export function EnvironmentsView() {
         </div>
         <p className="env-hint">Each environment is an isolated git worktree with its own branch. The agent/terminal work there without touching the real project.</p>
 
+        {showFanout && (
+          <div className="env-fanout-form">
+            <textarea
+              className="env-fanout-prompt"
+              placeholder="Prompt to send to every variant, e.g. Add input validation to the signup form"
+              value={fanoutPrompt}
+              onChange={(e) => setFanoutPrompt(e.target.value)}
+              rows={3}
+            />
+            <div className="env-fanout-agents">
+              {agents.map((a) => (
+                <label key={a.id} className="env-fanout-agent">
+                  <input
+                    type="checkbox"
+                    checked={fanoutAgentIds.has(a.id)}
+                    onChange={() => setFanoutAgentIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                      return next;
+                    })}
+                  />
+                  {a.name}
+                </label>
+              ))}
+            </div>
+            <button
+              className="env-btn env-btn--promote"
+              onClick={() => void runFanout()}
+              disabled={fanning || !fanoutPrompt.trim() || fanoutAgentIds.size === 0}
+            >
+              {fanning ? <Loader size={12} className="spin" /> : <Rows3 size={12} />} Run {fanoutAgentIds.size || ""} variant(s) in parallel
+            </button>
+          </div>
+        )}
+
+        {compareIds.size >= 2 && (
+          <button className="env-compare-btn" onClick={() => void runCompare()} disabled={comparing}>
+            {comparing ? <Loader size={12} className="spin" /> : <Columns3 size={12} />} Compare {compareIds.size} selected
+          </button>
+        )}
+
         <div className="env-list">
           {environments.length === 0 && <div className="env-empty">No environments. Create one so the agent can test changes safely.</div>}
           {environments.map((env) => (
             <div key={env.id} className={`env-row${selected === env.id ? " selected" : ""}`} onClick={() => setSelected(env.id)}>
+              <input
+                type="checkbox"
+                className="env-row-compare"
+                checked={compareIds.has(env.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleCompare(env.id)}
+                title="Select for comparison"
+              />
               <GitBranch size={13} className="env-row-icon" />
               <div className="env-row-info">
                 <div className="env-row-name">{env.name}</div>
@@ -209,7 +378,34 @@ export function EnvironmentsView() {
 
       <div className="env-main">
         {error && <div className="env-error"><pre>{error}</pre><button onClick={() => setError(null)}><X size={12} /></button></div>}
-        {!selectedEnv ? (
+
+        {compareMode && compareDiffs && (
+          <div className="env-compare-grid">
+            <div className="env-compare-head">
+              <span>Comparing {compareDiffs.length} variants</span>
+              <button onClick={() => { setCompareMode(false); setCompareDiffs(null); }} title="Close comparison"><X size={12} /></button>
+            </div>
+            <div className="env-compare-cols">
+              {compareDiffs.map((d) => {
+                const env = environments.find((e) => e.id === d.envId);
+                return (
+                  <div key={d.envId} className="env-compare-col">
+                    <div className="env-compare-col-head">
+                      <span className="env-compare-col-name">{d.name}</span>
+                      {env && (
+                        <button className="env-btn env-btn--promote" onClick={() => void promoteWinnerDiscardRest(env)} disabled={busy !== null}>
+                          <ArrowUpFromLine size={11} /> Promote this, discard rest
+                        </button>
+                      )}
+                    </div>
+                    {d.text.trim() ? <DiffBody text={d.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {!compareMode && (!selectedEnv ? (
           <div className="env-placeholder">
             {isTauri() ? "Select or create an environment." : "Environments require the desktop app (Tauri)."}
           </div>
@@ -291,7 +487,7 @@ export function EnvironmentsView() {
               ))}
             </div>
           </>
-        )}
+        ))}
       </div>
     </div>
   );

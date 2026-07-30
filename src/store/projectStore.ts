@@ -62,6 +62,9 @@ export type TestEnv = {
   baseBranch: string; // rama base desde la que se creó
   agentId?: string; // agente experto asignado (opcional)
   createdAt: number;
+  // Agrupa los ambientes creados por un mismo fan-out (mismo prompt, N agentes en paralelo) para
+  // poder listarlos juntos y compararlos — ver EnvironmentsView.tsx.
+  fanoutGroupId?: string;
 };
 
 // ── Tests (herramienta nativa de testing, Fase 1: runner tradicional) ──
