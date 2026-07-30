@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { SquareTerminal, Plus, Trash2, Pencil, Check, FolderOpen } from "lucide-react";
+import { SquareTerminal, Plus, Trash2, Pencil, Check, FolderOpen, Columns3 } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 import { TerminalPane } from "../components/TerminalPane";
 import { pickFolder } from "../lib/tauriApi";
@@ -22,6 +22,18 @@ export function TerminalsView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => { setSelectedId(null); }, [activeProjectId]);
   const setActive = (id: string) => setSelectedId(id);
+
+  // Split view: en vez de una sola terminal activa, mostrar varias a la vez en un grid.
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitIds, setSplitIds] = useState<Set<string>>(new Set());
+  useEffect(() => { setSplitMode(false); setSplitIds(new Set()); }, [activeProjectId]);
+  const toggleSplitId = (id: string) => {
+    setSplitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Active efectivo: si el seleccionado ya no existe (o es null), cae a la primera del proyecto.
   const activeId = useMemo(
@@ -55,8 +67,17 @@ export function TerminalsView() {
       <div className="terms-sidebar">
         <div className="terms-header">
           <span className="terms-title"><SquareTerminal size={14} /> Terminals</span>
+          <button
+            className={`terms-split-btn${splitMode ? " active" : ""}`}
+            onClick={() => setSplitMode((v) => !v)}
+            disabled={terminals.length < 2}
+            title="Show several terminals side by side"
+          >
+            <Columns3 size={13} />
+          </button>
           <button className="terms-add-btn" onClick={openAdd} title="New terminal"><Plus size={14} /></button>
         </div>
+        {splitMode && <div className="terms-split-hint">Pick which terminals to show together.</div>}
 
         {showAdd && (
           <div className="terms-add-form">
@@ -79,7 +100,20 @@ export function TerminalsView() {
             <div className="terms-empty">No terminals. Create one with ＋ for an interactive shell with its own cwd, independent of the chat.</div>
           )}
           {terminals.map((t) => (
-            <div key={t.id} className={`terms-row${activeId === t.id ? " selected" : ""}`} onClick={() => setActive(t.id)}>
+            <div
+              key={t.id}
+              className={`terms-row${!splitMode && activeId === t.id ? " selected" : ""}`}
+              onClick={() => (splitMode ? toggleSplitId(t.id) : setActive(t.id))}
+            >
+              {splitMode && (
+                <input
+                  type="checkbox"
+                  className="terms-row-split"
+                  checked={splitIds.has(t.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggleSplitId(t.id)}
+                />
+              )}
               <SquareTerminal size={13} className="terms-row-icon" />
               <div className="terms-row-info">
                 {renaming === t.id ? (
@@ -113,16 +147,30 @@ export function TerminalsView() {
           </div>
         ) : (
           <>
-            <div className="terms-detail-bar">
-              <Check size={12} color="#3fb950" />
-              <span className="terms-detail-name">{terminals.find((t) => t.id === activeId)?.name}</span>
-              <code className="terms-detail-cwd">{terminals.find((t) => t.id === activeId)?.cwd}</code>
-            </div>
-            <div className="terms-panes">
+            {!splitMode && (
+              <div className="terms-detail-bar">
+                <Check size={12} color="#3fb950" />
+                <span className="terms-detail-name">{terminals.find((t) => t.id === activeId)?.name}</span>
+                <code className="terms-detail-cwd">{terminals.find((t) => t.id === activeId)?.cwd}</code>
+              </div>
+            )}
+            <div
+              className={splitMode ? "terms-panes terms-panes--split" : "terms-panes"}
+              style={splitMode && splitIds.size > 0 ? { gridTemplateColumns: `repeat(${Math.min(splitIds.size, 3)}, 1fr)` } : undefined}
+            >
               {terminals.map((t) => (
-                <TerminalPane key={t.id} workspaceId={t.id} cwd={t.cwd} env={projectEnv} active={t.id === activeId} />
+                <TerminalPane
+                  key={t.id}
+                  workspaceId={t.id}
+                  cwd={t.cwd}
+                  env={projectEnv}
+                  active={splitMode ? splitIds.has(t.id) : t.id === activeId}
+                />
               ))}
             </div>
+            {splitMode && splitIds.size === 0 && (
+              <div className="terms-split-empty">Check terminals on the left to show them here.</div>
+            )}
           </>
         )}
       </div>

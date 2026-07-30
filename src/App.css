@@ -2175,7 +2175,7 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .ws-tab-env { color: #7c3aed; flex-shrink: 0; }
 
 /* ── Terminales independientes (pilar 4) ── */
-.terms-view { display: flex; height: 100%; }
+.terms-view { display: flex; height: 100%; width: 100%; }
 .terms-sidebar { flex: 0 0 250px; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
 .terms-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 8px; }
 .terms-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-1); }
@@ -2212,6 +2212,17 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 .terms-detail-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
 .terms-detail-cwd { font-size: 10.5px; color: var(--text-3); font-family: 'Cascadia Code','Consolas',monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .terms-panes { flex: 1; min-height: 0; background: #0d1117; }
+.terms-panes--split { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--border); }
+/* Sin min-width/min-height:0, un grid item no se achica por debajo del contenido intrínseco
+   (el canvas de xterm antes del primer fit()) y el grid entero termina colapsado a ese tamaño. */
+.terms-panes--split .terminal-pane-host { background: #0d1117; min-width: 0; min-height: 0; }
+.terms-split-btn { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-2, #0d1117); color: var(--text-2); cursor: pointer; margin-right: 4px; }
+.terms-split-btn:hover:not(:disabled) { color: var(--accent-2); border-color: var(--accent); }
+.terms-split-btn.active { color: var(--accent-2); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.terms-split-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.terms-split-hint { padding: 0 14px 8px; font-size: 10.5px; color: var(--text-3); }
+.terms-row-split { flex-shrink: 0; cursor: pointer; }
+.terms-split-empty { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-3); font-size: 12px; }
 
 /* ── Equipo de expertos (pilar 1) ── */
 .team-view { height: 100%; overflow-y: auto; padding: 22px 26px; max-width: 900px; }

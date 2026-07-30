@@ -1,8 +1,17 @@
 import { useEffect, useRef } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
-import { ptySpawn, ptyWrite, ptyResize, ptyKill, isTauri } from "../lib/tauriApi";
+import { ptySpawn, ptyWrite, ptyResize, ptyKill, isTauri, readTextFile, writeTextFile, createDir } from "../lib/tauriApi";
+
+// Ruta del archivo de scrollback persistido de esta terminal — separado por proyecto/worktree (cwd)
+// vía una carpeta oculta, mismo criterio que .devflow/memory. Forward-slashes: Tauri los resuelve
+// bien en Windows, a diferencia de mezclar con backslashes.
+function scrollbackPath(cwd: string, workspaceId: string): string {
+  return `${cwd.replace(/[\\/]+$/, "")}/.devflow/terminal-scrollback/${workspaceId}.txt`;
+}
 
 type TerminalPaneProps = {
   workspaceId: string;
@@ -18,7 +27,22 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const serializeAddonRef = useRef<SerializeAddon | null>(null);
   const spawnedRef = useRef(false);
+
+  // Best-effort: nunca debe romper la terminal si falla (disco lleno, path raro, etc.).
+  const persistScrollback = () => {
+    const term = termRef.current;
+    const serializeAddon = serializeAddonRef.current;
+    if (!term || !serializeAddon || !isTauri()) return;
+    const content = serializeAddon.serialize();
+    if (!content) return;
+    const path = scrollbackPath(cwd, workspaceId);
+    void createDir(path.slice(0, path.lastIndexOf("/")))
+      .catch(() => {})
+      .then(() => writeTextFile(path, content))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -36,9 +60,22 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    const serializeAddon = new SerializeAddon();
+    term.loadAddon(serializeAddon);
     term.open(containerRef.current);
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+    serializeAddonRef.current = serializeAddon;
+
+    // WebGL es una mejora de rendering, no una dependencia dura: si el contexto GPU no está
+    // disponible (VM, drivers viejos, etc.) seguimos con el renderer DOM por defecto de xterm.
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => webglAddon.dispose());
+      term.loadAddon(webglAddon);
+    } catch {
+      /* renderer DOM por defecto */
+    }
 
     if (!isTauri()) {
       term.write("Terminal real requiere la app desktop (Tauri). Ejecutá: npm run tauri dev\r\n");
@@ -51,6 +88,15 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
 
     (async () => {
       if (!isTauri()) return;
+      // Restaura el scrollback de una sesión anterior (si existe) ANTES de conectar el PTY en
+      // vivo, así el usuario ve el historial de la última vez que abrió esta misma terminal.
+      try {
+        const saved = await readTextFile(scrollbackPath(cwd, workspaceId));
+        if (saved) term.write(saved);
+      } catch {
+        /* sin scrollback previo, primera vez */
+      }
+
       const { listen } = await import("@tauri-apps/api/event");
       unlistenOutput = await listen<string>(`pty-output:${workspaceId}`, (e) => {
         term.write(e.payload);
@@ -72,6 +118,7 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
     })();
 
     return () => {
+      persistScrollback();
       dataDisposable.dispose();
       unlistenOutput?.();
       unlistenExit?.();
@@ -90,6 +137,10 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
     if (!fitAddon || !term) return;
     fitAddon.fit();
     void ptyResize(workspaceId, term.rows, term.cols);
+    // Al ocultarse (deja de estar activa) persistimos el scrollback — cubre el caso común de
+    // cambiar de pestaña/desactivar el split sin cerrar la terminal (que ya persiste al desmontar).
+    return () => persistScrollback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, workspaceId]);
 
   // Cubre el drag-handle de termHeight y cualquier otro cambio de layout mientras el panel
