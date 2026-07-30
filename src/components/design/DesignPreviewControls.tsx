@@ -14,7 +14,7 @@ const PRESETS = [
 ] as const;
 
 export function DesignPreviewControls() {
-  const [url, setUrl] = useState("http://localhost:");
+  const [url, setUrl] = useState("");
   const [opened, setOpened] = useState(false);
   const [opening, setOpening] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);

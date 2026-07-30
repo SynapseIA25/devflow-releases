@@ -10,7 +10,7 @@ import { useUiStore } from "../store/uiStore";
 export const DESIGN_MODE_DEBUG_PORT = 9333;
 
 export function DesignModeModal({ onClose }: { onClose: () => void }) {
-  const [url, setUrl] = useState("http://localhost:");
+  const [url, setUrl] = useState("");
   const [opened, setOpened] = useState(false);
   const [opening, setOpening] = useState(false);
   const [capturing, setCapturing] = useState(false);
