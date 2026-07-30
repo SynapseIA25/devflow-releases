@@ -23,9 +23,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      # Tauri's build.rs validates the externalBin (OpenCode sidecar) resource path even for
+      # `cargo check` — without it the build script fails before any Rust code is even checked.
+      - run: node scripts/fetch-opencode-sidecar.mjs x86_64-unknown-linux-gnu
       - run: cargo check --manifest-path src-tauri/Cargo.toml
