@@ -37,6 +37,12 @@ export type EngineCallbacks = {
   resolveFlow?: (flowId: string) => { name: string; nodes: WorkflowNode[]; edges: Edge[] } | undefined;
   // Se llama cuando un nodo file escribe un archivo — la UI lo ofrece para abrir en el editor.
   onFileWritten?: (path: string) => void;
+  // Gate para nodos "file" (escritura) y "terminal": a diferencia de las tool-calls del agente (que
+  // ya pasan por el permission_request de acpClient.ts), estos nodos nativos del workflow llamaban a
+  // Tauri directo, sin ningún permiso — un trigger/planner headless podía correr shell arbitrario sin
+  // que nadie lo viera. Si falta (WorkflowView/ChatView, donde el usuario ya está mirando y disparó
+  // la corrida a mano), se comporta como antes: sin gate.
+  confirmAction?: (kind: "file-write" | "shell", detail: string) => Promise<boolean>;
 };
 
 // ── Orden topológico (Kahn) ─────────────────────────────────────────────────
@@ -116,6 +122,9 @@ async function execFile(node: WorkflowNode, results: Map<string, NodeResult>, in
     cb.onLog("info", `📄 Read ${path} (${content.length} chars)`);
     return { output: content };
   }
+  if (cb.confirmAction && !(await cb.confirmAction("file-write", path))) {
+    throw new Error(`Permiso denegado: escritura de archivo bloqueada (${path})`);
+  }
   await writeTextFile(path, input);
   cb.onLog("success", `📄 Wrote ${input.length} chars to ${path}`);
   cb.onFileWritten?.(path);
@@ -125,6 +134,9 @@ async function execFile(node: WorkflowNode, results: Map<string, NodeResult>, in
 async function execTerminal(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
   const command = resolveTemplate(String(node.data.command ?? ""), results, input);
   if (!command.trim()) throw new Error("Comando vacío");
+  if (cb.confirmAction && !(await cb.confirmAction("shell", command))) {
+    throw new Error(`Permiso denegado: comando de shell bloqueado (${command})`);
+  }
   cb.onLog("info", `$ ${command}`);
   const res = await runShellCommand(command, useProjectStore.getState().projectPath);
   if (res.output.trim()) cb.onLog(res.exitCode === 0 ? "info" : "error", res.output.trimEnd());

@@ -376,8 +376,8 @@ function SecuritySection() {
           <div className="security-row-title">Auto-approve permissions in workflows</div>
           <div className="security-row-desc">
             {autoApprove
-              ? "⚠️ On: when a workflow runs with no UI to approve, the agent auto-approves its own actions (writing files, running shell). Convenient but risky."
-              : "Safe (recommended): with no UI to approve, permission requests are denied. In the chat you're always asked with a modal."}
+              ? "⚠️ On: when a workflow runs unattended (a trigger or a Planner task, no UI open on it), the agent's own actions AND the workflow's own file-write/terminal nodes auto-approve. Convenient but risky."
+              : "Safe (recommended): unattended runs (triggers, Planner) deny agent actions and the workflow's file-write/terminal nodes. In the chat, or running a workflow yourself from its canvas, you're always asked with a modal (or it's already you who pressed Run)."}
           </div>
         </div>
       </div>

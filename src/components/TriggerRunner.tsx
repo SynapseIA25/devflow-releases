@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTriggersStore, type Trigger } from "../store/triggersStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
+import { confirmHeadlessAction } from "../lib/headlessPermission";
 import { cronMatches, hasMissedCronRun } from "../lib/cron";
 import { isTauri, webhookStart, watchStart, watchStop } from "../lib/tauriApi";
 
@@ -42,6 +43,7 @@ async function fire(t: Trigger, running: Set<string>, input = "", reason: "sched
           const f = useWorkflowStore.getState().workflows[flowId];
           return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
         },
+        confirmAction: confirmHeadlessAction,
       },
       input
     );

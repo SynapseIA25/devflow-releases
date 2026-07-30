@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { usePlannerStore, type PlannerTask } from "../store/plannerStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
+import { confirmHeadlessAction } from "../lib/headlessPermission";
 
 // Scheduler de tareas del planner con workflow vinculado, montado UNA vez a nivel App (no renderiza
 // nada) — hermano de TriggerRunner pero para disparos DE UNA SOLA VEZ en vez de recurrentes: no hace
@@ -36,6 +37,7 @@ async function fireTask(t: PlannerTask, running: Set<string>, reason: "schedule"
           const f = useWorkflowStore.getState().workflows[flowId];
           return f ? { name: f.name, nodes: f.nodes, edges: f.edges } : undefined;
         },
+        confirmAction: confirmHeadlessAction,
       },
       ""
     );
