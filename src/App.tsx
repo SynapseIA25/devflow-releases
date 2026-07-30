@@ -7,6 +7,7 @@ import { homeDir } from "./lib/tauriApi";
 import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
+import { PlannerRunner } from "./components/PlannerRunner";
 import { EditorWatcher } from "./components/EditorWatcher";
 import { McpBridgeRunner } from "./components/McpBridgeRunner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -24,6 +25,7 @@ import { ProjectsView } from "./views/ProjectsView";
 import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
 import { SpecsView } from "./views/SpecsView";
+import { PlannerView } from "./views/PlannerView";
 import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
 import { useSkillsStore } from "./store/skillsStore";
@@ -39,6 +41,7 @@ const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   editor:   <EditorView />,
   specs:    <SpecsView />,
   map:      <CodebaseMapView />,
+  planner:  <PlannerView />,
   projects: <ProjectsView />,
   environments: <EnvironmentsView />,
   terminals: <TerminalsView />,
@@ -107,6 +110,7 @@ export default function App() {
     <div className="app">
       {/* Scheduler global de triggers + watcher del editor (no renderizan UI). */}
       <TriggerRunner />
+      <PlannerRunner />
       <EditorWatcher />
       <McpBridgeRunner />
       <UpdateBanner />

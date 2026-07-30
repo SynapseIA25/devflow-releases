@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks, CalendarClock } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
-export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
+export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "planner" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
 
 type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
 type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
@@ -22,6 +22,7 @@ const GROUPS: NavGroup[] = [
       { id: "specs",    icon: ListChecks, label: "Specs",   hint: "spec-driven" },
       { id: "map",      icon: Network,  label: "Map",       hint: "codebase" },
       { id: "workflow", icon: GitBranch, label: "Workflows", hint: "automation" },
+      { id: "planner",  icon: CalendarClock, label: "Planner", hint: "tasks & dates" },
     ],
   },
   {
