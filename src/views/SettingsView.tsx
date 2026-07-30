@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search, Sparkles, HardDrive, Cloud, Info } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search, Sparkles, HardDrive, Cloud, Info, Smartphone, Copy } from "lucide-react";
+import { localLanIp } from "../lib/tauriApi";
+import { MOBILE_COMPANION_PORT } from "../components/MobileCompanionRunner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import pkg from "../../package.json";
@@ -594,6 +596,65 @@ function LanguageServersSection() {
   );
 }
 
+// Mobile Companion (base, Orca backlog): toggle + URL de emparejamiento (IP LAN real + puerto +
+// token, ver lib.rs/MobileCompanionRunner.tsx). Sin QR de verdad en esta pasada (evita sumar una
+// dependencia solo para eso) — la URL como texto + copiar alcanza para pegarla en el navegador del
+// celular. Límite real y explícito: solo funciona con el celular en la MISMA red local, no "desde
+// cualquier lugar" (eso necesitaría un relay en la nube, decisión de producto aparte).
+function MobileCompanionSection() {
+  const enabled = useSettingsStore((s) => s.mobileCompanionEnabled);
+  const setEnabled = useSettingsStore((s) => s.setMobileCompanionEnabled);
+  const token = useSettingsStore((s) => s.mobileCompanionToken);
+  const [lanIp, setLanIp] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    localLanIp().then(setLanIp).catch(() => setLanIp(null));
+  }, [enabled]);
+
+  const url = lanIp ? `http://${lanIp}:${MOBILE_COMPANION_PORT}/workspaces?token=${token}` : null;
+
+  return (
+    <div className="settings-security">
+      <h3 className="settings-section-title"><Smartphone size={14} /> Mobile Companion</h3>
+      <p className="apikeys-subtitle">
+        Base only: lets a phone on the SAME local network list your workspaces and send a follow-up
+        message. No push notifications (needs APNs/FCM) and no mobile app yet — this exposes the
+        desktop-side API a future companion app would use. Works only on your local network, not
+        "from anywhere" (that needs a cloud relay, a separate decision).
+      </p>
+      <div className="security-row">
+        <label className={`security-toggle${enabled ? " on" : ""}`} onClick={() => setEnabled(!enabled)}>
+          <span className="security-toggle-dot" />
+        </label>
+        <div className="security-row-text">
+          <div className="security-row-title">Enable Mobile Companion API</div>
+          <div className="security-row-desc">
+            {enabled ? "On — pairing URL below." : "Off — no requests are served (a token in the URL is the only guard)."}
+          </div>
+        </div>
+      </div>
+      {enabled && (
+        <div className="apikeys-row">
+          <div className="apikeys-info">
+            <span className="apikeys-label">Pairing URL</span>
+            <div className="apikeys-free">{url ?? "Resolving local network address…"}</div>
+          </div>
+          {url && (
+            <button
+              className="onb-install-btn"
+              onClick={() => { void navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+            >
+              <Copy size={11} /> {copied ? "Copied!" : "Copy"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AboutSection() {
   const [showNotices, setShowNotices] = useState(false);
   return (
@@ -627,6 +688,7 @@ export function SettingsView() {
       <SecuritySection />
       <RagSection />
       <LanguageServersSection />
+      <MobileCompanionSection />
       <AboutSection />
     </div>
   );

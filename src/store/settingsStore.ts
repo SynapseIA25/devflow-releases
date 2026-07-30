@@ -32,6 +32,11 @@ type SettingsStore = {
   // una vez que App.tsx asoció todos los flujos existentes a todos los proyectos existentes, para
   // que no se repita en cada arranque (ver App.tsx).
   workflowAssociationMigrated: boolean;
+  // Mobile Companion (base, Orca backlog): token no adivinable generado una sola vez (persistido,
+  // no cambia entre sesiones) + el toggle de si el servidor está habilitado. Ver MobileCompanionRunner.tsx.
+  mobileCompanionEnabled: boolean;
+  mobileCompanionToken: string;
+  setMobileCompanionEnabled: (v: boolean) => void;
   // Provider sobre el que corre el EQUIPO de expertos (TeamView). "opencode" (default) = cada
   // experto usa el mejor modelo GRATIS para su perfil (modelRouter); "anthropic" = Claude Code.
   teamProviderId: string;
@@ -72,6 +77,8 @@ export const useSettingsStore = create<SettingsStore>()(
       providerKeys: {},
       onboardingDone: false,
       workflowAssociationMigrated: false,
+      mobileCompanionEnabled: false,
+      mobileCompanionToken: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
       teamProviderId: "opencode",
       teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
@@ -93,6 +100,7 @@ export const useSettingsStore = create<SettingsStore>()(
 
       setOnboardingDone: (v) => set({ onboardingDone: v }),
       setWorkflowAssociationMigrated: (v) => set({ workflowAssociationMigrated: v }),
+      setMobileCompanionEnabled: (v) => set({ mobileCompanionEnabled: v }),
 
       setModelForProvider: (provider, model) =>
         set((s) => ({
@@ -140,6 +148,8 @@ export const useSettingsStore = create<SettingsStore>()(
         providerKeys: s.providerKeys,
         onboardingDone: s.onboardingDone,
         workflowAssociationMigrated: s.workflowAssociationMigrated,
+        mobileCompanionEnabled: s.mobileCompanionEnabled,
+        mobileCompanionToken: s.mobileCompanionToken,
         teamProviderId: s.teamProviderId,
         teamTurnTimeoutSecs: s.teamTurnTimeoutSecs,
         promptEconomy: s.promptEconomy,

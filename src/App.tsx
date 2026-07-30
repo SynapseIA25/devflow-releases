@@ -10,6 +10,7 @@ import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
 import { PlannerRunner } from "./components/PlannerRunner";
 import { CommandPalette } from "./components/CommandPalette";
+import { MobileCompanionRunner } from "./components/MobileCompanionRunner";
 import { EditorWatcher } from "./components/EditorWatcher";
 import { McpBridgeRunner } from "./components/McpBridgeRunner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -132,6 +133,7 @@ export default function App() {
       <TriggerRunner />
       <PlannerRunner />
       <CommandPalette />
+      <MobileCompanionRunner />
       <EditorWatcher />
       <McpBridgeRunner />
       <UpdateBanner />

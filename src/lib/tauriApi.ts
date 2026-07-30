@@ -264,6 +264,23 @@ export async function closeDesignModeWindow(): Promise<void> {
   return invoke<void>("close_design_mode_window");
 }
 
+// Mobile Companion (base): servidor HTTP local en 0.0.0.0 (alcanzable desde el celular en la misma
+// red) — ver MobileCompanionRunner.tsx para el request/reply real.
+export async function mobileCompanionStart(port: number, token: string): Promise<number> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<number>("mobile_companion_start", { port, token });
+}
+
+export async function mobileCompanionReply(id: number, result: unknown, error?: string): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("mobile_companion_reply", { id, result: result ?? null, error: error ?? null });
+}
+
+export async function localLanIp(): Promise<string> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<string>("local_lan_ip");
+}
+
 // Home del usuario (USERPROFILE/HOME) — para semillar el proyecto default sin hardcodear una ruta.
 export async function homeDir(): Promise<string> {
   if (!isTauri()) return "";

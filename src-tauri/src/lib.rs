@@ -1069,6 +1069,137 @@ fn devflow_mcp_respond(
     Ok(())
 }
 
+// Mobile Companion (base, Orca backlog): servidor HTTP local que expone GET /workspaces y POST
+// /workspaces/:id/message para un cliente externo (ej. el navegador del celular en la MISMA red
+// local) — mismo patrón request→espera-al-frontend→responde que devflow_mcp_bridge_start, porque el
+// estado real (workspaces, mensajes) vive en el store de zustand del frontend, no acá. Token en la
+// URL (?token=...), mismo criterio ya usado por el webhook de triggers. SIN notificaciones push
+// reales (necesitarían APNs/FCM = cuentas de desarrollador + backend) y SIN la app móvil en sí —
+// eso es una decisión de producto aparte, no algo que se resuelve programando (ver plan). Sin
+// comando de "stop" a propósito: mismo trade-off ya aceptado por webhook_start/
+// devflow_mcp_bridge_start (tiny_http no expone parar el loop de incoming_requests una vez lanzado);
+// "apagarlo" desde Settings deja de exponer el token/URL y el handler del frontend deja de responder
+// datos reales si el toggle está off, aunque el socket siga técnicamente escuchando.
+struct MobileReply {
+    result: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+#[derive(Default)]
+pub struct MobileCompanionState {
+    port: Mutex<Option<u16>>,
+    token: Mutex<Option<String>>,
+    pending: Mutex<HashMap<u64, std::sync::mpsc::Sender<MobileReply>>>,
+    next_id: std::sync::atomic::AtomicU64,
+}
+
+#[tauri::command]
+fn mobile_companion_start(app: AppHandle, port: u16, token: String, state: State<MobileCompanionState>) -> Result<u16, String> {
+    {
+        let port_guard = state.port.lock().map_err(|e| e.to_string())?;
+        if let Some(p) = *port_guard {
+            return Ok(p);
+        }
+    }
+    // 0.0.0.0 (no 127.0.0.1 como el webhook de triggers): a diferencia de ese, este servidor
+    // necesita ser alcanzable DESDE OTRO dispositivo en la red local (el celular), no solo localhost.
+    let server = tiny_http::Server::http(format!("0.0.0.0:{port}")).map_err(|e| e.to_string())?;
+    *state.port.lock().map_err(|e| e.to_string())? = Some(port);
+    *state.token.lock().map_err(|e| e.to_string())? = Some(token);
+
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        for mut req in server.incoming_requests() {
+            let app = app_for_thread.clone();
+            std::thread::spawn(move || {
+                let state = app.state::<MobileCompanionState>();
+                let expected_token = state.token.lock().ok().and_then(|g| g.clone());
+
+                let url = req.url().to_string();
+                let (path, query) = url.split_once('?').unwrap_or((url.as_str(), ""));
+                let token_ok = query
+                    .split('&')
+                    .find_map(|kv| kv.strip_prefix("token="))
+                    .map(|t| Some(t.to_string()) == expected_token)
+                    .unwrap_or(false);
+                if !token_ok {
+                    let _ = req.respond(tiny_http::Response::from_string("unauthorized").with_status_code(401));
+                    return;
+                }
+
+                let mut body = String::new();
+                let _ = req.as_reader().read_to_string(&mut body);
+
+                let (kind, workspace_id): (&str, String) = if path == "/workspaces" {
+                    ("list", String::new())
+                } else if let Some(rest) = path.strip_prefix("/workspaces/") {
+                    ("message", rest.strip_suffix("/message").unwrap_or(rest).to_string())
+                } else {
+                    ("", String::new())
+                };
+                if kind.is_empty() {
+                    let _ = req.respond(tiny_http::Response::from_string("not found").with_status_code(404));
+                    return;
+                }
+
+                let id = state.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let (tx, rx) = std::sync::mpsc::channel::<MobileReply>();
+                if let Ok(mut p) = state.pending.lock() {
+                    p.insert(id, tx);
+                }
+                let _ = app.emit("mobile-companion-request", serde_json::json!({
+                    "id": id, "kind": kind, "workspaceId": workspace_id, "body": body,
+                }));
+
+                match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                    Ok(reply) => {
+                        if let Some(err) = reply.error {
+                            let body = serde_json::json!({ "error": err }).to_string();
+                            let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(500));
+                        } else {
+                            let body = serde_json::to_string(&reply.result.unwrap_or(serde_json::Value::Null)).unwrap_or_default();
+                            let _ = req.respond(tiny_http::Response::from_string(body));
+                        }
+                    }
+                    Err(_) => {
+                        if let Ok(mut p) = state.pending.lock() {
+                            p.remove(&id);
+                        }
+                        let _ = req.respond(tiny_http::Response::from_string("{\"error\":\"timeout esperando a DevFlow\"}").with_status_code(504));
+                    }
+                }
+            });
+        }
+    });
+    Ok(port)
+}
+
+#[tauri::command]
+fn mobile_companion_reply(
+    id: u64,
+    result: Option<serde_json::Value>,
+    error: Option<String>,
+    state: State<MobileCompanionState>,
+) -> Result<(), String> {
+    let sender = state.pending.lock().map_err(|e| e.to_string())?.remove(&id);
+    if let Some(tx) = sender {
+        let _ = tx.send(MobileReply { result, error });
+    }
+    Ok(())
+}
+
+// Trick estándar sin dependencias nuevas: "conectar" un socket UDP a una IP externa no manda
+// paquetes de verdad, solo hace que el SO resuelva la interfaz de salida — de ahí se lee la IP LAN
+// real de esta máquina, para mostrarla en Settings (la URL de emparejamiento necesita la IP de red,
+// no 127.0.0.1, para ser alcanzable desde el celular).
+#[tauri::command]
+fn local_lan_ip() -> Result<String, String> {
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+    socket.connect("8.8.8.8:80").map_err(|e| e.to_string())?;
+    Ok(socket.local_addr().map_err(|e| e.to_string())?.ip().to_string())
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FsEntry {
@@ -1448,6 +1579,7 @@ pub fn run() {
         .manage(WebhookState(Mutex::new(None)))
         .manage(WatchState(Mutex::new(HashMap::new())))
         .manage(BridgeState::default())
+        .manage(MobileCompanionState::default())
         .manage(lsp::LspProcesses(Mutex::new(HashMap::new())))
         .invoke_handler(tauri::generate_handler![
             start_mcp_server,
@@ -1488,6 +1620,9 @@ pub fn run() {
             pty_kill,
             open_design_mode_window,
             close_design_mode_window,
+            mobile_companion_start,
+            mobile_companion_reply,
+            local_lan_ip,
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
