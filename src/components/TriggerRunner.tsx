@@ -27,7 +27,7 @@ async function fire(t: Trigger, running: Set<string>, input = "", reason: "sched
   if (st.activeId === t.workflowId) st.resetStatuses();
   const logs: string[] = [];
   try {
-    await runWorkflow(
+    const { errored } = await runWorkflow(
       w.nodes,
       w.edges,
       {
@@ -45,7 +45,7 @@ async function fire(t: Trigger, running: Set<string>, input = "", reason: "sched
       },
       input
     );
-    useTriggersStore.getState().recordRun(t.id, "success", logs.slice(-3).join(" · ") || "OK", reason);
+    useTriggersStore.getState().recordRun(t.id, errored ? "error" : "success", logs.slice(-3).join(" · ") || "OK", reason);
   } catch (e) {
     useTriggersStore.getState().recordRun(t.id, "error", e instanceof Error ? e.message : String(e), reason);
   } finally {

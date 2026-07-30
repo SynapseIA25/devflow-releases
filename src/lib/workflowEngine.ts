@@ -698,16 +698,21 @@ async function runGraph(
   return { errored, cancelled: false, output };
 }
 
-export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks, initialInput = ""): Promise<void> {
+// errored = true si algún nodo terminó en estado "error" (stop-on-error). Los llamadores que solo
+// hacen `await runWorkflow(...)` sin mirar el resultado (ChatView, WorkflowView, mcpBridgeHandlers)
+// siguen andando igual; TriggerRunner/PlannerRunner lo usan para no reportar "success" en un run que
+// en realidad se detuvo por un nodo fallido.
+export async function runWorkflow(nodes: WorkflowNode[], edges: Edge[], cb: EngineCallbacks, initialInput = ""): Promise<{ errored: boolean }> {
   if (nodes.length === 0) {
     cb.onLog("warn", "El canvas está vacío — nada que ejecutar.");
-    return;
+    return { errored: false };
   }
   // Caché de sesiones ACP compartida por toda la corrida (excepto loops, que aíslan por item). Nace
   // vacía en cada runWorkflow → una corrida no hereda contexto de la anterior.
   const sessions: SessionCache = new Map();
   const r = await runGraph(nodes, edges, cb, initialInput, new Set(), sessions);
-  if (r.cancelled) return; // ya logueó "Ejecución cancelada."
+  if (r.cancelled) return { errored: false }; // ya logueó "Ejecución cancelada."
   if (!r.errored) cb.onLog("success", "✓ Workflow completado.");
   else cb.onLog("error", "Workflow detenido por un error.");
+  return { errored: r.errored };
 }

@@ -21,7 +21,7 @@ async function fireTask(t: PlannerTask, running: Set<string>, reason: "schedule"
   if (st.activeId === t.workflowId) st.resetStatuses();
   const logs: string[] = [];
   try {
-    await runWorkflow(
+    const { errored } = await runWorkflow(
       w.nodes,
       w.edges,
       {
@@ -39,7 +39,7 @@ async function fireTask(t: PlannerTask, running: Set<string>, reason: "schedule"
       },
       ""
     );
-    usePlannerStore.getState().recordFire(t.id, "success", logs.slice(-3).join(" · ") || "OK", reason);
+    usePlannerStore.getState().recordFire(t.id, errored ? "error" : "success", logs.slice(-3).join(" · ") || "OK", reason);
   } catch (e) {
     usePlannerStore.getState().recordFire(t.id, "error", e instanceof Error ? e.message : String(e), reason);
   } finally {
