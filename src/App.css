@@ -2054,6 +2054,7 @@ textarea.wf-var-input { resize: vertical; font-family: 'Cascadia Code','Consolas
 
 /* Render markdown de la documentación (reusa el look de .doc-ai + tablas) */
 .proj-md { padding: 18px 24px; max-width: 860px; color: var(--text); font-size: 14px; line-height: 1.7; }
+.about-notices { max-height: 400px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; }
 .proj-md h1, .proj-md h2 { font-size: 18px; font-weight: 700; color: var(--text); margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border-2); }
 .proj-md h1:first-child, .proj-md h2:first-child { margin-top: 0; }
 .proj-md h3 { font-size: 15px; font-weight: 700; color: var(--text); margin: 16px 0 8px; }

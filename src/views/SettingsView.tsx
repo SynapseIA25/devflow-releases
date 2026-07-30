@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search, Sparkles, HardDrive, Cloud } from "lucide-react";
+import { CheckCircle, AlertCircle, ShieldAlert, KeyRound, ExternalLink, RotateCw, Leaf, Gauge, Code2, Download, Search, Sparkles, HardDrive, Cloud, Info } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import pkg from "../../package.json";
+import thirdPartyNotices from "../../NOTICE.md?raw";
 import { AddModelModal } from "../components/AddModelModal";
 import { useSettingsStore } from "../store/settingsStore";
 import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
@@ -590,6 +594,24 @@ function LanguageServersSection() {
   );
 }
 
+function AboutSection() {
+  const [showNotices, setShowNotices] = useState(false);
+  return (
+    <div className="settings-apikeys">
+      <h3 className="settings-section-title"><Info size={14} /> About</h3>
+      <p className="apikeys-subtitle">DevFlow v{pkg.version}</p>
+      <button className="apikeys-save apikeys-save--ghost" onClick={() => setShowNotices((v) => !v)}>
+        {showNotices ? "Hide" : "Show"} third-party notices
+      </button>
+      {showNotices && (
+        <div className="proj-md about-notices">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{thirdPartyNotices}</ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView() {
   return (
     <div className="settings-view">
@@ -605,6 +627,7 @@ export function SettingsView() {
       <SecuritySection />
       <RagSection />
       <LanguageServersSection />
+      <AboutSection />
     </div>
   );
 }
