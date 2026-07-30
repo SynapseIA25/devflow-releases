@@ -1565,6 +1565,29 @@ fn close_design_mode_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Presets de tamaño de viewport para la vista Design (mobile/tablet/desktop, ver DesignPreviewControls
+// en el frontend) — reusa la ventana singleton "design-mode" ya abierta por open_design_mode_window.
+// A diferencia de additional_browser_args (WebView2/Windows-only), run_on_main_thread y set_size son
+// APIs planas de tauri/wry sin gate de plataforma — esta feature no hereda la limitación de
+// Windows-only del click-to-inspect, aunque acá solo se puede probar en vivo en esta máquina Windows.
+#[tauri::command]
+async fn resize_design_mode_window(app: AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let app2 = app.clone();
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    app.run_on_main_thread(move || {
+        let result = (|| -> Result<(), String> {
+            let w = app2
+                .get_webview_window("design-mode")
+                .ok_or_else(|| "La ventana de Design Mode no está abierta.".to_string())?;
+            w.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+                .map_err(|e| e.to_string())
+        })();
+        let _ = tx.send(result);
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "La ventana de Design Mode no respondió.".to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1620,6 +1643,7 @@ pub fn run() {
             pty_kill,
             open_design_mode_window,
             close_design_mode_window,
+            resize_design_mode_window,
             mobile_companion_start,
             mobile_companion_reply,
             local_lan_ip,

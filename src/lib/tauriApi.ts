@@ -264,6 +264,12 @@ export async function closeDesignModeWindow(): Promise<void> {
   return invoke<void>("close_design_mode_window");
 }
 
+// Presets de viewport para la vista Design (mobile/tablet/desktop) — reusa la misma ventana.
+export async function resizeDesignModeWindow(width: number, height: number): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("resize_design_mode_window", { width, height });
+}
+
 // Mobile Companion (base): servidor HTTP local en 0.0.0.0 (alcanzable desde el celular en la misma
 // red) — ver MobileCompanionRunner.tsx para el request/reply real.
 export async function mobileCompanionStart(port: number, token: string): Promise<number> {

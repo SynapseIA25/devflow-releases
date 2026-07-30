@@ -6,7 +6,8 @@ import { useUiStore } from "../store/uiStore";
 
 // Puerto de debug dedicado a la ventana de Design Mode — distinto del 9222 que se usa a mano para
 // verificar DevFlow mismo, y de los puertos de dev server comunes (1420 de Vite acá, 3000/5173, etc).
-const DESIGN_MODE_DEBUG_PORT = 9333;
+// Exportado: DesignPreviewControls.tsx (vista Design) reusa la MISMA ventana singleton "design-mode".
+export const DESIGN_MODE_DEBUG_PORT = 9333;
 
 export function DesignModeModal({ onClose }: { onClose: () => void }) {
   const [url, setUrl] = useState("http://localhost:");
