@@ -289,14 +289,23 @@ export async function newSession(
   return result.sessionId;
 }
 
-export async function prompt(provider: string, sessionId: string, text: string): Promise<{ stopReason: string }> {
+// image: adjunto opcional (paste/drag de una imagen en el chat, ver ChatView) — bloque de tipo
+// "image" del content block estándar de ACP/MCP (data en base64 SIN el prefijo "data:...;base64,").
+export async function prompt(
+  provider: string,
+  sessionId: string,
+  text: string,
+  image?: { data: string; mimeType: string }
+): Promise<{ stopReason: string }> {
   // Un turno = un request contra la cuota diaria del provider de inferencia del modelo de la sesión
   // (los providers sin budget conocido —mimo, zen, locales— se cuentan igual pero nunca "se agotan").
   const model = modelBySession.get(`${provider}:${sessionId}`);
   if (model) recordModelUse(model);
+  const promptBlocks: unknown[] = image ? [{ type: "image", data: image.data, mimeType: image.mimeType }] : [];
+  promptBlocks.push({ type: "text", text });
   return sendRequest(provider, "session/prompt", {
     sessionId,
-    prompt: [{ type: "text", text }],
+    prompt: promptBlocks,
   }, sessionId);
 }
 

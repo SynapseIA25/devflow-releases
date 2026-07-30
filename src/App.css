@@ -868,6 +868,7 @@ html, body, #root {
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
   font-size: 13px; line-height: 1.6; color: var(--text); white-space: pre-wrap;
 }
+.doc-user-image { display: block; max-width: 100%; max-height: 240px; border-radius: 6px; margin-bottom: 8px; }
 
 /* Doc terminal blocks */
 .doc-cmd { display: flex; align-items: center; gap: 8px; padding: 5px 22px; font-family: 'Cascadia Code','Consolas',monospace; font-size: 12px; }
@@ -1110,6 +1111,8 @@ html, body, #root {
 .ctx-chip span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx-chip button { background: none; border: none; color: var(--text-3); cursor: pointer; display: flex; padding: 1px; }
 .ctx-chip button:hover { color: #f87171; }
+.ctx-chip--image { padding-left: 2px; }
+.ctx-chip-thumb { width: 18px; height: 18px; object-fit: cover; border-radius: 4px; }
 
 /* Cola de mensajes del chat (turnos por-workspace): mensajes pendientes de enviar mientras corre un turno. */
 .queue-chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding-bottom: 6px; }

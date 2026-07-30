@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode, GitBranch } from "lucide-react";
@@ -193,7 +193,12 @@ function DocBlock({ block }: { block: DocBlockData }) {
     return <div className="doc-thought">{block.content}</div>;
   }
   if (block.type === "user") {
-    return <div className="doc-user">{block.content}</div>;
+    return (
+      <div className="doc-user">
+        {block.imageDataUrl && <img src={block.imageDataUrl} alt="" className="doc-user-image" />}
+        {block.content}
+      </div>
+    );
   }
   return (
     <div className="doc-ai">
@@ -308,7 +313,12 @@ export function ChatView() {
     return useAgentsStore.getState().agents.find((a) => a.id === w?.agentId);
   }, []);
   const contextItems = useProjectStore((s) => s.projects[s.activeId]?.contextItems ?? []);
+  const addContextItem = useProjectStore((s) => s.addContextItem);
   const removeContextItem = useProjectStore((s) => s.removeContextItem);
+  // Imagen adjunta (paste/drag) pendiente de mandar con el próximo mensaje — solo para el envío
+  // inmediato (handleSend), no para mensajes encolados mientras un turno está corriendo (ver enqueue).
+  const [composedImage, setComposedImage] = useState<{ dataUrl: string; mimeType: string } | null>(null);
+  const pendingImageRef = useRef<Map<string, { data: string; mimeType: string }>>(new Map());
   // Archivo activo del editor de código DEL PROYECTO ACTIVO — se inyecta como contexto del agente (ver
   // buildPromptWithContext). El editor está scopeado por proyecto, así que este chip solo muestra un
   // archivo del proyecto activo (nunca uno de otro proyecto abierto en otra pestaña del editor).
@@ -693,7 +703,9 @@ export function ChatView() {
       }
       // Si detuvieron el turno mientras se creaba la sesión, no arranquemos el prompt.
       if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
-      await acpClient.prompt(provider, sid, fullPrompt);
+      const pendingImage = pendingImageRef.current.get(wsId);
+      pendingImageRef.current.delete(wsId);
+      await acpClient.prompt(provider, sid, fullPrompt, pendingImage);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // __turn_cancelled__ = el usuario detuvo el turno (acpClient.cancel); no es un error real.
@@ -778,7 +790,9 @@ export function ChatView() {
         }
       }
       if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
-      await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt, promptOpts);
+      const pendingImage = pendingImageRef.current.get(wsId);
+      pendingImageRef.current.delete(wsId);
+      await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt, promptOpts, pendingImage);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg !== "__turn_cancelled__") {
@@ -894,9 +908,15 @@ export function ChatView() {
   };
 
   // Arranca un mensaje del usuario en un workspace: pinta el bloque, marca el turno como corriendo,
-  // resetea la señal de cancelación y despacha al runner correcto (workflow /run o agente).
-  const startMessage = (wsId: string, text: string) => {
-    addBlockToWs(wsId, { type: "user", content: text });
+  // resetea la señal de cancelación y despacha al runner correcto (workflow /run o agente). image
+  // (paste/drag en el chat) queda en pendingImageRef — runAcp/runOpenCodeHttp lo leen justo antes de
+  // llamar al prompt real, así no hace falta agregar el parámetro a runAI/runWorkflowFromChat/etc.
+  const startMessage = (wsId: string, text: string, image?: { dataUrl: string; mimeType: string }) => {
+    addBlockToWs(wsId, { type: "user", content: text, imageDataUrl: image?.dataUrl });
+    if (image) {
+      const base64 = image.dataUrl.slice(image.dataUrl.indexOf(",") + 1);
+      pendingImageRef.current.set(wsId, { data: base64, mimeType: image.mimeType });
+    }
     setRunning(wsId, true);
     cancelledRef.current.set(wsId, false);
     if (text === "/run" || text.startsWith("/run ")) {
@@ -945,16 +965,57 @@ export function ChatView() {
     if (!t || !curWsId) return;
     setInput("");
     // Si ya hay un turno en curso en este workspace, encolamos: el chat sigue usable y el mensaje
-    // se manda solo cuando termina el turno actual (cola transitoria por-workspace).
+    // se manda solo cuando termina el turno actual (cola transitoria por-workspace). La imagen
+    // adjunta NO viaja en la cola (alcance de esta pasada) — solo en el envío inmediato de abajo.
     if (ws?.running) {
       enqueue(curWsId, t);
       return;
     }
-    startMessage(curWsId, t);
+    const image = composedImage ?? undefined;
+    setComposedImage(null);
+    startMessage(curWsId, t, image);
   };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const readImageFile = (file: File): Promise<{ dataUrl: string; mimeType: string }> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ dataUrl: String(reader.result), mimeType: file.type || "image/png" });
+      reader.onerror = () => reject(reader.error ?? new Error("No se pudo leer la imagen"));
+      reader.readAsDataURL(file);
+    });
+
+  // Pegar una imagen (ej. screenshot copiado) la adjunta al próximo mensaje — no reemplaza el
+  // comportamiento normal de pegar texto.
+  const handlePaste = async (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    const imgFile = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+    if (!imgFile) return;
+    e.preventDefault();
+    try {
+      setComposedImage(await readImageFile(imgFile));
+    } catch { /* si falla la lectura, no se adjunta nada — no rompe el paste normal */ }
+  };
+
+  // Soltar un archivo sobre el chat: si viene del FileExplorer propio (path interno) lo agrega al
+  // contexto; si es una imagen de afuera (drag desde el explorador de Windows), la adjunta al
+  // próximo mensaje; otro archivo externo sin path resuelto se ignora (no hay forma de leerlo sin
+  // acceso a filesystem, que los File del navegador no exponen por seguridad).
+  const handleDrop = async (e: ReactDragEvent) => {
+    e.preventDefault();
+    const internalPath = e.dataTransfer.getData("application/x-devflow-path");
+    if (internalPath) {
+      addContextItem({ path: internalPath, isDir: false });
+      return;
+    }
+    const file = e.dataTransfer.files?.[0];
+    if (file?.type.startsWith("image/")) {
+      try {
+        setComposedImage(await readImageFile(file));
+      } catch { /* ignorar si falla la lectura */ }
+    }
   };
 
   const toggleVoice = () => {
@@ -1157,7 +1218,16 @@ export function ChatView() {
               ))}
             </div>
           )}
-          <div className="hterm-input-box">
+          {composedImage && (
+            <div className="ctx-chip-row">
+              <div className="ctx-chip ctx-chip--image" title="Attached to the next message">
+                <img src={composedImage.dataUrl} alt="" className="ctx-chip-thumb" />
+                <span>image attached</span>
+                <button onClick={() => setComposedImage(null)} title="Remove attachment"><X size={9} /></button>
+              </div>
+            </div>
+          )}
+          <div className="hterm-input-box" onDragOver={(e) => e.preventDefault()} onDrop={(e) => void handleDrop(e)}>
             <div className="hterm-input-row">
               <textarea
                 ref={textRef}
@@ -1165,6 +1235,7 @@ export function ChatView() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
+                onPaste={(e) => void handlePaste(e)}
                 placeholder={ws?.running
                   ? "Type to queue the next message… (Enter queues)"
                   : "Ask the agent something… (/run [flow] to run a workflow, /remember to update project memory)"}

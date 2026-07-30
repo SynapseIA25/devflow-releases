@@ -26,6 +26,8 @@ export type DocBlockData = {
   agentId?: string;
   ts: number;
   tool?: ToolBlockData;
+  // Thumbnail de una imagen adjunta (paste/drag en el chat, ver ChatView) — solo en bloques "user".
+  imageDataUrl?: string;
 };
 
 export type Workspace = {

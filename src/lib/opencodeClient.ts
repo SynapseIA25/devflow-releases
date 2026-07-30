@@ -384,12 +384,16 @@ export async function newSession(provider: string, cwd: string, preferredModel?:
 // para agentes que no tienen (o no necesitan) un agente nativo registrado. Mutuamente excluyentes
 // en la práctica (ver ChatView.runOpenCodeHttp/teamDelegate.runAgentTurn): si hay agente nativo, su
 // .md ya trae el system prompt, no hace falta mandar los dos.
+// image: adjunto opcional (paste/drag de una imagen en el chat, ver ChatView) — se manda como
+// FilePartInput (mismo tipo "file" que ya usa el SDK de OpenCode para adjuntos), con la imagen
+// inline como data URL en `url` (no hace falta subirla a ningún lado, va en el body del prompt).
 export async function prompt(
   provider: string,
   sessionId: string,
   cwd: string,
   text: string,
-  opts?: { system?: string; agent?: string }
+  opts?: { system?: string; agent?: string },
+  image?: { data: string; mimeType: string }
 ): Promise<{ stopReason: string }> {
   const client = await ensureServer(provider, cwd);
   const modelValue = modelBySession.get(`${provider}:${sessionId}`);
@@ -399,11 +403,15 @@ export async function prompt(
     const [providerID, ...rest] = modelValue.split("/");
     if (providerID && rest.length) model = { providerID, modelID: rest.join("/") };
   }
+  const parts: Array<{ type: "text"; text: string } | { type: "file"; mime: string; url: string }> = image
+    ? [{ type: "file", mime: image.mimeType, url: `data:${image.mimeType};base64,${image.data}` }]
+    : [];
+  parts.push({ type: "text", text });
   const result = await client.session.prompt({
     path: { id: sessionId },
     query: { directory: cwd },
     body: {
-      parts: [{ type: "text", text }],
+      parts,
       ...(model ? { model } : {}),
       ...(opts?.system ? { system: opts.system } : {}),
       ...(opts?.agent ? { agent: opts.agent } : {}),

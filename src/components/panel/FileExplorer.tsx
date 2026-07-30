@@ -199,6 +199,13 @@ function TreeNode({ entry, depth, selected, onSelectFile }: TreeNodeProps) {
       className={`fe-row fe-file${isSelected ? " fe-selected" : ""}`}
       style={{ paddingLeft: 6 + depth * 12 + 14 }}
       onClick={() => onSelectFile(entry.path)}
+      draggable
+      onDragStart={(e) => {
+        // Path propio de DevFlow (lo lee ChatView al soltar sobre el chat) + text/plain como
+        // fallback estándar para cualquier otro drop target.
+        e.dataTransfer.setData("application/x-devflow-path", entry.path);
+        e.dataTransfer.setData("text/plain", entry.path);
+      }}
     >
       <FileIcon ext={extOf(entry.name)} />
       <span className="fe-name" style={{ color: EXT_COLORS[extOf(entry.name) ?? ""] ?? "var(--text-2)" }}>
