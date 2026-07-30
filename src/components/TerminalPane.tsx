@@ -18,12 +18,15 @@ type TerminalPaneProps = {
   cwd: string;
   env?: Record<string, string>; // ambiente del proyecto (Frente 4), inyectado a la terminal
   active: boolean;
+  // Comando a spawnear en el PTY en vez del shell por defecto (ej. `ssh -t host "..."` para un
+  // ambiente SSH, ver environments.ts/sshTerminalCommand) — pty_spawn (Rust) ya lo soporta.
+  command?: string;
 };
 
 // Una sesión PTY por workspace, montada UNA sola vez y nunca destruida mientras la pestaña
 // exista (display:none cuando no está activa) — así cambiar de tab no mata el proceso ni
 // pierde el scrollback. xterm.js ya acumula el buffer en background aunque el panel esté oculto.
-export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProps) {
+export function TerminalPane({ workspaceId, cwd, env, active, command }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -110,7 +113,7 @@ export function TerminalPane({ workspaceId, cwd, env, active }: TerminalPaneProp
         fitAddon.fit();
         try {
           // env se captura al spawnear (cwd cambia junto al proyecto → el efecto re-spawnea con el env fresco).
-          await ptySpawn(workspaceId, cwd, term.rows, term.cols, undefined, env);
+          await ptySpawn(workspaceId, cwd, term.rows, term.cols, command, env);
         } catch (e) {
           term.write(`\r\n\x1b[31mError al iniciar terminal: ${e instanceof Error ? e.message : String(e)}\x1b[0m\r\n`);
         }

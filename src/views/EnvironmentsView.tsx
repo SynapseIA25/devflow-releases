@@ -7,7 +7,7 @@ import { useChatStore } from "../store/chatStore";
 import { useUiStore } from "../store/uiStore";
 import { TerminalPane } from "../components/TerminalPane";
 import { runShellCommand, ptyKill, isTauri } from "../lib/tauriApi";
-import { createWorktree } from "../lib/environments";
+import { createWorktree, createSshWorktree, sshTerminalCommand } from "../lib/environments";
 
 // Vista de Ambientes de prueba. Cada ambiente es un git worktree efímero con su rama propia
 // (env/<name>), creado desde la rama base del proyecto activo. El agente/terminal trabajan AISLADOS
@@ -29,6 +29,10 @@ export function EnvironmentsView() {
   const environments = useMemo(() => project?.environments ?? [], [project]);
   const [selected, setSelected] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  // SSH Worktrees (base): toggle Local/SSH del form de creación.
+  const [envKind, setEnvKind] = useState<"local" | "ssh">("local");
+  const [sshHost, setSshHost] = useState("");
+  const [remotePath, setRemotePath] = useState("");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null); // acción en curso sobre el env seleccionado
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +115,25 @@ export function EnvironmentsView() {
   const create = async () => {
     const name = newName.trim();
     if (!name || !isTauri()) return;
+    if (envKind === "ssh" && (!sshHost.trim() || !remotePath.trim())) return;
     setCreating(true); setError(null);
     try {
-      const wt = await createWorktree(projectPath, name);
-      const id = addEnvironment(wt);
-      setSelected(id);
+      if (envKind === "ssh") {
+        const wt = await createSshWorktree(sshHost.trim(), remotePath.trim(), name);
+        const id = addEnvironment({
+          name: wt.name, branch: wt.branch, baseBranch: wt.baseBranch,
+          path: wt.remotePath, kind: "ssh", sshHost: sshHost.trim(),
+          remotePath: wt.remotePath, remoteProjectPath: wt.remoteProjectPath,
+        });
+        setSelected(id);
+      } else {
+        const wt = await createWorktree(projectPath, name);
+        const id = addEnvironment({ ...wt, kind: "local" });
+        setSelected(id);
+      }
       setNewName("");
+      setSshHost("");
+      setRemotePath("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -211,6 +228,15 @@ export function EnvironmentsView() {
       }
     };
     await killPtys();
+    if (env.kind === "ssh") {
+      // Remoto: no hay lock local de Windows que reintentar — un solo intento vía ssh alcanza.
+      const rm = await runShellCommand(
+        `ssh "${env.sshHost}" "git -C '${env.remoteProjectPath}' worktree remove --force '${env.path}' && git -C '${env.remoteProjectPath}' branch -D '${env.branch}'"`,
+        "."
+      );
+      if (rm.exitCode !== 0) throw new Error(`No se pudo borrar el worktree remoto:\n${rm.output.slice(-400)}`);
+      return;
+    }
     await new Promise((r) => setTimeout(r, 400));
     let res = await git(`git worktree remove --force "${env.path}"`, projectPath);
     if (res.exitCode !== 0) {
@@ -337,6 +363,10 @@ export function EnvironmentsView() {
             <Rows3 size={13} /> Fan out
           </button>
         </div>
+        <div className="env-kind-toggle">
+          <button className={`env-kind-btn${envKind === "local" ? " active" : ""}`} onClick={() => setEnvKind("local")}>Local</button>
+          <button className={`env-kind-btn${envKind === "ssh" ? " active" : ""}`} onClick={() => setEnvKind("ssh")}>SSH</button>
+        </div>
         <div className="env-create">
           <input
             className="env-input"
@@ -345,11 +375,21 @@ export function EnvironmentsView() {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void create(); }}
           />
-          <button className="env-add-btn" title="Create environment (worktree)" onClick={() => void create()} disabled={creating || !newName.trim()}>
+          <button className="env-add-btn" title="Create environment (worktree)" onClick={() => void create()} disabled={creating || !newName.trim() || (envKind === "ssh" && (!sshHost.trim() || !remotePath.trim()))}>
             {creating ? <Loader size={13} className="spin" /> : <Plus size={14} />}
           </button>
         </div>
-        <p className="env-hint">Each environment is an isolated git worktree with its own branch. The agent/terminal work there without touching the real project.</p>
+        {envKind === "ssh" && (
+          <div className="env-create env-create--ssh">
+            <input className="env-input" placeholder="user@host[:port]" value={sshHost} onChange={(e) => setSshHost(e.target.value)} />
+            <input className="env-input" placeholder="/remote/path/to/repo" value={remotePath} onChange={(e) => setRemotePath(e.target.value)} />
+          </div>
+        )}
+        <p className="env-hint">
+          {envKind === "ssh"
+            ? "Runs on a remote box over SSH (needs the repo already there and your SSH keys/config set up). Base only: no live remote file editing, diff, or promote yet — terminal and discard work."
+            : "Each environment is an isolated git worktree with its own branch. The agent/terminal work there without touching the real project."}
+        </p>
 
         {showFanout && (
           <div className="env-fanout-form">
@@ -406,7 +446,10 @@ export function EnvironmentsView() {
               />
               <GitBranch size={13} className="env-row-icon" />
               <div className="env-row-info">
-                <div className="env-row-name">{env.name}</div>
+                <div className="env-row-name">
+                  {env.kind === "ssh" && <span className="env-ssh-badge">SSH</span>}
+                  {env.name}
+                </div>
                 <div className="env-row-branch">{env.branch} ← {env.baseBranch}</div>
               </div>
             </div>
@@ -477,19 +520,28 @@ export function EnvironmentsView() {
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <div className="env-actions">
-                <button className="env-btn env-btn--chat" onClick={() => openInChat(selectedEnv)} disabled={busy !== null}>
-                  <MessageSquare size={12} /> Open in chat
-                </button>
-                <button className="env-btn" onClick={() => void loadDiff(selectedEnv)} disabled={busy !== null}>
-                  {busy === "diff" ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} View diff
-                </button>
-                <button className="env-btn env-btn--promote" onClick={() => void promote(selectedEnv)} disabled={busy !== null}>
-                  {busy === "promote" ? <Loader size={12} className="spin" /> : <ArrowUpFromLine size={12} />} Promote
-                </button>
+                {selectedEnv.kind !== "ssh" && (
+                  <button className="env-btn env-btn--chat" onClick={() => openInChat(selectedEnv)} disabled={busy !== null}>
+                    <MessageSquare size={12} /> Open in chat
+                  </button>
+                )}
+                {selectedEnv.kind !== "ssh" && (
+                  <button className="env-btn" onClick={() => void loadDiff(selectedEnv)} disabled={busy !== null}>
+                    {busy === "diff" ? <Loader size={12} className="spin" /> : <RefreshCw size={12} />} View diff
+                  </button>
+                )}
+                {selectedEnv.kind !== "ssh" && (
+                  <button className="env-btn env-btn--promote" onClick={() => void promote(selectedEnv)} disabled={busy !== null}>
+                    {busy === "promote" ? <Loader size={12} className="spin" /> : <ArrowUpFromLine size={12} />} Promote
+                  </button>
+                )}
                 <button className="env-btn env-btn--discard" onClick={() => void discard(selectedEnv)} disabled={busy !== null}>
                   {busy === "discard" ? <Loader size={12} className="spin" /> : <Trash2 size={12} />} Discard
                 </button>
               </div>
+              {selectedEnv.kind === "ssh" && (
+                <div className="env-ssh-note">SSH environment — chat/diff/promote not available yet, only the terminal below (and discard).</div>
+              )}
             </div>
 
             {diff && diff.envId === selectedEnv.id && (
@@ -544,9 +596,10 @@ export function EnvironmentsView() {
                 <TerminalPane
                   key={`${activeId}:${env.id}`}
                   workspaceId={env.id}
-                  cwd={env.path}
+                  cwd={env.kind === "ssh" ? projectPath : env.path}
                   env={projectEnv}
                   active={env.id === selected}
+                  command={env.kind === "ssh" && env.sshHost && env.remotePath ? sshTerminalCommand(env.sshHost, env.remotePath) : undefined}
                 />
               ))}
             </div>

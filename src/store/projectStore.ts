@@ -65,6 +65,15 @@ export type TestEnv = {
   // Agrupa los ambientes creados por un mismo fan-out (mismo prompt, N agentes en paralelo) para
   // poder listarlos juntos y compararlos — ver EnvironmentsView.tsx.
   fanoutGroupId?: string;
+  // SSH Worktrees (base, Orca backlog) — ambiente remoto: el worktree vive en `remotePath` de
+  // `sshHost` (formato "user@host[:port]", misma convención que cualquier `ssh` de terminal — sin
+  // credenciales propias, asume claves ya cargadas o ~/.ssh/config). "local" (default) preserva el
+  // comportamiento existente. Diff/promote quedan deshabilitados para "ssh" en esta pasada — ver
+  // EnvironmentsView.tsx.
+  kind?: "local" | "ssh";
+  sshHost?: string;
+  remotePath?: string; // path del WORKTREE en el remoto
+  remoteProjectPath?: string; // path del repo original en el remoto (para git -C en discard)
 };
 
 // ── Tests (herramienta nativa de testing, Fase 1: runner tradicional) ──

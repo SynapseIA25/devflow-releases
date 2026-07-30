@@ -54,3 +54,42 @@ export async function createWorktreeFromPr(projectPath: string, prNumber: number
   const branch = branchRes.output.trim() || placeholder;
   return { name, branch, path: wtPath, baseBranch };
 }
+
+export type CreatedSshWorktree = { name: string; branch: string; remotePath: string; remoteProjectPath: string; baseBranch: string };
+
+// SSH Worktrees (base, Orca backlog): crea el worktree DEL LADO REMOTO — todo corre vía `ssh
+// <host> "<comando>"` ejecutado localmente con runShellCommand (Git Bash), mismo criterio de
+// "reusar la CLI del sistema" que el resto del proyecto usa para git; sin librería SSH nueva, sin
+// credenciales manejadas acá (asume claves ya cargadas o un alias en ~/.ssh/config, como cualquier
+// `ssh` de terminal). El terminal interactivo del ambiente reusa pty_spawn tal cual, pasándole
+// `ssh -t <host> "cd '<path>' && exec $SHELL -l"` como comando — no hizo falta Rust nuevo para eso.
+export async function createSshWorktree(sshHost: string, remotePath: string, name: string): Promise<CreatedSshWorktree> {
+  const safeName = safeEnvName(name);
+  const remoteTrim = remotePath.replace(/\/+$/, "");
+  const slashIdx = remoteTrim.lastIndexOf("/");
+  const parent = slashIdx >= 0 ? remoteTrim.slice(0, slashIdx) : remoteTrim;
+  const projectBase = slashIdx >= 0 ? remoteTrim.slice(slashIdx + 1) : remoteTrim;
+  const envsRoot = `${parent}/.devflow-envs`;
+  const wtPath = `${envsRoot}/${safeEnvName(projectBase)}__${safeName}`;
+  const branch = `env/${safeName}`;
+
+  const base = await runShellCommand(`ssh "${sshHost}" "git -C '${remoteTrim}' rev-parse --abbrev-ref HEAD"`, ".");
+  if (base.exitCode !== 0) {
+    throw new Error(`No se pudo conectar a "${sshHost}" o "${remoteTrim}" no es un repo git ahí:\n${base.output.slice(-500)}`);
+  }
+  const baseBranch = base.output.trim();
+
+  const add = await runShellCommand(
+    `ssh "${sshHost}" "mkdir -p '${envsRoot}' && git -C '${remoteTrim}' worktree add '${wtPath}' -b '${branch}'"`,
+    "."
+  );
+  if (add.exitCode !== 0) throw new Error(`No se pudo crear el worktree remoto:\n${add.output.slice(-500)}`);
+
+  return { name, branch, remotePath: wtPath, remoteProjectPath: remoteTrim, baseBranch };
+}
+
+// Comando de PTY para una terminal interactiva DENTRO del worktree remoto — pty_spawn (Rust) ya
+// acepta un comando arbitrario, así que no hace falta ningún cambio de Rust para esto.
+export function sshTerminalCommand(sshHost: string, remoteWorktreePath: string): string {
+  return `ssh -t "${sshHost}" "cd '${remoteWorktreePath}' && exec \\$SHELL -l"`;
+}
