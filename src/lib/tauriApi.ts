@@ -252,6 +252,18 @@ export async function pickFolder(): Promise<string | null> {
   return invoke<string | null>("pick_folder");
 }
 
+// Design Mode: ventana secundaria con remote debugging propio (solo Windows/WebView2 — ver
+// lib.rs) para que cdpClient.ts se conecte por CDP. Cerrarla/reabrirla es cambiar de URL.
+export async function openDesignModeWindow(url: string, debugPort: number): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("open_design_mode_window", { url, debugPort });
+}
+
+export async function closeDesignModeWindow(): Promise<void> {
+  if (!isTauri()) throw new Error("Requiere la app desktop (Tauri). Ejecutá: npm run tauri dev");
+  return invoke<void>("close_design_mode_window");
+}
+
 // Home del usuario (USERPROFILE/HOME) — para semillar el proyecto default sin hardcodear una ruta.
 export async function homeDir(): Promise<string> {
   if (!isTauri()) return "";

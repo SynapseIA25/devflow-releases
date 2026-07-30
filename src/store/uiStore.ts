@@ -14,6 +14,10 @@ type UiStore = {
   // consume una vez y lo limpia.
   pendingPrompt?: string;
   setPendingPrompt: (t?: string) => void;
+  // Imagen a precargar en el compose box del chat (ej. el screenshot recortado de Design Mode).
+  // Mismo criterio que pendingPrompt: se precarga, no se auto-envía — el usuario revisa y manda.
+  pendingImage?: { dataUrl: string; mimeType: string };
+  setPendingImage: (img?: { dataUrl: string; mimeType: string }) => void;
 };
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -24,4 +28,5 @@ export const useUiStore = create<UiStore>((set) => ({
     set({ view: "editor" });
   },
   setPendingPrompt: (pendingPrompt) => set({ pendingPrompt }),
+  setPendingImage: (pendingImage) => set({ pendingImage }),
 }));

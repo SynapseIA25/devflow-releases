@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo, KeyboardEvent, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode, GitBranch } from "lucide-react";
+import { Plus, X, Send, Square, Terminal, ChevronDown, CheckCircle, Loader, Circle, ShieldAlert, XCircle, Mic, FileText, Folder, FileCode, GitBranch, MousePointerClick } from "lucide-react";
+import { DesignModeModal } from "../components/DesignModeModal";
 import { useChatStore } from "../store/chatStore";
 import { useEditorStore } from "../store/editorStore";
 import { useAgentsStore, isDefaultAgent } from "../store/agentsStore";
@@ -232,9 +233,16 @@ export function ChatView() {
   useEffect(() => {
     if (pendingPrompt) { setInput(pendingPrompt); setPendingPrompt(undefined); }
   }, [pendingPrompt, setPendingPrompt]);
+  // Screenshot de Design Mode: mismo criterio que pendingPrompt (precarga, no auto-envía).
+  const pendingUiImage = useUiStore((s) => s.pendingImage);
+  const setPendingUiImage = useUiStore((s) => s.setPendingImage);
+  useEffect(() => {
+    if (pendingUiImage) { setComposedImage(pendingUiImage); setPendingUiImage(undefined); }
+  }, [pendingUiImage, setPendingUiImage]);
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showAddModelModal, setShowAddModelModal] = useState(false);
+  const [showDesignMode, setShowDesignMode] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<acpClient.PermissionRequest | null>(null);
   const [recording, setRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -1139,6 +1147,7 @@ export function ChatView() {
             onAdded={() => {}}
           />
         )}
+        {showDesignMode && <DesignModeModal onClose={() => setShowDesignMode(false)} />}
 
         {/* Steps bar */}
         {steps.length > 0 && (
@@ -1241,6 +1250,13 @@ export function ChatView() {
                   : "Ask the agent something… (/run [flow] to run a workflow, /remember to update project memory)"}
                 rows={2}
               />
+              <button
+                className="hterm-mic-btn"
+                onClick={() => setShowDesignMode(true)}
+                title="Design Mode: click an element in your app to send it to the chat"
+              >
+                <MousePointerClick size={13} />
+              </button>
               <button
                 className={`hterm-mic-btn${recording ? " recording" : ""}`}
                 onClick={toggleVoice}

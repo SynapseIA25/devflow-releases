@@ -1383,6 +1383,57 @@ fn pty_kill(id: String, state: State<PtySessions>) -> Result<(), String> {
     Ok(())
 }
 
+// Design Mode: abre la URL del usuario (su propio dev server) en una ventana secundaria de Tauri
+// CON remote debugging habilitado solo para ESA ventana — formaliza como feature del producto la
+// misma técnica que se usa a mano para verificar DevFlow por CDP (helper cdp.mjs, ver memoria
+// devflow-cdp-verificacion): additional_browser_args es Windows/WebView2-only (no soportado en
+// macOS/Linux/mobile, ver docs de wry) así que esta feature por ahora solo funciona en Windows —
+// en otras plataformas open_design_mode_window abre la ventana igual pero sin CDP disponible.
+#[tauri::command]
+async fn open_design_mode_window(app: AppHandle, url: String, debug_port: u16) -> Result<(), String> {
+    // Dos cosas hacían falta más allá de additional_browser_args para que esto no cuelgue en
+    // Windows: 1) la creación de ventana/webview tiene afinidad de hilo (tiene que correr en el
+    // hilo principal — run_on_main_thread), invocar WebviewWindowBuilder::build() directo desde el
+    // hilo del comando (no necesariamente el principal) se quedaba esperando para siempre; 2) un
+    // data_directory propio, porque todos los webviews de la app comparten el mismo entorno de
+    // WebView2 (mismo user-data-folder) por default, y additional_browser_args distintos entre
+    // ventanas del MISMO entorno ya inicializado no se aplican — hace falta un entorno separado.
+    let data_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("design-mode-webview");
+    let app2 = app.clone();
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    app.run_on_main_thread(move || {
+        let result = (|| -> Result<(), String> {
+            if let Some(w) = app2.get_webview_window("design-mode") {
+                let _ = w.close();
+            }
+            let parsed = tauri::Url::parse(&url).map_err(|e| format!("URL inválida: {e}"))?;
+            tauri::WebviewWindowBuilder::new(&app2, "design-mode", tauri::WebviewUrl::External(parsed))
+                .title("DevFlow — Design Mode")
+                .additional_browser_args(&format!("--remote-debugging-port={debug_port}"))
+                .data_directory(data_dir)
+                .inner_size(1000.0, 750.0)
+                .build()
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        })();
+        let _ = tx.send(result);
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "La ventana de Design Mode no respondió.".to_string())?
+}
+
+#[tauri::command]
+fn close_design_mode_window(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("design-mode") {
+        w.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1435,6 +1486,8 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            open_design_mode_window,
+            close_design_mode_window,
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
