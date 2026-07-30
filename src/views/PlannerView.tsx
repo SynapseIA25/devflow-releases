@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CalendarClock, Plus, Trash2, RotateCcw } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 import { usePlannerStore } from "../store/plannerStore";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useWorkflowStore, useProjectWorkflowIds } from "../store/workflowStore";
 
 // Fecha local en formato aceptado por <input type="datetime-local"> (sin timezone, minuto exacto).
 function toLocalInputValue(ts: number): string {
@@ -19,7 +19,7 @@ export function PlannerView() {
   const removeTask = usePlannerStore((s) => s.removeTask);
   const toggleDone = usePlannerStore((s) => s.toggleDone);
   const workflows = useWorkflowStore((s) => s.workflows);
-  const workflowOrder = useWorkflowStore((s) => s.order);
+  const workflowOrder = useProjectWorkflowIds();
 
   const tasks = allTasks
     .filter((t) => t.projectId === projectId)

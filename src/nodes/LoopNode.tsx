@@ -1,5 +1,5 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
-import { useWorkflowStore, type NodeStatus } from "../store/workflowStore";
+import { useWorkflowStore, useProjectWorkflowIds, type NodeStatus } from "../store/workflowStore";
 
 export type LoopNodeData = {
   label?: string;
@@ -15,7 +15,7 @@ export function LoopNode({ id, data, selected }: NodeProps) {
   const d = data as LoopNodeData;
   const updateNodeData = useWorkflowStore((s) => s.updateNodeData);
   const activeId = useWorkflowStore((s) => s.activeId);
-  const order = useWorkflowStore((s) => s.order);
+  const order = useProjectWorkflowIds();
   const workflows = useWorkflowStore((s) => s.workflows);
   const status = d.status ?? "idle";
 

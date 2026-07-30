@@ -888,9 +888,10 @@ function FlujosTab({ projectId }: { projectId: string }) {
 
   const editFlow = (id: string) => { setActiveWorkflow(id); setView("workflow"); };
   const newFlow = () => {
-    const id = createWorkflow(`${project.name} flow`);
-    updateProject(projectId, { workflowIds: [...project.workflowIds, id] });
-    setView("workflow"); // createWorkflow ya lo deja activo
+    // projectId explícito: esta fila puede no ser el proyecto activo globalmente. createWorkflow ya
+    // asocia el flujo nuevo (project.workflowIds) y lo deja activo.
+    createWorkflow(`${project.name} flow`, projectId);
+    setView("workflow");
   };
 
   return (

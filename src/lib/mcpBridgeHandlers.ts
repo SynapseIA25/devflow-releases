@@ -36,7 +36,9 @@ function listNodeTypes() {
 
 function listWorkflows() {
   const { workflows, order } = useWorkflowStore.getState();
-  return order.map((id) => summarizeWorkflow(workflows[id]));
+  const ps = useProjectStore.getState();
+  const scopedIds = order.filter((id) => ps.projects[ps.activeId]?.workflowIds.includes(id));
+  return scopedIds.map((id) => summarizeWorkflow(workflows[id]));
 }
 
 function getWorkflow(args: Record<string, unknown>) {

@@ -806,7 +806,9 @@ export function ChatView() {
   // nombre → el primero que lo contenga) y vuelca sus logs como un bloque del chat.
   const runWorkflowFromChat = async (wsId: string, arg: string) => {
     const st = useWorkflowStore.getState();
-    const flows = st.order.map((fid) => st.workflows[fid]);
+    const ps = useProjectStore.getState();
+    const scopedIds = st.order.filter((fid) => ps.projects[ps.activeId]?.workflowIds.includes(fid));
+    const flows = scopedIds.map((fid) => st.workflows[fid]);
     const query = arg.trim().toLowerCase();
     const w = query ? flows.find((f) => f.name.toLowerCase().includes(query)) : st.workflows[st.activeId];
     if (!w) {

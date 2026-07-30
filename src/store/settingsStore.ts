@@ -28,6 +28,10 @@ type SettingsStore = {
   providerKeys: Record<string, string>;
   // Wizard de primer arranque: true una vez que el usuario lo cerró.
   onboardingDone: boolean;
+  // Backfill único: workflows pasó de global a scopeado por proyecto (project.workflowIds). true
+  // una vez que App.tsx asoció todos los flujos existentes a todos los proyectos existentes, para
+  // que no se repita en cada arranque (ver App.tsx).
+  workflowAssociationMigrated: boolean;
   // Provider sobre el que corre el EQUIPO de expertos (TeamView). "opencode" (default) = cada
   // experto usa el mejor modelo GRATIS para su perfil (modelRouter); "anthropic" = Claude Code.
   teamProviderId: string;
@@ -45,6 +49,7 @@ type SettingsStore = {
   setRagEnabled: (v: boolean) => void;
   setProviderKey: (id: string, key: string) => void;
   setOnboardingDone: (v: boolean) => void;
+  setWorkflowAssociationMigrated: (v: boolean) => void;
   setTeamProviderId: (id: string) => void;
   setTeamTurnTimeoutSecs: (secs: number) => void;
   setAutoApprovePermissions: (v: boolean) => void;
@@ -66,6 +71,7 @@ export const useSettingsStore = create<SettingsStore>()(
       currentModelByProvider: {},
       providerKeys: {},
       onboardingDone: false,
+      workflowAssociationMigrated: false,
       teamProviderId: "opencode",
       teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
@@ -86,6 +92,7 @@ export const useSettingsStore = create<SettingsStore>()(
         }),
 
       setOnboardingDone: (v) => set({ onboardingDone: v }),
+      setWorkflowAssociationMigrated: (v) => set({ workflowAssociationMigrated: v }),
 
       setModelForProvider: (provider, model) =>
         set((s) => ({
@@ -132,6 +139,7 @@ export const useSettingsStore = create<SettingsStore>()(
         modelByProvider: s.modelByProvider,
         providerKeys: s.providerKeys,
         onboardingDone: s.onboardingDone,
+        workflowAssociationMigrated: s.workflowAssociationMigrated,
         teamProviderId: s.teamProviderId,
         teamTurnTimeoutSecs: s.teamTurnTimeoutSecs,
         promptEconomy: s.promptEconomy,

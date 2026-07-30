@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { type ReactElement } from "react";
 import "./App.css";
 import { useProjectStore } from "./store/projectStore";
+import { useWorkflowStore } from "./store/workflowStore";
 import { PROJECT_CWD } from "./lib/constants";
 import { homeDir } from "./lib/tauriApi";
 import { NavBar, ViewId } from "./components/NavBar";
@@ -77,6 +78,22 @@ export default function App() {
         }
       });
     }
+  }, []);
+
+  // Backfill único: los workflows pasaron de globales a scopeados por proyecto (project.workflowIds,
+  // ver workflowStore.useProjectWorkflowIds). Instalaciones existentes tenían flujos que se veían
+  // en todos los proyectos por igual — para que no "desaparezcan" al actualizar, los asociamos TODOS
+  // a TODOS los proyectos existentes una sola vez. De acá en más, un flujo nuevo solo se asocia al
+  // proyecto en el que se creó (ver createWorkflow en workflowStore.ts).
+  useEffect(() => {
+    if (useSettingsStore.getState().workflowAssociationMigrated) return;
+    const allWorkflowIds = useWorkflowStore.getState().order;
+    const ps = useProjectStore.getState();
+    for (const [id, p] of Object.entries(ps.projects)) {
+      const merged = [...new Set([...p.workflowIds, ...allWorkflowIds])];
+      if (merged.length !== p.workflowIds.length) ps.updateProject(id, { workflowIds: merged });
+    }
+    useSettingsStore.getState().setWorkflowAssociationMigrated(true);
   }, []);
 
   // Skills: pasada del curator-lite (marca stale, 1 vez/día máx.) + proyección al disco para que

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Play, Square, Plus, Trash2, Clock, FileCode } from "lucide-react";
 import { Canvas } from "../components/Canvas";
@@ -6,7 +6,8 @@ import { Sidebar } from "../components/Sidebar";
 import { NodeInspector } from "../components/workflow/NodeInspector";
 import { TriggersModal } from "../components/workflow/TriggersModal";
 import { OutputPanel, LogEntry } from "../components/OutputPanel";
-import { useWorkflowStore } from "../store/workflowStore";
+import { useWorkflowStore, useProjectWorkflowIds } from "../store/workflowStore";
+import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useMetricsStore } from "../store/metricsStore";
 import { runWorkflow } from "../lib/workflowEngine";
@@ -21,7 +22,8 @@ export function WorkflowView() {
   const cancelRef = useRef(false);
   const openInEditor = useUiStore((s) => s.openInEditor);
 
-  const order = useWorkflowStore((s) => s.order);
+  const projectId = useProjectStore((s) => s.activeId);
+  const order = useProjectWorkflowIds();
   const activeId = useWorkflowStore((s) => s.activeId);
   const workflows = useWorkflowStore((s) => s.workflows);
   const setActiveWorkflow = useWorkflowStore((s) => s.setActiveWorkflow);
@@ -29,6 +31,15 @@ export function WorkflowView() {
   const renameWorkflow = useWorkflowStore((s) => s.renameWorkflow);
   const deleteWorkflow = useWorkflowStore((s) => s.deleteWorkflow);
   const activeName = workflows[activeId]?.name ?? "";
+
+  // Si el flujo abierto no pertenece al proyecto activo (recién cambiaste de proyecto), saltar al
+  // primer flujo asociado — o crear uno nuevo (queda auto-asociado) si el proyecto no tiene ninguno.
+  useEffect(() => {
+    if (order.includes(activeId)) return;
+    if (order.length > 0) setActiveWorkflow(order[0]);
+    else createWorkflow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, order, activeId]);
 
   const addLog = useCallback((entry: LogEntry) => {
     setLogs((l) => [...l, entry]);

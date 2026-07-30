@@ -10,6 +10,7 @@ import {
   type NodeChange,
   type EdgeChange,
 } from "@xyflow/react";
+import { useProjectStore } from "./projectStore";
 
 // Estado de ejecución de un nodo. TRANSITORIO: se resetea en cada Run y NO se persiste
 // (partialize lo borra de la data antes de guardar), así un reload siempre muestra "idle".
@@ -90,7 +91,11 @@ type WorkflowStore = {
   resetStatuses: () => void;
 
   // ── Gestión de flujos ──
-  createWorkflow: (name?: string) => string;
+  // projectId opcional: por default asocia el flujo nuevo al proyecto ACTIVO (project.workflowIds,
+  // ver projectStore.ts) — cubre el botón "+" de WorkflowView y la creación vía chat/MCP bridge.
+  // ProjectsView's FlujosTab pasa el projectId explícito de la fila que se está editando (puede no
+  // ser el proyecto activo).
+  createWorkflow: (name?: string, projectId?: string) => string;
   deleteWorkflow: (id: string) => void;
   renameWorkflow: (id: string, name: string) => void;
   setActiveWorkflow: (id: string) => void;
@@ -162,7 +167,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
           }))
         ),
 
-      createWorkflow: (name) => {
+      createWorkflow: (name, projectId) => {
         const id = `flow_${get().flowSeq}`;
         set((s) => ({
           flowSeq: s.flowSeq + 1,
@@ -170,6 +175,11 @@ export const useWorkflowStore = create<WorkflowStore>()(
           order: [...s.order, id],
           activeId: id,
         }));
+        const pid = projectId ?? useProjectStore.getState().activeId;
+        const proj = useProjectStore.getState().projects[pid];
+        if (proj && !proj.workflowIds.includes(id)) {
+          useProjectStore.getState().updateProject(pid, { workflowIds: [...proj.workflowIds, id] });
+        }
         return id;
       },
 
@@ -178,6 +188,12 @@ export const useWorkflowStore = create<WorkflowStore>()(
           if (s.order.length <= 1) return {}; // siempre queda al menos un flujo
           const { [id]: _removed, ...rest } = s.workflows;
           const order = s.order.filter((x) => x !== id);
+          // Sacarlo de project.workflowIds de cualquier proyecto que lo tuviera asociado — si no,
+          // queda un id huérfano acumulado ahí (inofensivo pero sucio) referenciando un flujo borrado.
+          const ps = useProjectStore.getState();
+          for (const [pid, p] of Object.entries(ps.projects)) {
+            if (p.workflowIds.includes(id)) ps.updateProject(pid, { workflowIds: p.workflowIds.filter((x) => x !== id) });
+          }
           return { workflows: rest, order, activeId: s.activeId === id ? order[0] : s.activeId };
         }),
 
@@ -250,3 +266,13 @@ export const useWorkflowStore = create<WorkflowStore>()(
     }
   )
 );
+
+// Ids de flujos asociados al proyecto ACTIVO (project.workflowIds), en el mismo orden que `order` —
+// úsalo en cualquier lugar que hoy liste "todos los flujos" (selector de Workflows, dropdown del
+// Planner, `/run` del chat, referencias de subflow/loop): antes de la asociación por proyecto, todos
+// esos lugares mostraban los flujos de TODOS los proyectos mezclados.
+export function useProjectWorkflowIds(): string[] {
+  const order = useWorkflowStore((s) => s.order);
+  const workflowIds = useProjectStore((s) => s.projects[s.activeId]?.workflowIds);
+  return order.filter((id) => workflowIds?.includes(id));
+}
