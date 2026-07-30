@@ -4,7 +4,7 @@ import { useProjectStore } from "../store/projectStore";
 
 export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "planner" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings";
 
-type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
+export type NavItem = { id: ViewId; icon: typeof MessageSquare; label: string; hint?: string };
 type NavGroup = { key: string; icon: typeof MessageSquare; label: string; items: NavItem[] };
 
 // El NavBar es project-centric: arriba un selector del proyecto activo, debajo el rail.
@@ -43,6 +43,10 @@ const GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+// Lista plana de todas las vistas navegables (CHAT_ITEM + los flyouts + SETTINGS_ITEM) — la usa
+// el CommandPalette (Ctrl+K) para el bloque "Go to…" sin duplicar esta estructura.
+export const ALL_NAV_ITEMS: NavItem[] = [CHAT_ITEM, ...GROUPS.flatMap((g) => g.items), SETTINGS_ITEM];
 
 type Props = {
   active: ViewId;

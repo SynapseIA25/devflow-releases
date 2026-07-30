@@ -9,6 +9,7 @@ import { NavBar, ViewId } from "./components/NavBar";
 import { RightPanel } from "./components/RightPanel";
 import { TriggerRunner } from "./components/TriggerRunner";
 import { PlannerRunner } from "./components/PlannerRunner";
+import { CommandPalette } from "./components/CommandPalette";
 import { EditorWatcher } from "./components/EditorWatcher";
 import { McpBridgeRunner } from "./components/McpBridgeRunner";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -128,6 +129,7 @@ export default function App() {
       {/* Scheduler global de triggers + watcher del editor (no renderizan UI). */}
       <TriggerRunner />
       <PlannerRunner />
+      <CommandPalette />
       <EditorWatcher />
       <McpBridgeRunner />
       <UpdateBanner />
