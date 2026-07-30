@@ -104,6 +104,15 @@ export async function fetchModelCatalog(force = false): Promise<CatalogModel[]> 
   return memCache;
 }
 
+// Cruza un model id de runtime (ej. de acpClient/opencodeClient configOptions) contra el catálogo ya
+// cacheado, para el cost ceiling del router (modelRouter.ts, Fase 2). `modelId` va SIN el prefijo de
+// provider (ver inferenceProviderOf) — ej. para "openrouter/qwen/qwen3-coder:free" es
+// "qwen/qwen3-coder:free". undefined = provider no buscable (ej. "opencode") o modelo no encontrado —
+// el caller lo trata como "gratis/desconocido, nunca se penaliza".
+export function findCatalogModel(catalog: CatalogModel[], providerId: string, modelId: string): CatalogModel | undefined {
+  return catalog.find((m) => m.providerId === providerId && m.modelId === modelId);
+}
+
 export function searchCatalog(catalog: CatalogModel[], query: string, limit = 40): CatalogModel[] {
   const q = query.trim().toLowerCase();
   if (!q) return catalog.slice(0, limit);

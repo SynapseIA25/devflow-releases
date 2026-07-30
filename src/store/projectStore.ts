@@ -4,7 +4,7 @@ import { PROJECT_CWD } from "../lib/constants";
 import type { StackFingerprint } from "../lib/stackDetect";
 import type { TestStrategy } from "../lib/testStrategyCatalog";
 import { slugify, type SpecArtifactKind, type SpecTaskState } from "../lib/specFiles";
-import type { TaskProfile } from "../lib/modelRouter";
+import type { TaskKind } from "../lib/modelRouter";
 
 // ── Servicios (Frente 3, ahora scopeados por proyecto — Frente 4) ──
 // Un servicio es un proceso de larga duración (dev server, API, worker) que corre en una terminal
@@ -135,7 +135,7 @@ export type SpecPhase = "specify" | "plan" | "tasks" | "implement" | "done";
 export type SpecArtifactStatus = "missing" | "draft" | "ready";
 // Override de agente+modelo por fase — esto reemplaza a "una regla global de qué modelo usa cada
 // agente": la regla vive por spec/fase, resuelta en runtime por specOrchestrator (ver PHASE_PROFILE).
-export type SpecPhaseAgent = { agentId: string; profile?: TaskProfile };
+export type SpecPhaseAgent = { agentId: string; profile?: TaskKind };
 export type Spec = {
   id: string;
   slug: string;

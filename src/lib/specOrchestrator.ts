@@ -9,7 +9,7 @@
 import { isExpertAgent, type AgentConfig } from "./providers";
 import { runAgentTurn, withProfile, autoDelegate, type DelegateStep } from "./teamDelegate";
 import { suggestExperts } from "./expertRouter";
-import type { TaskProfile } from "./modelRouter";
+import type { TaskKind } from "./modelRouter";
 import { readSpecArtifact, writeSpecArtifact, parseTasksMarkdown, serializeTasksMarkdown, type SpecTaskState } from "./specFiles";
 import { buildMemoryPreamble } from "./projectMemory";
 import * as ragEngine from "./ragEngine";
@@ -44,12 +44,16 @@ export const PHASE_LABEL: Record<NonDonePhase, { label: string; desc: string }> 
   implement: { label: "Implement", desc: "The agent executes each task and checks it off." },
 };
 
-export const PHASE_PROFILE: Record<NonDonePhase, TaskProfile> = {
-  specify: "reasoning", // arquitectura/alcance — mismo perfil que el experto Architect
-  plan: "reasoning",
+export const PHASE_PROFILE: Record<NonDonePhase, TaskKind> = {
+  specify: "plan", // arquitectura/alcance — mismo perfil que el experto Architect
+  plan: "plan",
   tasks: "fast", // transformación corta y estructurada — mismo perfil que el paso de plan de autoDelegate
-  implement: "code",
+  implement: "execute",
 };
+
+// Specs guardadas ANTES de la migración de taxonomía pueden tener un override de fase persistido
+// (`spec.phaseAgents[phase].profile`) con un valor viejo — mismo mapeo que workflowEngine.ts.
+const LEGACY_TASK_KIND: Record<string, TaskKind> = { reasoning: "plan", code: "execute" };
 
 // Agente+perfil efectivos para una fase: override de la spec > default de la spec > lead del equipo.
 // Esto ES la respuesta a "definir qué modelo usa cada agente y en qué momento" — no una regla global,
@@ -59,11 +63,13 @@ export function resolvePhaseAgent(
   phase: NonDonePhase,
   agents: AgentConfig[],
   lead: AgentConfig
-): { agent: AgentConfig; profile: TaskProfile } {
+): { agent: AgentConfig; profile: TaskKind } {
   const override = spec.phaseAgents[phase];
   const agentId = override?.agentId ?? spec.defaultAgentId;
   const agent = (agentId && agents.find((a) => a.id === agentId)) || lead;
-  const profile = override?.profile ?? PHASE_PROFILE[phase];
+  const rawProfile = override?.profile as string | undefined;
+  const legacy = rawProfile ? LEGACY_TASK_KIND[rawProfile] : undefined;
+  const profile = legacy ?? override?.profile ?? PHASE_PROFILE[phase];
   return { agent, profile };
 }
 

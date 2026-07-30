@@ -12,7 +12,7 @@ import { useQuotaStore, DAILY_BUDGETS } from "../store/quotaStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useProjectStore } from "../store/projectStore";
 import { ProviderConfig, PROVIDER_KEY_SPECS } from "../lib/providers";
-import { ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, type PromptEconomyMode } from "../lib/modelRouter";
+import { ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, TASK_PROFILES, type PromptEconomyMode, type TaskKind } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
 import * as acpClient from "../lib/acpClient";
 import type { ModelOption } from "../lib/acpClient";
@@ -248,6 +248,8 @@ function ModelsSection() {
       </div>
 
       <QuotaSection />
+      <CostCeilingSection />
+      <TaskRoutingSection />
     </div>
   );
 }
@@ -358,6 +360,89 @@ function QuotaSection() {
           Reset today's counters
         </button>
       </div>
+    </div>
+  );
+}
+
+// Techo de costo del modo Auto del router (Fase 2 de la expansión del router de modelos): un límite
+// opcional en $/millón de tokens que angosta los candidatos ANTES de recorrer PROFILE_CANDIDATES.
+// Nunca excluye un modelo gratis o sin precio conocido en el catálogo, y nunca bloquea una elección
+// manual del usuario (solo aplica cuando el modo del chat es "Auto").
+function CostCeilingSection() {
+  const ceiling = useSettingsStore((s) => s.costCeilingUsdPerMTok);
+  const setCeiling = useSettingsStore((s) => s.setCostCeilingUsdPerMTok);
+  const [draft, setDraft] = useState(ceiling != null ? String(ceiling) : "");
+  useEffect(() => { setDraft(ceiling != null ? String(ceiling) : ""); }, [ceiling]);
+
+  return (
+    <div className="settings-costceiling settings-quota--nested">
+      <h4 className="settings-subsection-title"><Gauge size={14} /> Cost ceiling for Auto routing</h4>
+      <p className="apikeys-subtitle">
+        Only applies to the automatic router (model set to "✨ Auto"): a candidate above this $/million-token
+        price is skipped in favor of the next one. Never blocks a manual model choice, and free or
+        unpriced models are never excluded.
+      </p>
+      <div className="costceiling-row">
+        <span className="costceiling-label">Max $ / million tokens</span>
+        <input
+          type="number"
+          min={0}
+          step="0.1"
+          className="quota-input"
+          placeholder="no limit"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => setCeiling(draft.trim() === "" ? null : Number(draft))}
+        />
+        {ceiling != null && (
+          <button className="quota-reset" onClick={() => setCeiling(null)}>Clear</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Pin de modelo por TaskKind (Fase 5): fija el modelo que el router elige para un perfil de tarea en
+// modo Auto, en vez de dejar que recorra PROFILE_CANDIDATES. Editable acá; se resuelve en runtime en
+// modelRouter.pickModel — sin pin, o si el pin quedó sin disponibilidad esta sesión, cae con gracia a
+// la tabla de siempre.
+function TaskRoutingSection() {
+  const pinned = useSettingsStore((s) => s.pinnedModelByTaskKind);
+  const setPinnedModel = useSettingsStore((s) => s.setPinnedModel);
+  const [pinModalFor, setPinModalFor] = useState<TaskKind | null>(null);
+
+  return (
+    <div className="settings-routing settings-quota--nested">
+      <h4 className="settings-subsection-title"><Sparkles size={14} /> Task routing — pin a model per task</h4>
+      <p className="apikeys-subtitle">
+        For each task kind, the Auto router picks the best free model unless you pin one here. A pinned
+        model still has to be registered and available in the session to be used.
+      </p>
+      {TASK_PROFILES.map((p) => {
+        const pin = pinned[p.id];
+        return (
+          <div key={p.id} className="routing-row">
+            <span className="routing-kind-label">{p.label}</span>
+            <span className="routing-kind-hint">{p.hint}</span>
+            <span className="routing-pin-value">{pin ?? "Router decides"}</span>
+            <button className="routing-pin-btn" onClick={() => setPinModalFor(p.id)}>
+              Choose model…
+            </button>
+            {pin && (
+              <button className="routing-clear-btn" onClick={() => setPinnedModel(p.id, null)}>
+                Clear
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {pinModalFor && (
+        <AddModelModal
+          pinTarget={pinModalFor}
+          onClose={() => setPinModalFor(null)}
+          onAdded={() => setPinModalFor(null)}
+        />
+      )}
     </div>
   );
 }

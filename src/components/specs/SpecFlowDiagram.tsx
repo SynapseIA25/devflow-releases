@@ -1,6 +1,6 @@
 import { Check, Play, RotateCw } from "lucide-react";
 import { isExpertAgent, type AgentConfig } from "../../lib/providers";
-import { TASK_PROFILES, type TaskProfile } from "../../lib/modelRouter";
+import { TASK_PROFILES, type TaskKind } from "../../lib/modelRouter";
 import type { Spec, SpecPhase } from "../../store/projectStore";
 import { PHASE_ORDER, PHASE_LABEL, PHASE_PROFILE } from "../../lib/specOrchestrator";
 
@@ -21,7 +21,7 @@ export function SpecFlowDiagram({
   lead: AgentConfig;
   running: NonDonePhase | null;
   onRun: (phase: NonDonePhase) => void;
-  onPhaseAgentChange: (phase: NonDonePhase, patch: { agentId?: string; profile?: TaskProfile }) => void;
+  onPhaseAgentChange: (phase: NonDonePhase, patch: { agentId?: string; profile?: TaskKind }) => void;
 }) {
   const experts = agents.filter(isExpertAgent);
   const pickable = [lead, ...experts];
@@ -61,7 +61,7 @@ export function SpecFlowDiagram({
                 className="specs-flow-select"
                 value={profile}
                 disabled={!!running}
-                onChange={(e) => onPhaseAgentChange(phase, { profile: e.target.value as TaskProfile })}
+                onChange={(e) => onPhaseAgentChange(phase, { profile: e.target.value as TaskKind })}
                 title="Model profile for this phase"
               >
                 {TASK_PROFILES.map((p) => (

@@ -16,7 +16,7 @@ import { runShellCommand, readTextFile, writeTextFile, httpRequest, httpLoadTest
 import * as acpClient from "./acpClient";
 import * as opencodeClient from "./opencodeClient";
 import { DEFAULT_PROVIDERS, type ProviderConfig } from "./providers";
-import { TASK_PROFILES, type TaskProfile } from "./modelRouter";
+import { TASK_PROFILES, type TaskKind, effectiveModelPreference } from "./modelRouter";
 import { useProjectStore } from "../store/projectStore";
 import { useAgentsStore } from "../store/agentsStore";
 import { useSettingsStore } from "../store/settingsStore";
@@ -169,11 +169,11 @@ async function acquireSession(
   sessions: SessionCache,
   key: string,
   provider: ProviderConfig,
-  taskProfile?: TaskProfile
+  taskProfile?: TaskKind
 ): Promise<{ sessionId: string; isNew: boolean }> {
   const existing = sessions.get(key);
   if (existing) return { sessionId: existing, isNew: false };
-  const preferredModel = useSettingsStore.getState().modelByProvider[provider.id];
+  const preferredModel = effectiveModelPreference(useSettingsStore.getState().modelByProvider, provider.id);
   const cwd = useProjectStore.getState().projectPath;
   const sessionId = provider.nativeHttp
     ? await opencodeClient.newSession(provider.id, cwd, preferredModel, taskProfile)
@@ -186,10 +186,15 @@ async function acquireSession(
 // agente. Solo tiene efecto sobre providers multi-modelo (OpenCode): la sesión se abre con el mejor
 // modelo GRATIS para el perfil (modelRouter, cuota-consciente). Nota: la preferencia global de modelo
 // del usuario (modelByProvider) sigue teniendo prioridad sobre el perfil en newSession.
-function nodeTaskProfile(node: WorkflowNode, agentProfile?: TaskProfile): TaskProfile | undefined {
-  const raw = node.data.taskProfile;
+// Nodos de Workflows guardados ANTES de la migración de taxonomía (reasoning/code → plan/execute/
+// research/fast/long-context) pueden tener `data.taskProfile` con un valor viejo persistido.
+const LEGACY_TASK_KIND: Record<string, TaskKind> = { reasoning: "plan", code: "execute" };
+
+function nodeTaskKind(node: WorkflowNode, agentProfile?: TaskKind): TaskKind | undefined {
+  const raw = node.data.taskProfile as string | undefined;
+  if (raw && raw in LEGACY_TASK_KIND) return LEGACY_TASK_KIND[raw];
   const valid = TASK_PROFILES.some((p) => p.id === raw);
-  return valid ? (raw as TaskProfile) : agentProfile;
+  return valid ? (raw as TaskKind) : agentProfile;
 }
 
 // Manda un prompt a una sesión (ACP o el servidor nativo de OpenCode) y acumula el texto de la
@@ -273,7 +278,7 @@ async function execMimo(node: WorkflowNode, results: Map<string, NodeResult>, in
   const promptText = resolveTemplate(String(node.data.prompt ?? ""), results, input);
   if (!promptText.trim()) throw new Error("Prompt vacío");
   cb.onLog("info", `🤖 DevFlow Code: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
-  const profile = nodeTaskProfile(node);
+  const profile = nodeTaskKind(node);
   const { sessionId } = await acquireSession(sessions, `mimo:${profile ?? ""}`, provider, profile);
   const text = await promptAndCollect(provider, sessionId, promptText);
   cb.onLog("success", `🤖 DevFlow Code respondió (${text.length} chars)`);
@@ -293,7 +298,7 @@ async function execAgent(node: WorkflowNode, results: Map<string, NodeResult>, i
   cb.onLog("info", `🤖 ${agent.name}: ${promptText.slice(0, 80)}${promptText.length > 80 ? "…" : ""}`);
   // Sesión propia por agente (distintos agentes = distinto system prompt/persona = distinta sesión).
   // El perfil entra en la key: dos nodos del mismo agente con perfil distinto usan modelos distintos.
-  const profile = nodeTaskProfile(node, agent.taskProfile);
+  const profile = nodeTaskKind(node, agent.taskProfile);
   const { sessionId, isNew } = await acquireSession(sessions, `agent:${agent.id}:${profile ?? ""}`, provider, profile);
   // El system prompt del agente se inyecta una sola vez, en el primer turno de su sesión.
   const systemPrompt = agent.systemPrompt?.trim();
@@ -343,7 +348,7 @@ async function execVerify(node: WorkflowNode, results: Map<string, NodeResult>, 
   if (!basePrompt.trim()) throw new Error("Prompt vacío");
   let promptText = basePrompt + VERIFY_INSTRUCTION;
   cb.onLog("info", `✅ ${agent.name} verificando: ${basePrompt.slice(0, 80)}${basePrompt.length > 80 ? "…" : ""}`);
-  const profile = nodeTaskProfile(node, agent.taskProfile);
+  const profile = nodeTaskKind(node, agent.taskProfile);
   const { sessionId, isNew } = await acquireSession(sessions, `verify:${agent.id}:${profile ?? ""}`, provider, profile);
   const systemPrompt = agent.systemPrompt?.trim();
   if (isNew && systemPrompt) promptText = `[System]\n${systemPrompt}\n\n${promptText}`;

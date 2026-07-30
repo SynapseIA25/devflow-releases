@@ -8,7 +8,7 @@ import { useWorkspaceStore } from "../store/workspaceStore";
 import { useUiStore } from "../store/uiStore";
 import { useSpecRunStore } from "../store/specRunStore";
 import { isExpertAgent, DEFAULT_PROVIDERS, type AgentConfig } from "../lib/providers";
-import type { TaskProfile } from "../lib/modelRouter";
+import type { TaskKind } from "../lib/modelRouter";
 import { readSpecArtifact, writeSpecArtifact, serializeTasksMarkdown, specArtifactPath, type SpecTaskState } from "../lib/specFiles";
 import { SPEC_TEMPLATES } from "../lib/specTemplates";
 import { runSpecPhase } from "../lib/specRuns";
@@ -217,7 +217,7 @@ function SpecDetail({
     };
   }, [projectRoot, spec.slug, spec.artifacts.requirements.updatedAt, spec.artifacts.design.updatedAt]);
 
-  const onPhaseAgentChange = (phase: NonDonePhase, patch: { agentId?: string; profile?: TaskProfile }) => {
+  const onPhaseAgentChange = (phase: NonDonePhase, patch: { agentId?: string; profile?: TaskKind }) => {
     updateSpec(projectId, spec.id, {
       phaseAgents: { ...spec.phaseAgents, [phase]: { ...spec.phaseAgents[phase], ...patch } },
     });

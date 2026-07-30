@@ -26,7 +26,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/client";
 import { opencodeServeEnsure, opencodeServeStop, opencodeEventsStart, opencodeEventsStop, isTauri } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS, type AgentConfig } from "./providers";
-import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
+import { pickModel, recordModelUse, type TaskKind } from "./modelRouter";
 import { providerKeysEnv } from "./acpClient";
 import type { SessionUpdate, PermissionRequest, PermissionOption, ModelOption, ModelInfo } from "./acpClient";
 import { ensureNativeExpertAgent } from "./opencodeAgents";
@@ -353,7 +353,7 @@ export async function ensureExpertAgent(provider: string, agent: AgentConfig): P
   return name;
 }
 
-export async function newSession(provider: string, cwd: string, preferredModel?: string, taskProfile?: TaskProfile): Promise<string> {
+export async function newSession(provider: string, cwd: string, preferredModel?: string, taskProfile?: TaskKind): Promise<string> {
   // Le da al agente de esta sesión acceso al motor de Workflows real (crear/correr hablando) — ver
   // mcpBridge.ts. No-op rápido si este proyecto ya tiene la entrada registrada (fast-path por Set).
   await ensureDevflowBridgeRegistered(cwd);
@@ -365,7 +365,7 @@ export async function newSession(provider: string, cwd: string, preferredModel?:
   const has = (v?: string | null): v is string => !!v && available.some((o) => o.value === v);
   let target: string | null = null;
   if (has(preferredModel)) target = preferredModel;
-  else if (taskProfile) target = pickModel(taskProfile, available);
+  else if (taskProfile) target = await pickModel(taskProfile, available);
   if (!target) {
     // Sin preferencia: preferimos un modelo gratis de OpenCode Zen (siempre "andando", sin
     // depender de que el usuario haya cargado una key) sobre dejar que el server elija su propio

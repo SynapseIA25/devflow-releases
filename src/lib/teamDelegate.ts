@@ -1,7 +1,7 @@
 import { DEFAULT_PROVIDERS, isExpertAgent, type AgentConfig } from "./providers";
 import * as acpClient from "./acpClient";
 import * as opencodeClient from "./opencodeClient";
-import { isQuotaError, reportQuotaError, type TaskProfile } from "./modelRouter";
+import { isQuotaError, reportQuotaError, type TaskKind } from "./modelRouter";
 import { useSettingsStore } from "../store/settingsStore";
 
 // Auto-delegación (pilar 1, etapa 2): un agente LÍDER descompone la tarea en sub-tareas por área,
@@ -156,8 +156,8 @@ function extractJsonArray(s: string): { area: string; subtask: string }[] | null
 // Overridea el taskProfile de un agente PARA ESTE LLAMADO, sin mutar el AgentConfig persistido. Si
 // el agente ya trae un taskProfile propio (ej. un experto), se respeta el suyo — este override es
 // para agentes sin uno (ej. el lead) o cuando el caller quiere un perfil puntual distinto (ver
-// specOrchestrator.ts: Specify/Plan piden "reasoning", Tasks pide "fast", Implement pide "code").
-export const withProfile = (a: AgentConfig, p: TaskProfile): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
+// specOrchestrator.ts: Specify/Plan piden "plan", Tasks pide "fast", Implement pide "execute").
+export const withProfile = (a: AgentConfig, p: TaskKind): AgentConfig => (a.taskProfile ? a : { ...a, taskProfile: p });
 
 export async function autoDelegate(
   task: string,
@@ -243,7 +243,7 @@ export async function autoDelegate(
   let final: string;
   let synthModel: string | undefined;
   try {
-    final = await runAgentTurn(withProfile(lead, "reasoning"), synthPrompt, cwd, timeoutMs, (m) => { synthModel = m; });
+    final = await runAgentTurn(withProfile(lead, "plan"), synthPrompt, cwd, timeoutMs, (m) => { synthModel = m; });
   } catch (e) {
     emit({ kind: "error", message: e instanceof TurnTimeoutError ? `The lead couldn't synthesize in time (${Math.round(timeoutMs / 1000)}s); each expert's contribution is still shown above.` : (e instanceof Error ? e.message : String(e)) });
     return;

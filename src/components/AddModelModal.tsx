@@ -3,6 +3,7 @@ import { Search, Plus, RotateCw, AlertCircle, CheckCircle2, Server } from "lucid
 import { useSettingsStore } from "../store/settingsStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { PROVIDER_KEY_SPECS } from "../lib/providers";
+import { TASK_PROFILES, type TaskKind } from "../lib/modelRouter";
 import * as opencodeClient from "../lib/opencodeClient";
 import {
   type CatalogModel,
@@ -46,9 +47,15 @@ type Mode = "catalog" | "local";
 export function AddModelModal({
   onClose,
   onAdded,
+  pinTarget,
 }: {
   onClose: () => void;
   onAdded?: () => void;
+  // Fase 5 del router de modelos: si está presente, este modal ya no elige el default de "opencode"
+  // — pinnea el modelo elegido para este TaskKind (Settings > Task routing). El modelo sigue
+  // necesitando registrarse de verdad (mismo addModelToOpencodeConfig/addLocalProviderToOpencodeConfig
+  // de siempre) para que aparezca en `available` y pickModel pueda encontrarlo.
+  pinTarget?: TaskKind;
 }) {
   const providerKeys = useSettingsStore((s) => s.providerKeys);
   const [mode, setMode] = useState<Mode>("catalog");
@@ -120,8 +127,11 @@ export function AddModelModal({
       await write();
       setRestarting(true);
       // Reiniciamos OpenCode para que la próxima sesión lea el config nuevo (mismo patrón que
-      // "Save & restart" al guardar API keys) y dejamos ese modelo pre-elegido para esa sesión.
-      useSettingsStore.getState().setModelForProvider("opencode", key);
+      // "Save & restart" al guardar API keys). Sin pinTarget: dejamos ese modelo pre-elegido como
+      // default de "opencode" (comportamiento de siempre). Con pinTarget: lo pinneamos para ese
+      // TaskKind en vez de tocar el default global.
+      if (pinTarget) useSettingsStore.getState().setPinnedModel(pinTarget, key);
+      else useSettingsStore.getState().setModelForProvider("opencode", key);
       await opencodeClient.restart("opencode");
       useWorkspaceStore.getState().resetSessions("opencode");
       setAddedKey(key);
@@ -146,7 +156,11 @@ export function AddModelModal({
     <div className="model-search-overlay" onClick={onClose}>
       <div className="model-search-modal" onClick={(e) => e.stopPropagation()}>
         <div className="model-search-header">
-          <span className="model-search-title">Search models</span>
+          <span className="model-search-title">
+            {pinTarget
+              ? `Pin a model for "${TASK_PROFILES.find((p) => p.id === pinTarget)?.label ?? pinTarget}"`
+              : "Search models"}
+          </span>
           <button className="model-search-close" onClick={onClose}>×</button>
         </div>
         <div className="model-search-body">
@@ -219,7 +233,7 @@ export function AddModelModal({
                             {addingKey === key
                               ? <RotateCw size={12} className="spin" />
                               : <Plus size={12} />}
-                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : "Add"}
+                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : pinTarget ? "Pin" : "Add"}
                           </button>
                         )}
                       </div>
@@ -301,7 +315,7 @@ export function AddModelModal({
                             {addingKey === key
                               ? <RotateCw size={12} className="spin" />
                               : <Plus size={12} />}
-                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : "Add"}
+                            {addingKey === key ? (restarting ? "Restarting…" : "Adding…") : pinTarget ? "Pin" : "Add"}
                           </button>
                         )}
                       </div>

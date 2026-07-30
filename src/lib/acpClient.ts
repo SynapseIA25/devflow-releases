@@ -6,7 +6,7 @@
 import { acpStart, acpStop, acpSend, readTextFile, writeTextFile, isTauri, resolveSidecarPath } from "./tauriApi";
 import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "./providers";
-import { pickModel, recordModelUse, type TaskProfile } from "./modelRouter";
+import { pickModel, recordModelUse, type TaskKind } from "./modelRouter";
 
 export type AcpSpawnConfig = { command: string; args: string[]; sidecar?: boolean };
 
@@ -255,7 +255,7 @@ export async function newSession(
   spawn: AcpSpawnConfig,
   cwd: string,
   preferredModel?: string,
-  taskProfile?: TaskProfile
+  taskProfile?: TaskKind
 ): Promise<string> {
   await initialize(provider, spawn);
   const result = await sendRequest<{ sessionId: string; configOptions?: ConfigOption[] }>(provider, "session/new", {
@@ -273,7 +273,7 @@ export async function newSession(
     // modelo GRATIS disponible, cuota-consciente) → default del agente.
     let target: string | null = null;
     if (has(preferredModel)) target = preferredModel;
-    else if (taskProfile) target = pickModel(taskProfile, available);
+    else if (taskProfile) target = await pickModel(taskProfile, available);
     if (target && target !== modelOption.value) {
       try {
         await setSessionModel(provider, result.sessionId, target);

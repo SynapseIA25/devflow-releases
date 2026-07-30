@@ -12,7 +12,7 @@ import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
 import * as opencodeClient from "../lib/opencodeClient";
 import * as ragEngine from "../lib/ragEngine";
-import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel } from "../lib/modelRouter";
+import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel, effectiveModelPreference } from "../lib/modelRouter";
 import { readTextFile } from "../lib/tauriApi";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
@@ -292,7 +292,7 @@ export function ChatView() {
   const availableModels = useSettingsStore((s) => s.availableModelsByProvider[activeProviderId] ?? EMPTY_MODELS);
   const currentModel = useSettingsStore((s) => s.currentModelByProvider[activeProviderId]);
   const setModelForProvider = useSettingsStore((s) => s.setModelForProvider);
-  const preferredIsAuto = useSettingsStore((s) => s.modelByProvider[activeProviderId] === AUTO_MODEL);
+  const preferredIsAuto = useSettingsStore((s) => effectiveModelPreference(s.modelByProvider, activeProviderId) === AUTO_MODEL);
   const visibleAgents = useMemo(
     () => agents.filter((a) => (isDefaultAgent(a.id) && !isExpertAgent(a)) || projectAgentIds.includes(a.id) || a.id === ws?.agentId),
     [agents, projectAgentIds, ws?.agentId]
@@ -474,7 +474,7 @@ export function ChatView() {
     let cancelled = false;
     opencodeClient.listAvailableModels("opencode").then((available) => {
       if (cancelled || !available.length) return;
-      const preferred = useSettingsStore.getState().modelByProvider["opencode"];
+      const preferred = effectiveModelPreference(useSettingsStore.getState().modelByProvider, "opencode");
       const has = (v?: string) => !!v && v !== AUTO_MODEL && available.some((o) => o.value === v);
       const zen = available.find((o) => o.value.startsWith("opencode/"));
       const current = has(preferred) ? preferred! : zen?.value ?? available[0]?.value ?? null;
@@ -675,7 +675,7 @@ export function ChatView() {
         const registeredRoot = wsNow?.projectId ? pstate.projects[wsNow.projectId]?.path : undefined;
         const project = wsNow?.projectId && registeredRoot ? { id: wsNow.projectId, root: registeredRoot } : undefined;
         // Modelo elegido por el usuario para este provider (si hay); si no, acpClient usa el default.
-        const preferredModel = useSettingsStore.getState().modelByProvider[provider];
+        const preferredModel = effectiveModelPreference(useSettingsStore.getState().modelByProvider, provider);
         sid = await acpClient.newSession(provider, spawn, sessionCwd, preferredModel);
         setSession(wsId, sid, provider);
         newSessionPreamble = await buildNewSessionPreamble(sessionCwd, project);
@@ -698,9 +698,13 @@ export function ChatView() {
       // turno (classifyTask) y elegimos el mejor modelo GRATIS disponible para ese perfil
       // (cuota-consciente). Solo cambia el modelo de la sesión si difiere del activo; si el router no
       // encuentra candidato (catálogo sin matches / todo agotado) el turno sigue con el modelo actual.
-      if (useSettingsStore.getState().modelByProvider[provider] === AUTO_MODEL) {
+      if (effectiveModelPreference(useSettingsStore.getState().modelByProvider, provider) === AUTO_MODEL) {
         const avail = useSettingsStore.getState().availableModelsByProvider[provider] ?? [];
-        const target = pickModel(classifyTask(fullPrompt), avail);
+        // Señal de contexto opcional (Fase 1): fingerprint del stack YA cacheado por el Test Strategy
+        // Advisor para este proyecto, si el usuario lo corrió alguna vez. Sin fingerprint, classifyTask
+        // se comporta exactamente igual que antes de esta fase.
+        const fingerprint = useProjectStore.getState().projects[wsNow?.projectId ?? ""]?.testStrategy?.fingerprint;
+        const target = await pickModel(classifyTask(fullPrompt, fingerprint), avail);
         const active = acpClient.getSessionModel(provider, sid);
         if (target && target !== active) {
           try {
@@ -773,7 +777,7 @@ export function ChatView() {
       const registeredRoot = wsNow?.projectId ? pstate.projects[wsNow.projectId]?.path : undefined;
       const project = wsNow?.projectId && registeredRoot ? { id: wsNow.projectId, root: registeredRoot } : undefined;
       if (!sid) {
-        const preferredModel = useSettingsStore.getState().modelByProvider[provider];
+        const preferredModel = effectiveModelPreference(useSettingsStore.getState().modelByProvider, provider);
         sid = await opencodeClient.newSession(provider, sessionCwd, preferredModel);
         setSession(wsId, sid, provider);
       }
@@ -786,9 +790,11 @@ export function ChatView() {
         if (preamble) fullPrompt = `${preamble}\n\n${fullPrompt}`;
       }
       inChars = fullPrompt.length;
-      if (useSettingsStore.getState().modelByProvider[provider] === AUTO_MODEL) {
+      if (effectiveModelPreference(useSettingsStore.getState().modelByProvider, provider) === AUTO_MODEL) {
         const avail = useSettingsStore.getState().availableModelsByProvider[provider] ?? [];
-        const target = pickModel(classifyTask(fullPrompt), avail);
+        // Señal de contexto opcional (Fase 1) — ver el mismo comentario en runAcp.
+        const fingerprint = pstate.projects[wsNow?.projectId ?? ""]?.testStrategy?.fingerprint;
+        const target = await pickModel(classifyTask(fullPrompt, fingerprint), avail);
         const active = opencodeClient.getSessionModel(provider, sid);
         if (target && target !== active) {
           try {

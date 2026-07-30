@@ -1253,6 +1253,24 @@ html, body, #root {
 .quota-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--text-1); }
 .quota-reset:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Settings · Techo de costo del router (Fase 2) — mismo patrón visual que .settings-quota--nested */
+.costceiling-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.costceiling-label { flex: 1; font-size: 12px; color: var(--text-1); }
+
+/* Settings · Pin de modelo por TaskKind (Fase 5) — mismo patrón visual que .settings-quota--nested */
+.routing-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.routing-kind-label { width: 90px; flex-shrink: 0; font-size: 12px; color: var(--text-1); }
+.routing-kind-hint { flex: 1; min-width: 0; font-size: 10.5px; color: var(--text-3); }
+.routing-pin-value {
+  flex-shrink: 0; font-size: 11px; color: var(--text-2); font-family: 'Cascadia Code','Consolas',monospace;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.routing-pin-btn, .routing-clear-btn {
+  flex-shrink: 0; font-size: 11px; color: var(--text-2); background: none; border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+.routing-pin-btn:hover, .routing-clear-btn:hover { border-color: var(--accent); color: var(--text-1); }
+
 /* Settings · Economía de prompts (ahorro de tokens) */
 .settings-economy {
   margin: 4px 0 20px; padding: 14px 16px; border: 1px solid var(--border);

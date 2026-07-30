@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_PROVIDERS, ProviderConfig } from "../lib/providers";
 import type { ModelOption } from "../lib/acpClient";
-import type { PromptEconomyMode } from "../lib/modelRouter";
+import type { PromptEconomyMode, TaskKind } from "../lib/modelRouter";
 
 // Registro de decisiones automáticas de permisos (cuando no hay UI para aprobar, ej. workflows
 // headless). Transitorio (no se persiste): sirve para auditar qué se auto-aprobó/denegó en la sesión.
@@ -47,6 +47,17 @@ type SettingsStore = {
   // "always" siempre, "off" nunca. Ver modelRouter.economyActive.
   promptEconomy: PromptEconomyMode;
   setPromptEconomy: (m: PromptEconomyMode) => void;
+  // Techo de costo ($/millón de tokens, in o out lo que sea mayor) para el modo Auto del router
+  // (modelRouter.pickModel, Fase 2). null = sin techo (default, comportamiento idéntico a antes de
+  // esta feature — el router ya prioriza gratis por construcción). Un modelo gratis o sin precio
+  // conocido en el catálogo NUNCA se excluye por este techo, sea cual sea su valor.
+  costCeilingUsdPerMTok: number | null;
+  setCostCeilingUsdPerMTok: (n: number | null) => void;
+  // Pin de modelo por TaskKind (Fase 5): el usuario fija un modelo concreto para "plan"/"execute"/etc,
+  // el router lo prioriza sobre PROFILE_CANDIDATES si sigue disponible/dentro del ceiling. Ausente o
+  // sin match en la sesión actual → cae con gracia a la tabla, nunca rompe el turno.
+  pinnedModelByTaskKind: Partial<Record<TaskKind, string>>;
+  setPinnedModel: (kind: TaskKind, modelValue: string | null) => void;
   // Opt-in: inyecta un bloque [Related code] al prompt del chat con los chunks más relevantes del
   // índice RAG del proyecto (ver ragEngine.ts). Off por default — requiere haber construido el
   // índice (y tener Ollama corriendo) para hacer algo; sin índice, no-op silencioso.
@@ -83,12 +94,27 @@ export const useSettingsStore = create<SettingsStore>()(
       teamTurnTimeoutSecs: 240,
       promptEconomy: "auto",
       ragEnabled: false,
+      costCeilingUsdPerMTok: null,
+      pinnedModelByTaskKind: {},
 
       setTeamProviderId: (id) => set({ teamProviderId: id }),
       // Clamp defensivo: mínimo 30s (menos corta turnos sanos), máximo 30 min; NaN → default.
       setTeamTurnTimeoutSecs: (secs) => set({ teamTurnTimeoutSecs: Number.isFinite(secs) ? Math.min(Math.max(Math.round(secs), 30), 1800) : 240 }),
       setPromptEconomy: (m) => set({ promptEconomy: m }),
       setRagEnabled: (v) => set({ ragEnabled: v }),
+
+      // Mismo guard que setBudgetOverride (quotaStore): null/NaN = sin techo, negativo clampea a 0
+      // (0 = solo modelos gratis/sin precio conocido). Sin redondeo: es un valor en $, no un conteo.
+      setCostCeilingUsdPerMTok: (n) =>
+        set({ costCeilingUsdPerMTok: n === null || !Number.isFinite(n) ? null : Math.max(0, n) }),
+
+      setPinnedModel: (kind, modelValue) =>
+        set((s) => {
+          const next = { ...s.pinnedModelByTaskKind };
+          if (modelValue) next[kind] = modelValue;
+          else delete next[kind];
+          return { pinnedModelByTaskKind: next };
+        }),
 
       setProviderKey: (id, key) =>
         set((s) => {
@@ -154,6 +180,8 @@ export const useSettingsStore = create<SettingsStore>()(
         teamTurnTimeoutSecs: s.teamTurnTimeoutSecs,
         promptEconomy: s.promptEconomy,
         ragEnabled: s.ragEnabled,
+        costCeilingUsdPerMTok: s.costCeilingUsdPerMTok,
+        pinnedModelByTaskKind: s.pinnedModelByTaskKind,
       }),
     }
   )

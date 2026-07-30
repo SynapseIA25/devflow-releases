@@ -1,4 +1,4 @@
-import type { TaskProfile } from "./modelRouter";
+import type { TaskKind } from "./modelRouter";
 
 // DevFlow es un HOST de agentes ACP: no hace inferencia ni guarda credenciales de modelos. Por eso un
 // provider ya NO tiene apiKey/models/defaultModel/enabled (eso lo gestiona el CLI del agente). Si tiene
@@ -138,7 +138,7 @@ export type AgentConfig = {
   // Perfil de tarea para el router de modelos (modelRouter.ts): cuando el agente corre sobre un
   // provider multi-modelo (OpenCode), la sesión elige el mejor modelo GRATIS disponible para este
   // perfil (cuota-consciente). Sin perfil (o sin match) → el default del agente, como siempre.
-  taskProfile?: TaskProfile;
+  taskProfile?: TaskKind;
 };
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
@@ -175,7 +175,7 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
 const mkExpert = (
   id: string, name: string, icon: string, color: string, area: string,
   description: string, systemPrompt: string, skills: string[], areaKeywords: string[],
-  taskProfile: TaskProfile
+  taskProfile: TaskKind
 ): AgentConfig => ({
   id, name, icon, color, providerId: "opencode", model: "",
   description, systemPrompt: `${systemPrompt}\n\nIMPORTANT: always reply in the SAME language as the user's most recent message — never default to any other language. Be concrete and actionable.`,
@@ -191,49 +191,49 @@ export const EXPERT_AGENTS: AgentConfig[] = [
     "You are a senior software architect. You focus on architecture, separation of concerns, design patterns, refactoring, scalability and reducing technical debt. You think in terms of modules, coupling and dependencies before writing code.",
     ["analysis", "refactor", "search"],
     ["architecture", "pattern", "patterns", "refactor", "design", "debt", "scalability", "module", "coupling", "dependencies", "structure", "solid",
-     "arquitectura", "patron", "patrones", "diseño", "deuda", "escalabilidad", "modulo", "acoplamiento", "dependencias", "estructura"], "reasoning"),
+     "arquitectura", "patron", "patrones", "diseño", "deuda", "escalabilidad", "modulo", "acoplamiento", "dependencias", "estructura"], "plan"),
   mkExpert("expert-frontend", "Frontend / UI", "🎨", "#38bdf8", "frontend",
     "Interfaces, UX, components, accessibility and client-side state.",
     "You are a frontend expert. You focus on UI/UX, components (React/Vue/Svelte), accessibility, state management, styling and client-side render performance.",
     ["file-edit", "search"],
     ["frontend", "ui", "ux", "react", "vue", "svelte", "component", "css", "styles", "accessibility", "state", "render", "browser", "client", "responsive",
-     "componente", "estilos", "accesibilidad", "estado", "cliente"], "code"),
+     "componente", "estilos", "accesibilidad", "estado", "cliente"], "execute"),
   mkExpert("expert-backend", "Backend / APIs", "🔌", "#22c55e", "backend",
     "APIs, contracts, authentication and server-side integrations.",
     "You are a backend and APIs expert. You focus on API design (REST/GraphQL), contracts, authentication/authorization, integrations, validation and server-side logic.",
     ["file-edit", "terminal", "search"],
     ["backend", "api", "apis", "rest", "graphql", "endpoint", "server", "auth", "authentication", "integration", "contract", "service", "middleware",
-     "servidor", "autenticacion", "integracion", "contrato", "servicio"], "code"),
+     "servidor", "autenticacion", "integracion", "contrato", "servicio"], "execute"),
   mkExpert("expert-db", "Database", "🗄️", "#f59e0b", "database",
     "Schema, migrations, queries and indexes.",
     "You are a database expert. You focus on schema design, migrations, query optimization, indexes, data modeling and ORMs (SQL and NoSQL).",
     ["file-edit", "terminal"],
     ["database", "db", "sql", "query", "migration", "schema", "index", "table", "orm", "postgres", "sqlite", "mysql", "mongo", "join",
-     "base de datos", "bd", "consulta", "migracion", "esquema", "indice", "tabla"], "code"),
+     "base de datos", "bd", "consulta", "migracion", "esquema", "indice", "tabla"], "execute"),
   mkExpert("expert-devops", "DevOps / Infra", "⚙️", "#06b6d4", "devops",
     "CI/CD, IaC, containers, cloud and deployment.",
     "You are a DevOps and infrastructure expert. You focus on CI/CD, infrastructure as code, containers (Docker/Kubernetes), cloud, deployment automation and pipelines.",
     ["terminal", "file-edit"],
     ["devops", "ci", "cd", "pipeline", "docker", "container", "kubernetes", "k8s", "deploy", "deployment", "infra", "infrastructure", "terraform", "cloud", "aws", "gcp",
-     "contenedor", "despliegue", "infraestructura"], "code"),
+     "contenedor", "despliegue", "infraestructura"], "execute"),
   mkExpert("expert-sre", "SRE / Observability", "📡", "#ef4444", "sre",
     "Reliability, monitoring, incidents and performance.",
     "You are a Site Reliability Engineer. You focus on reliability, observability (metrics/logs/traces), monitoring, alerting, incident response, performance, latency and SLOs.",
     ["terminal", "analysis"],
     ["sre", "observability", "monitoring", "metrics", "logs", "trace", "incident", "performance", "latency", "availability", "slo", "alert", "reliability", "uptime",
-     "observabilidad", "monitoreo", "metricas", "incidente", "latencia", "disponibilidad", "alerta", "confiabilidad"], "reasoning"),
+     "observabilidad", "monitoreo", "metricas", "incidente", "latencia", "disponibilidad", "alerta", "confiabilidad"], "plan"),
   mkExpert("expert-seguridad", "Security", "🔒", "#dc2626", "security",
     "Vulnerabilities, authz, secrets and dependencies.",
     "You are an application security expert. You focus on vulnerabilities (OWASP), authentication/authorization, secrets management, injection, XSS/CSRF, encryption and dependency security.",
     ["analysis", "search"],
     ["security", "vulnerability", "vuln", "authorization", "secret", "secrets", "xss", "csrf", "injection", "encryption", "dependency", "cve", "owasp", "token", "permission",
-     "seguridad", "vulnerabilidad", "autorizacion", "secreto", "inyeccion", "cifrado", "dependencia", "permiso"], "reasoning"),
+     "seguridad", "vulnerabilidad", "autorizacion", "secreto", "inyeccion", "cifrado", "dependencia", "permiso"], "plan"),
   mkExpert("expert-qa", "QA / Testing", "🧪", "#a3e635", "qa",
     "Tests, coverage and edge cases.",
     "You are a QA and testing expert. You focus on unit/integration/e2e tests, coverage, edge cases, mocks/fixtures, and regression detection. You prioritize robustness.",
     ["file-edit", "terminal"],
     ["test", "tests", "testing", "coverage", "qa", "unit", "e2e", "integration", "edge case", "mock", "fixture", "regression", "vitest", "jest",
-     "prueba", "cobertura", "unitario", "integracion", "caso borde", "regresion"], "code"),
+     "prueba", "cobertura", "unitario", "integracion", "caso borde", "regresion"], "execute"),
   mkExpert("expert-producto", "Product / Business", "📋", "#ec4899", "product",
     "Requirements, stories, domain and prioritization.",
     "You are a product and business-model expert. You focus on requirements, user stories, domain modeling, prioritization, MVP scope and translating business needs into features.",
