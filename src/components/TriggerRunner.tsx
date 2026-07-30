@@ -15,7 +15,7 @@ const TICK_MS = 20000;
 export const WEBHOOK_PORT = 8787;
 const minuteKey = (ts: number) => Math.floor(ts / 60000);
 
-async function fire(t: Trigger, running: Set<string>, input = "", reason: "schedule" | "catchup" = "schedule") {
+export async function fire(t: Trigger, running: Set<string>, input = "", reason: "schedule" | "catchup" = "schedule") {
   running.add(t.id);
   useTriggersStore.getState().updateTrigger(t.id, { lastRun: Date.now() });
   const st = useWorkflowStore.getState();

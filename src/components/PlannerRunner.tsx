@@ -10,7 +10,7 @@ import { confirmHeadlessAction } from "../lib/headlessPermission";
 // "¿dueDate ya pasó y todavía no se disparó?" tanto al montar (catch-up) como en cada tick.
 const TICK_MS = 20000;
 
-async function fireTask(t: PlannerTask, running: Set<string>, reason: "schedule" | "catchup") {
+export async function fireTask(t: PlannerTask, running: Set<string>, reason: "schedule" | "catchup") {
   running.add(t.id);
   const st = useWorkflowStore.getState();
   const w = t.workflowId ? st.workflows[t.workflowId] : undefined;
