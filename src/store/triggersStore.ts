@@ -20,6 +20,7 @@ export type Trigger = {
   lastRun?: number; // timestamp del último disparo (para no re-disparar y para mostrar estado)
   lastStatus?: "success" | "error";
   lastMessage?: string;
+  lastRunReason?: "schedule" | "catchup"; // "catchup" = se disparó al abrir la app porque se perdió mientras estaba cerrada
 };
 
 // Token/id no adivinable para el trigger. Como el id del webhook ES el token de la URL pública
@@ -34,7 +35,7 @@ type TriggersStore = {
   addTrigger: (workflowId: string) => string;
   updateTrigger: (id: string, patch: Partial<Trigger>) => void;
   removeTrigger: (id: string) => void;
-  recordRun: (id: string, status: "success" | "error", message: string) => void;
+  recordRun: (id: string, status: "success" | "error", message: string, reason?: "schedule" | "catchup") => void;
 };
 
 export const useTriggersStore = create<TriggersStore>()(
@@ -68,10 +69,12 @@ export const useTriggersStore = create<TriggersStore>()(
 
       removeTrigger: (id) => set((s) => ({ triggers: s.triggers.filter((t) => t.id !== id) })),
 
-      recordRun: (id, status, message) =>
+      recordRun: (id, status, message, reason) =>
         set((s) => ({
           triggers: s.triggers.map((t) =>
-            t.id === id ? { ...t, lastRun: Date.now(), lastStatus: status, lastMessage: message } : t
+            t.id === id
+              ? { ...t, lastRun: Date.now(), lastStatus: status, lastMessage: message, lastRunReason: reason ?? "schedule" }
+              : t
           ),
         })),
     }),

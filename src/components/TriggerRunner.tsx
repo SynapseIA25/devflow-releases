@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTriggersStore, type Trigger } from "../store/triggersStore";
 import { useWorkflowStore } from "../store/workflowStore";
 import { runWorkflow } from "../lib/workflowEngine";
-import { cronMatches } from "../lib/cron";
+import { cronMatches, hasMissedCronRun } from "../lib/cron";
 import { isTauri, webhookStart, watchStart, watchStop } from "../lib/tauriApi";
 
 // Scheduler + puente de triggers, montado UNA vez a nivel App (no renderiza nada).
@@ -14,13 +14,13 @@ const TICK_MS = 20000;
 export const WEBHOOK_PORT = 8787;
 const minuteKey = (ts: number) => Math.floor(ts / 60000);
 
-async function fire(t: Trigger, running: Set<string>, input = "") {
+async function fire(t: Trigger, running: Set<string>, input = "", reason: "schedule" | "catchup" = "schedule") {
   running.add(t.id);
   useTriggersStore.getState().updateTrigger(t.id, { lastRun: Date.now() });
   const st = useWorkflowStore.getState();
   const w = st.workflows[t.workflowId];
   if (!w) {
-    useTriggersStore.getState().recordRun(t.id, "error", "El flujo ya no existe");
+    useTriggersStore.getState().recordRun(t.id, "error", "El flujo ya no existe", reason);
     running.delete(t.id);
     return;
   }
@@ -45,9 +45,9 @@ async function fire(t: Trigger, running: Set<string>, input = "") {
       },
       input
     );
-    useTriggersStore.getState().recordRun(t.id, "success", logs.slice(-3).join(" · ") || "OK");
+    useTriggersStore.getState().recordRun(t.id, "success", logs.slice(-3).join(" · ") || "OK", reason);
   } catch (e) {
-    useTriggersStore.getState().recordRun(t.id, "error", e instanceof Error ? e.message : String(e));
+    useTriggersStore.getState().recordRun(t.id, "error", e instanceof Error ? e.message : String(e), reason);
   } finally {
     running.delete(t.id);
   }
@@ -58,6 +58,27 @@ export function TriggerRunner() {
   const triggers = useTriggersStore((s) => s.triggers);
   const webhookStartedRef = useRef(false);
   const watchedRef = useRef<Map<string, string>>(new Map()); // id → path que se está vigilando
+
+  // Catch-up al montar: si la app estuvo cerrada y un trigger interval/cron debería haber disparado
+  // mientras tanto, lo corremos una vez ahora (no hay confirmación — es la conducta elegida: más
+  // práctico que dejarlo perdido, a costa de que un workflow con efectos secundarios corra "tarde").
+  // webhook/file no aplican: son event-driven, no tienen "horario perdido" que evaluar.
+  useEffect(() => {
+    const now = Date.now();
+    for (const t of useTriggersStore.getState().triggers) {
+      if (!t.enabled || runningRef.current.has(t.id)) continue;
+      const last = t.lastRun ?? 0;
+      if (t.type === "interval") {
+        if (last > 0 && now - last >= Math.max(1, t.intervalMinutes) * 60000) {
+          void fire(t, runningRef.current, "", "catchup");
+        }
+      } else if (t.type === "cron") {
+        if (last > 0 && hasMissedCronRun(t.cron, last, now)) {
+          void fire(t, runningRef.current, "", "catchup");
+        }
+      }
+    }
+  }, []);
 
   // interval/cron: tick local.
   useEffect(() => {

@@ -1,7 +1,6 @@
-import { Plus, Trash2, X, Clock, CalendarClock, CheckCircle, AlertCircle, Webhook, Eye } from "lucide-react";
-import { useTriggersStore, type TriggerType } from "../../store/triggersStore";
-import { describeCron, isValidCron } from "../../lib/cron";
-import { WEBHOOK_PORT } from "../TriggerRunner";
+import { Plus, X } from "lucide-react";
+import { useTriggersStore } from "../../store/triggersStore";
+import { TriggerRow } from "./TriggerRow";
 
 // Gestiona los triggers del flujo activo: agregar por intervalo o cron, habilitar/pausar, ver último
 // disparo. El scheduler real vive en TriggerRunner (global). Modal abierto desde la toolbar de Workflows.
@@ -10,7 +9,8 @@ export function TriggersModal({ workflowId, workflowName, onClose }: {
   workflowName: string;
   onClose: () => void;
 }) {
-  const triggers = useTriggersStore((s) => s.triggers.filter((t) => t.workflowId === workflowId));
+  const allTriggers = useTriggersStore((s) => s.triggers);
+  const triggers = allTriggers.filter((t) => t.workflowId === workflowId);
   const addTrigger = useTriggersStore((s) => s.addTrigger);
   const updateTrigger = useTriggersStore((s) => s.updateTrigger);
   const removeTrigger = useTriggersStore((s) => s.removeTrigger);
@@ -30,104 +30,9 @@ export function TriggersModal({ workflowId, workflowName, onClose }: {
 
         <div className="trg-list">
           {triggers.length === 0 && <div className="trg-empty">Sin triggers todavía. Agregá uno abajo.</div>}
-          {triggers.map((t) => {
-            const cronOk = t.type !== "cron" || isValidCron(t.cron);
-            return (
-              <div key={t.id} className={`trg-row${t.enabled ? " trg-row--on" : ""}`}>
-                <button
-                  className={`trg-toggle${t.enabled ? " on" : ""}`}
-                  onClick={() => updateTrigger(t.id, { enabled: !t.enabled, lastRun: Date.now() })}
-                  title={t.enabled ? "Pausar" : "Activar"}
-                >
-                  <span className="trg-toggle-dot" />
-                </button>
-
-                <select
-                  className="trg-type"
-                  value={t.type}
-                  onChange={(e) => updateTrigger(t.id, { type: e.target.value as TriggerType })}
-                >
-                  <option value="interval">Cada</option>
-                  <option value="cron">Cron</option>
-                  <option value="webhook">Webhook</option>
-                  <option value="file">Archivo</option>
-                </select>
-
-                {t.type === "interval" && (
-                  <div className="trg-config">
-                    <Clock size={12} />
-                    <input
-                      type="number"
-                      min={1}
-                      className="trg-input trg-input--num"
-                      value={t.intervalMinutes}
-                      onChange={(e) => updateTrigger(t.id, { intervalMinutes: Math.max(1, Number(e.target.value) || 1) })}
-                    />
-                    <span className="trg-unit">min</span>
-                  </div>
-                )}
-                {t.type === "cron" && (
-                  <div className="trg-config">
-                    <CalendarClock size={12} />
-                    <input
-                      className={`trg-input trg-input--cron${cronOk ? "" : " invalid"}`}
-                      value={t.cron}
-                      placeholder="0 9 * * 1"
-                      onChange={(e) => updateTrigger(t.id, { cron: e.target.value })}
-                      title={cronOk ? describeCron(t.cron) : "Cron inválido (5 campos)"}
-                    />
-                    <span className="trg-cron-desc">{cronOk ? describeCron(t.cron) : "inválido"}</span>
-                  </div>
-                )}
-                {t.type === "webhook" && (
-                  <div className="trg-config trg-config--webhook">
-                    <Webhook size={12} />
-                    <input
-                      className="trg-input trg-input--url"
-                      readOnly
-                      value={`http://127.0.0.1:${WEBHOOK_PORT}/hook/${t.id}`}
-                      onFocus={(e) => e.target.select()}
-                      title="POST acá. Activá el trigger para levantar el servidor."
-                    />
-                    <label
-                      className="trg-ext-input"
-                      title="Pasar el body de la request como {{input}} al flujo. El body es entrada externa no confiable (puede terminar en shell o new Function). Dejalo apagado salvo que confíes en quien llama el webhook."
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!t.allowExternalInput}
-                        onChange={(e) => updateTrigger(t.id, { allowExternalInput: e.target.checked })}
-                      />
-                      <span>usar body como input</span>
-                    </label>
-                  </div>
-                )}
-                {t.type === "file" && (
-                  <div className="trg-config">
-                    <Eye size={12} />
-                    <input
-                      className="trg-input trg-input--path"
-                      value={t.path}
-                      placeholder="F:\\mi-proyecto\\archivo.txt (o una carpeta)"
-                      onChange={(e) => updateTrigger(t.id, { path: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                <div className="trg-status">
-                  {t.lastStatus === "success" && <CheckCircle size={12} color="#4ade80" />}
-                  {t.lastStatus === "error" && <AlertCircle size={12} color="#f85149" />}
-                  <span title={t.lastMessage}>
-                    {t.lastRun && t.lastStatus ? new Date(t.lastRun).toLocaleTimeString() : "nunca corrió"}
-                  </span>
-                </div>
-
-                <button className="trg-del" onClick={() => removeTrigger(t.id)} title="Borrar trigger">
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            );
-          })}
+          {triggers.map((t) => (
+            <TriggerRow key={t.id} trigger={t} updateTrigger={updateTrigger} removeTrigger={removeTrigger} />
+          ))}
         </div>
 
         <button className="mcp-btn-add trg-add" onClick={() => addTrigger(workflowId)}>

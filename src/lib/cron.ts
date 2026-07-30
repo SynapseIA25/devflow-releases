@@ -51,6 +51,20 @@ export function cronMatches(expr: string, date: Date): boolean {
   );
 }
 
+// ¿Hubo algún minuto entre `from` (exclusivo) y `to` (inclusivo) que matcheaba `expr`? Usado para
+// detectar catch-up al reabrir la app (la app estuvo cerrada, ¿nos perdimos un disparo?). Escanea
+// minuto a minuto, con un tope de 14 días para no colgar si `from` es muy viejo o inválido.
+const MAX_CATCHUP_MINUTES = 14 * 24 * 60;
+
+export function hasMissedCronRun(expr: string, from: number, to: number): boolean {
+  if (!isValidCron(expr) || to <= from) return false;
+  const start = Math.max(from, to - MAX_CATCHUP_MINUTES * 60000);
+  for (let ts = start + 60000; ts <= to; ts += 60000) {
+    if (cronMatches(expr, new Date(ts))) return true;
+  }
+  return false;
+}
+
 // Descripción legible de patrones comunes; si no matchea uno conocido, devuelve la expresión cruda.
 export function describeCron(expr: string): string {
   const map: Record<string, string> = {
