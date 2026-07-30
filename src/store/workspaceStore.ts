@@ -100,6 +100,11 @@ type WorkspaceStore = {
   setActiveWs: (id: string) => void;
   newWorkspace: (agentId: string, projectId: string, opts?: { title?: string; cwd?: string; envId?: string; envName?: string; pendingInitialPrompt?: string }) => string;
   clearPendingInitialPrompt: (wsId: string) => void;
+  // Manda un follow-up a un workspace YA EXISTENTE (a diferencia de newWorkspace's opt, que solo
+  // aplica al crear uno) — usado por Annotate Diffs para responder al agente de un Ambiente sin
+  // abrir una pestaña nueva. El mismo efecto de ChatView que auto-envía pendingInitialPrompt lo
+  // recoge sin cambios.
+  setPendingInitialPrompt: (wsId: string, text: string) => void;
   closeWorkspace: (id: string) => void;
   // Cambia el agente de UN workspace (el turno usa ws.agentId, no un global). Habilita tener MiMo en
   // una pestaña y un experto en otra a la vez.
@@ -163,6 +168,11 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       clearPendingInitialPrompt: (wsId) =>
         set((s) => ({
           workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, pendingInitialPrompt: undefined } : w)),
+        })),
+
+      setPendingInitialPrompt: (wsId, text) =>
+        set((s) => ({
+          workspaces: s.workspaces.map((w) => (w.id === wsId ? { ...w, pendingInitialPrompt: text } : w)),
         })),
 
       closeWorkspace: (id) =>

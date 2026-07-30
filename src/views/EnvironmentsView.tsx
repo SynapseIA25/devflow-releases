@@ -50,6 +50,16 @@ export function EnvironmentsView() {
   const [compareDiffs, setCompareDiffs] = useState<{ envId: string; name: string; text: string }[] | null>(null);
   const [comparing, setComparing] = useState(false);
 
+  // Annotate AI Diffs: comentarios por línea, acumulados hasta que se mandan al agente del
+  // ambiente (ver sendDiffComments). Keyed por envId — cada ambiente tiene su propio set.
+  const [diffComments, setDiffComments] = useState<Record<string, DiffComment[]>>({});
+  const addDiffComment = (envId: string, line: number, code: string, text: string) => {
+    setDiffComments((prev) => {
+      const existing = (prev[envId] ?? []).filter((c) => c.line !== line);
+      return { ...prev, [envId]: [...existing, { line, code, text }].sort((a, b) => a.line - b.line) };
+    });
+  };
+
   const selectedEnv = environments.find((e) => e.id === selected) ?? null;
   // Une la raíz del proyecto con una ruta relativa que devuelve git (forward-slashes, que Tauri acepta en Windows).
   const projectFile = (rel: string) => `${projectPath.replace(/[\\/]+$/, "")}/${rel}`;
@@ -68,6 +78,34 @@ export function EnvironmentsView() {
     }
     if (env.agentId) useChatStore.getState().setActiveAgent(env.agentId);
     useUiStore.getState().setView("chat");
+  };
+
+  // Manda los comentarios acumulados de un diff como un follow-up al workspace del ambiente (lo crea
+  // si no existe, mismo criterio que openInChat) vía pendingInitialPrompt — el mismo mecanismo del
+  // fan-out, reusado acá para "responder" en vez de "arrancar".
+  const sendDiffComments = (env: TestEnv) => {
+    const comments = diffComments[env.id];
+    if (!comments?.length) return;
+    const wsStore = useWorkspaceStore.getState();
+    let ws = wsStore.workspaces.find((w) => w.envId === env.id);
+    if (!ws) {
+      const agentId = env.agentId ?? useChatStore.getState().activeAgentId;
+      const id = wsStore.newWorkspace(agentId, activeId, { title: env.name, cwd: env.path, envId: env.id, envName: env.name });
+      ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === id);
+    }
+    if (!ws) return;
+    const composed = `Feedback on the diff for "${env.name}" (${env.branch}):\n\n${comments
+      .map((c) => `- Line: \`${c.code.trim()}\`\n  → ${c.text}`)
+      .join("\n\n")}`;
+    wsStore.setPendingInitialPrompt(ws.id, composed);
+    wsStore.setActiveWs(ws.id);
+    if (env.agentId) useChatStore.getState().setActiveAgent(env.agentId);
+    useUiStore.getState().setView("chat");
+    setDiffComments((prev) => {
+      const next = { ...prev };
+      delete next[env.id];
+      return next;
+    });
   };
 
   const create = async () => {
@@ -392,13 +430,26 @@ export function EnvironmentsView() {
                   <div key={d.envId} className="env-compare-col">
                     <div className="env-compare-col-head">
                       <span className="env-compare-col-name">{d.name}</span>
+                      {env && (diffComments[env.id]?.length ?? 0) > 0 && (
+                        <button className="env-btn" onClick={() => sendDiffComments(env)}>
+                          <MessageSquare size={11} /> Send {diffComments[env.id].length} comment(s)
+                        </button>
+                      )}
                       {env && (
                         <button className="env-btn env-btn--promote" onClick={() => void promoteWinnerDiscardRest(env)} disabled={busy !== null}>
                           <ArrowUpFromLine size={11} /> Promote this, discard rest
                         </button>
                       )}
                     </div>
-                    {d.text.trim() ? <DiffBody text={d.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>}
+                    {d.text.trim() ? (
+                      <DiffBody
+                        text={d.text}
+                        comments={env ? diffComments[env.id] : undefined}
+                        onAddComment={env ? (line, code, text) => addDiffComment(env.id, line, code, text) : undefined}
+                      />
+                    ) : (
+                      <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>
+                    )}
                   </div>
                 );
               })}
@@ -445,9 +496,22 @@ export function EnvironmentsView() {
               <div className="env-diff">
                 <div className="env-diff-head">
                   <span>Environment diff</span>
+                  {(diffComments[selectedEnv.id]?.length ?? 0) > 0 && (
+                    <button className="env-btn" onClick={() => sendDiffComments(selectedEnv)}>
+                      <MessageSquare size={11} /> Send {diffComments[selectedEnv.id].length} comment(s)
+                    </button>
+                  )}
                   <button onClick={() => setDiff(null)} title="Close diff"><X size={12} /></button>
                 </div>
-                {diff.text.trim() ? <DiffBody text={diff.text} /> : <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>}
+                {diff.text.trim() ? (
+                  <DiffBody
+                    text={diff.text}
+                    comments={diffComments[selectedEnv.id]}
+                    onAddComment={(line, code, text) => addDiffComment(selectedEnv.id, line, code, text)}
+                  />
+                ) : (
+                  <div className="env-diff-empty"><Check size={13} color="#3fb950" /> No changes vs. the base.</div>
+                )}
               </div>
             )}
 
@@ -494,8 +558,27 @@ export function EnvironmentsView() {
 }
 
 // Render simple de un diff unificado con coloreado por línea (+ verde, - rojo, @@ cyan).
-function DiffBody({ text }: { text: string }) {
+export type DiffComment = { line: number; code: string; text: string };
+
+function DiffBody({
+  text,
+  comments,
+  onAddComment,
+}: {
+  text: string;
+  comments?: DiffComment[];
+  onAddComment?: (line: number, code: string, text: string) => void;
+}) {
   const lines = text.split("\n");
+  const [openLine, setOpenLine] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const byLine = new Map((comments ?? []).map((c) => [c.line, c]));
+  const submit = (line: number, code: string) => {
+    const t = draft.trim();
+    if (t) onAddComment?.(line, code, t);
+    setOpenLine(null);
+    setDraft("");
+  };
   return (
     <pre className="env-diff-body">
       {lines.map((l, i) => {
@@ -504,7 +587,44 @@ function DiffBody({ text }: { text: string }) {
         else if (l.startsWith("-") && !l.startsWith("---")) cls = "env-diff--del";
         else if (l.startsWith("@@")) cls = "env-diff--hunk";
         else if (l.startsWith("diff ") || l.startsWith("index ") || l.startsWith("+++") || l.startsWith("---")) cls = "env-diff--meta";
-        return <div key={i} className={cls}>{l || " "}</div>;
+        const existing = byLine.get(i);
+        return (
+          <div key={i} className="env-diff-line-wrap">
+            <div className={`env-diff-line ${cls}`}>
+              <span className="env-diff-line-text">{l || " "}</span>
+              {onAddComment && (
+                <button
+                  className="env-diff-comment-btn"
+                  title="Comment this line"
+                  onClick={() => { setOpenLine(i); setDraft(existing?.text ?? ""); }}
+                >
+                  <MessageSquare size={10} />
+                </button>
+              )}
+            </div>
+            {existing && openLine !== i && (
+              <div className="env-diff-comment-pill" onClick={() => { setOpenLine(i); setDraft(existing.text); }}>
+                {"\u{1F4AC}"} {existing.text}
+              </div>
+            )}
+            {openLine === i && (
+              <div className="env-diff-comment-form">
+                <input
+                  className="env-diff-comment-input"
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submit(i, l);
+                    if (e.key === "Escape") { setOpenLine(null); setDraft(""); }
+                  }}
+                  placeholder="Comment for the agent…"
+                />
+                <button className="env-btn" onClick={() => submit(i, l)}>Save</button>
+              </div>
+            )}
+          </div>
+        );
       })}
     </pre>
   );
