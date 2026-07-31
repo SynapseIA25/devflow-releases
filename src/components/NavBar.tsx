@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks, CalendarClock, GitPullRequest, LayoutTemplate } from "lucide-react";
+import { MessageSquare, GitBranch, Bot, Server, Settings, FileCode, PanelRight, Network, TerminalSquare, FolderKanban, Boxes, SquareTerminal, Users, ChevronsUpDown, Check, Plus, Sparkles, FlaskConical, ListChecks, CalendarClock, GitPullRequest } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
 
 export type ViewId = "chat" | "workflow" | "editor" | "specs" | "map" | "planner" | "design" | "projects" | "environments" | "terminals" | "skills" | "agents" | "mcp" | "services" | "tests" | "settings" | "github";
@@ -23,7 +23,8 @@ const GROUPS: NavGroup[] = [
       { id: "map",      icon: Network,  label: "Map",       hint: "codebase" },
       { id: "workflow", icon: GitBranch, label: "Workflows", hint: "automation" },
       { id: "planner",  icon: CalendarClock, label: "Planner", hint: "tasks & dates" },
-      { id: "design",   icon: LayoutTemplate, label: "Design", hint: "component canvas" },
+      // "design" (Design canvas) queda deliberadamente sin listar acá — ver el comentario en
+      // App.tsx's VIEWS map (misma pausa, mismo motivo, no está lista para la versión descargable).
     ],
   },
   {

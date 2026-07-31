@@ -29,7 +29,6 @@ import { EnvironmentsView } from "./views/EnvironmentsView";
 import { TerminalsView } from "./views/TerminalsView";
 import { SpecsView } from "./views/SpecsView";
 import { PlannerView } from "./views/PlannerView";
-import { DesignView } from "./views/DesignView";
 import { GitHubView } from "./views/GitHubView";
 import { SkillsView } from "./views/SkillsView";
 import { SettingsView } from "./views/SettingsView";
@@ -41,13 +40,18 @@ import { useUiStore } from "./store/uiStore";
 // en el árbol, para preservar sus sesiones ACP y sus PTYs al cambiar de vista. Se reposiciona por
 // CSS según el modo: "full" (pantalla completa cuando la vista activa es Chat), "side" (dock lateral
 // toggleable sobre editor/workflows/etc.) u "hidden". Nunca hay dos instancias → sin PTYs duplicadas.
+//
+// "design" (ViewId) queda sin registrar a propósito: la feature Design (src/views/DesignView.tsx +
+// src/components/design/* + src/lib/designCanvas/*) sigue en el repo pero pausada — no está lista
+// para la versión que se descarga. Sin entrada acá ni en NavBar.tsx, la vista queda inalcanzable
+// desde la UI aunque el código siga compilando. Para reactivarla: agregar de vuelta
+// `design: <DesignView />` acá + el item en NavBar.tsx (GROUPS "build").
 const VIEWS: Partial<Record<ViewId, ReactElement>> = {
   workflow: <WorkflowView />,
   editor:   <EditorView />,
   specs:    <SpecsView />,
   map:      <CodebaseMapView />,
   planner:  <PlannerView />,
-  design:   <DesignView />,
   github:   <GitHubView />,
   projects: <ProjectsView />,
   environments: <EnvironmentsView />,
