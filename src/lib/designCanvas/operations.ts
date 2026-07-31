@@ -7,7 +7,12 @@ export type CanvasOp =
   | { kind: "insert"; parentId: CanvasNodeId; index: number; node: CanvasNode }
   | { kind: "delete"; nodeId: CanvasNodeId }
   | { kind: "reorder"; parentId: CanvasNodeId; nodeId: CanvasNodeId; toIndex: number }
-  | { kind: "editProp"; nodeId: CanvasNodeId; propName: string; value: string | null }; // null = sacar la prop
+  | { kind: "editProp"; nodeId: CanvasNodeId; propName: string; value: string | null } // null = sacar la prop
+  // Arrastrar y soltar un nodo YA existente en el canvas a otra posición/contenedor — a diferencia de
+  // "reorder" (un paso, mismo padre), "move" reparenta a cualquier lugar del árbol. Solo para el modo
+  // "new" (en memoria); en modo "edit" el splicer no soporta reparentar entre contenedores distintos
+  // todavía, ver designCanvasStore.applyStructuralEdit.
+  | { kind: "move"; nodeId: CanvasNodeId; toParentId: CanvasNodeId; toIndex: number };
 
 function mapChildren(node: CanvasNode, fn: (child: CanvasNode) => CanvasNode | null): CanvasNode {
   const children = node.children.map(fn).filter((c): c is CanvasNode => c !== null);
@@ -26,6 +31,23 @@ function insertInto(tree: CanvasNode, parentId: CanvasNodeId, index: number, new
 
 function deleteFrom(tree: CanvasNode, nodeId: CanvasNodeId): CanvasNode {
   return mapChildren(tree, (child) => (child.id === nodeId ? null : deleteFrom(child, nodeId)));
+}
+
+function findNode(tree: CanvasNode, nodeId: CanvasNodeId): CanvasNode | null {
+  if (tree.id === nodeId) return tree;
+  for (const child of tree.children) {
+    const found = findNode(child, nodeId);
+    if (found) return found;
+  }
+  return null;
+}
+
+// true si `maybeDescendantId` está en el subárbol de `ancestorId` (incluido el propio ancestorId) —
+// guard contra soltar un contenedor adentro de uno de sus propios hijos, lo que crearía un ciclo.
+export function isDescendantOf(tree: CanvasNode, ancestorId: CanvasNodeId, maybeDescendantId: CanvasNodeId): boolean {
+  const ancestor = findNode(tree, ancestorId);
+  if (!ancestor) return false;
+  return findNode(ancestor, maybeDescendantId) !== null;
 }
 
 function reorderWithin(tree: CanvasNode, parentId: CanvasNodeId, nodeId: CanvasNodeId, toIndex: number): CanvasNode {
@@ -70,5 +92,14 @@ export function applyOpToTree(tree: CanvasNode, op: CanvasOp): CanvasNode {
       return reorderWithin(tree, op.parentId, op.nodeId, op.toIndex);
     case "editProp":
       return editPropOf(tree, op.nodeId, op.propName, op.value);
+    case "move": {
+      // No mueve la raíz, ni adentro de sí mismo/su propio subárbol (ciclo) — el caller ya valida esto
+      // antes de despachar (isDescendantOf), acá es una segunda guarda barata.
+      if (tree.id === op.nodeId || isDescendantOf(tree, op.nodeId, op.toParentId)) return tree;
+      const moved = findNode(tree, op.nodeId);
+      if (!moved) return tree;
+      const withoutNode = deleteFrom(tree, op.nodeId);
+      return insertInto(withoutNode, op.toParentId, op.toIndex, moved);
+    }
   }
 }

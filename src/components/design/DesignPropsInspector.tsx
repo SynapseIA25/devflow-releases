@@ -3,11 +3,13 @@ import { TEXT_CONTENT_PROP } from "../../lib/designCanvas/operations";
 
 // Set curado de props comunes editables desde el canvas — a propósito, no props/expresiones libres
 // (eso sigue siendo trabajo del editor de Código). Solo se ofrecen las que tienen sentido según el
-// tag del nodo seleccionado.
+// tag del nodo seleccionado. "style" se ofrece SIEMPRE por separado (ver abajo) como control genérico
+// de verdad — ancho/alto/color/alineación sin necesitar un widget dedicado para cada cosa.
 const COMMON_PROPS_BY_TAG: Record<string, string[]> = {
-  a: ["href", "className"],
-  img: ["src", "alt", "className"],
-  input: ["placeholder", "className"],
+  a: ["href", "target", "className"],
+  img: ["src", "alt", "width", "height", "className"],
+  input: ["placeholder", "type", "className"],
+  button: ["type", "className"],
   default: ["className"],
 };
 
@@ -77,6 +79,25 @@ export function DesignPropsInspector() {
           </div>
         );
       })}
+      {(() => {
+        const styleProp = node.props.style;
+        const styleValue = styleProp && styleProp.kind === "string" ? styleProp.value : "";
+        const styleReadOnly = styleProp !== undefined && styleProp.kind === "expression";
+        return (
+          <div className="design-props-row">
+            <label className="design-props-label">style (raw CSS)</label>
+            <textarea
+              className="design-props-input"
+              rows={3}
+              placeholder="width: 200px; color: #fff;"
+              value={styleReadOnly ? (styleProp as { raw: string }).raw : styleValue}
+              disabled={styleReadOnly}
+              title={styleReadOnly ? "Expression — edit in the Code editor" : "Any CSS declarations, semicolon-separated"}
+              onChange={(e) => editProp("style", e.target.value || null)}
+            />
+          </div>
+        );
+      })()}
     </aside>
   );
 }

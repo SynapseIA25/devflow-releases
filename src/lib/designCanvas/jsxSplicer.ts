@@ -12,7 +12,7 @@
 import { tsxLanguage } from "@codemirror/lang-javascript";
 import type { SyntaxNode, Tree } from "@lezer/common";
 import type { CanvasNode, PropValue } from "./types";
-import { emitJsx } from "./serializeJsx";
+import { emitJsx, cssTextToObjectLiteral } from "./serializeJsx";
 import { TEXT_CONTENT_PROP } from "./operations";
 
 export type SpliceResult = { ok: true; newSource: string } | { ok: false; reason: string };
@@ -195,6 +195,46 @@ export function spliceSwapSibling(
   return { ok: true, newSource };
 }
 
+// Reordena TODOS los hijos de un elemento de una sola vez, dado el orden nuevo deseado (arrastrar y
+// soltar en cualquier posición, no solo el vecino inmediato — a diferencia de spliceSwapSibling, que
+// solo intercambia con un vecino). `oldOrderRanges` son los sourceRange reales de cada hijo EN SU
+// ORDEN ACTUAL (los que ya trae el árbol cargado en memoria — válidos porque nada más tocó el archivo
+// entre la carga y esta operación, mismo supuesto que ya vale para el resto del splicer); `newOrder`
+// es una permutación de esos mismos índices. Reconstituye la región de hijos en un solo shot en vez
+// de N swaps adyacentes — evita tener que re-ubicar el nodo movido paso a paso.
+export function spliceReorderChildren(
+  source: string,
+  parentRange: { from: number; to: number },
+  parentTag: string,
+  oldOrderRanges: { from: number; to: number }[],
+  newOrder: number[] // permutación de [0..oldOrderRanges.length)
+): SpliceResult {
+  const tree = parseSource(source);
+  const target = relocate(tree, source, parentRange.from, parentRange.to, parentTag);
+  if (!target) return { ok: false, reason: "El elemento ya no está en la posición esperada — el archivo cambió." };
+  const shape = tagShape(target);
+  if (!shape.closeTag) return { ok: false, reason: "Este elemento no tiene hijos (está auto-cerrado)." };
+  if (oldOrderRanges.length !== newOrder.length) return { ok: false, reason: "Orden inconsistente." };
+  if (oldOrderRanges.length < 2) return { ok: true, newSource: source }; // nada que reordenar
+
+  // Cada tramo va DESDE el fin del hijo anterior (arrastra su propio whitespace líder) HASTA su fin —
+  // mismo criterio "whitespace se mueve con el elemento" que spliceSwapSibling, generalizado a N.
+  const openTo = shape.openOrSelf.to;
+  const closeFrom = shape.closeTag.from;
+  const segments: { from: number; to: number }[] = oldOrderRanges.map((r, i) => ({
+    from: i === 0 ? openTo : oldOrderRanges[i - 1].to,
+    to: r.to,
+  }));
+  // Ajuste del último tramo: el whitespace ENTRE el último hijo y el cierre no pertenece a ningún
+  // hijo — se preserva tal cual, pegado al final, para no comerse la indentación del tag de cierre.
+  const tailWs = source.slice(oldOrderRanges[oldOrderRanges.length - 1].to, closeFrom);
+
+  const reordered = newOrder.map((i) => source.slice(segments[i].from, segments[i].to)).join("");
+  const before = source.slice(0, openTo);
+  const after = source.slice(closeFrom);
+  return { ok: true, newSource: before + reordered + tailWs + after };
+}
+
 function findAttribute(tagNode: SyntaxNode, source: string, name: string): SyntaxNode | undefined {
   let found: SyntaxNode | undefined;
   for (let c = tagNode.firstChild; c; c = c.nextSibling) {
@@ -261,10 +301,13 @@ export function spliceEditProp(
 
   if (value === null) return { ok: true, newSource: source }; // nada que sacar, no-op
 
-  // Agregar un atributo nuevo: justo antes del cierre del tag de apertura/auto-cerrado.
+  // Agregar un atributo nuevo: justo antes del cierre del tag de apertura/auto-cerrado. "style" es
+  // especial en JSX — espera un OBJETO (style={{...}}), nunca un string plano como en HTML.
   const insertAt = shape.isSelfClosing ? shape.openOrSelf.getChild("JSXSelfCloseEndTag")!.from : tagNode.getChild("JSXEndTag")!.from;
-  const escaped = value.replace(/"/g, "&quot;");
-  const insertion = ` ${propName}="${escaped}"`;
+  const insertion =
+    propName === "style"
+      ? ` style={${cssTextToObjectLiteral(value)}}`
+      : ` ${propName}="${value.replace(/"/g, "&quot;")}"`;
   const before = source.slice(0, insertAt).replace(/\s+$/, "");
   return { ok: true, newSource: source.slice(0, before.length) + insertion + source.slice(insertAt) };
 }

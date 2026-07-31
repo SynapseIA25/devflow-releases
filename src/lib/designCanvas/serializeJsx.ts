@@ -6,8 +6,31 @@
 // plan). Auto-cierra cuando no hay hijos ni texto.
 import type { CanvasNode, PropValue } from "./types";
 
+// El prop "style" de JSX espera un OBJETO (style={{...}}), nunca un string plano como en HTML — a
+// diferencia de cualquier otro prop curado (className, href, etc.), que sí son strings normales.
+// Convierte el texto CSS crudo del inspector de props ("width: 200px; color: #fff;") al literal de
+// objeto real, con las keys en camelCase (background-color → backgroundColor, como espera React).
+export function cssTextToObjectLiteral(cssText: string): string {
+  const entries = cssText
+    .split(";")
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .map((decl) => {
+      const colonIdx = decl.indexOf(":");
+      if (colonIdx === -1) return null;
+      const prop = decl.slice(0, colonIdx).trim();
+      const value = decl.slice(colonIdx + 1).trim();
+      if (!prop || !value) return null;
+      const camelProp = prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+      return `${camelProp}: "${value.replace(/"/g, '\\"')}"`;
+    })
+    .filter((e): e is string => e !== null);
+  return `{${entries.join(", ")}}`;
+}
+
 function serializeProp(name: string, value: PropValue): string {
   if (value.kind === "expression") return `${name}={${value.raw}}`;
+  if (name === "style") return `${name}={${cssTextToObjectLiteral(value.value)}}`;
   return `${name}="${value.value.replace(/"/g, "&quot;")}"`;
 }
 

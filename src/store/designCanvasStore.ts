@@ -7,6 +7,7 @@ import {
   spliceDelete,
   spliceSwapSibling,
   spliceEditProp,
+  spliceReorderChildren,
 } from "../lib/designCanvas/jsxSplicer";
 import { readTextFile, writeTextFile } from "../lib/tauriApi";
 
@@ -45,6 +46,18 @@ function findById(node: CanvasNode, id: CanvasNodeId): CanvasNode | null {
   if (node.id === id) return node;
   for (const child of node.children) {
     const found = findById(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Padre ACTUAL de un nodo en el árbol ya cargado — necesario para decidir si un "move" es un reorder
+// dentro del mismo contenedor (soportado en modo edit, ver spliceReorderChildren) o un reparentado
+// entre contenedores distintos (todavía no soportado ahí, ver el motivo devuelto abajo).
+function findParent(node: CanvasNode, childId: CanvasNodeId): CanvasNode | null {
+  if (node.children.some((c) => c.id === childId)) return node;
+  for (const child of node.children) {
+    const found = findParent(child, childId);
     if (found) return found;
   }
   return null;
@@ -108,6 +121,32 @@ export const useDesignCanvasStore = create<DesignCanvasState>()((set, get) => ({
       const fromIndex = siblingIds.indexOf(op.nodeId);
       const direction = op.toIndex < fromIndex ? "up" : "down";
       result = spliceSwapSibling(source, node.sourceRange, node.tag, direction);
+    } else if (op.kind === "move") {
+      const node = findById(tree, op.nodeId);
+      const currentParent = findParent(tree, op.nodeId);
+      if (!node || !node.sourceRange || !currentParent || !currentParent.sourceRange) {
+        return "No se pudo ubicar el elemento a mover.";
+      }
+      // Arrastrar a un contenedor DISTINTO todavía no está soportado editando un archivo real (el
+      // splicer solo reordena de a un tramo dentro del mismo padre, con seguridad garantizada por
+      // tener ya los sourceRange de todos los hermanos) — reparentar entre cajas queda para el modo
+      // "New component" (en memoria, sin ese límite). Mensaje honesto en vez de arriesgar un splice
+      // que mezcle rangos de dos padres distintos.
+      if (currentParent.id !== op.toParentId) {
+        return "Moving between containers isn't supported yet while editing an existing file — use \"New component\" mode, or delete and re-add here instead.";
+      }
+      const siblingRanges = currentParent.children
+        .map((c) => c.sourceRange)
+        .filter((r): r is NonNullable<typeof r> => r !== undefined);
+      if (siblingRanges.length !== currentParent.children.length) {
+        return "No se pudo ubicar alguno de los hermanos.";
+      }
+      const fromIndex = currentParent.children.findIndex((c) => c.id === op.nodeId);
+      const order = currentParent.children.map((_, i) => i);
+      const [moved] = order.splice(fromIndex, 1);
+      const clampedTo = Math.max(0, Math.min(op.toIndex, order.length));
+      order.splice(clampedTo, 0, moved);
+      result = spliceReorderChildren(source, currentParent.sourceRange, currentParent.tag, siblingRanges, order);
     } else {
       const node = findById(tree, op.nodeId);
       if (!node || !node.sourceRange) return "No se pudo ubicar el elemento a editar.";

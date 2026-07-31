@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitJsx, emitComponentFile } from "../serializeJsx";
+import { emitJsx, emitComponentFile, cssTextToObjectLiteral } from "../serializeJsx";
 import type { CanvasNode } from "../types";
 
 const node = (partial: Partial<CanvasNode>): CanvasNode => ({
@@ -71,5 +71,28 @@ describe("emitComponentFile", () => {
     expect(emitComponentFile("Greeting", n)).toBe(
       ["export function Greeting() {", "  return (", '    <div>hi</div>', "  );", "}", ""].join("\n")
     );
+  });
+});
+
+describe("cssTextToObjectLiteral", () => {
+  it("convierte declaraciones CSS a un objeto con keys camelCase", () => {
+    expect(cssTextToObjectLiteral("width: 200px; background-color: #fff;")).toBe(
+      '{width: "200px", backgroundColor: "#fff"}'
+    );
+  });
+
+  it("ignora declaraciones vacías/mal formadas", () => {
+    expect(cssTextToObjectLiteral("width: 200px;; color")).toBe('{width: "200px"}');
+  });
+
+  it("string vacío da un objeto vacío", () => {
+    expect(cssTextToObjectLiteral("")).toBe("{}");
+  });
+});
+
+describe("emitJsx — prop style", () => {
+  it("serializa style como objeto, no como string plano (a diferencia de HTML)", () => {
+    const n = node({ tag: "div", props: { style: { kind: "string", value: "width: 100px; color: red;" } } });
+    expect(emitJsx(n)).toBe('<div style={{width: "100px", color: "red"}} />');
   });
 });

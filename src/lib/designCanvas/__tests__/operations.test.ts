@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyOpToTree } from "../operations";
+import { applyOpToTree, isDescendantOf } from "../operations";
 import type { CanvasNode } from "../types";
 
 const node = (id: string, tag: string, children: CanvasNode[] = []): CanvasNode => ({
@@ -99,5 +99,62 @@ describe("applyOpToTree — editProp", () => {
     const tree = node("root", "div", [node("child", "button")]);
     const result = applyOpToTree(tree, { kind: "editProp", nodeId: "child", propName: "disabled", value: "true" });
     expect(result.children[0].props.disabled).toEqual({ kind: "string", value: "true" });
+  });
+});
+
+describe("applyOpToTree — move (drag entre contenedores)", () => {
+  it("reparenta un nodo a otro contenedor", () => {
+    const tree = node("root", "div", [
+      node("a", "section", [node("x", "p")]),
+      node("b", "section", []),
+    ]);
+    const result = applyOpToTree(tree, { kind: "move", nodeId: "x", toParentId: "b", toIndex: 0 });
+    expect(result.children[0].children).toHaveLength(0);
+    expect(result.children[1].children.map((c) => c.id)).toEqual(["x"]);
+  });
+
+  it("reordena dentro del mismo padre (mover al final)", () => {
+    const tree = node("root", "div", [node("a", "p"), node("b", "p"), node("c", "p")]);
+    const result = applyOpToTree(tree, { kind: "move", nodeId: "a", toParentId: "root", toIndex: 2 });
+    expect(result.children.map((c) => c.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("no mueve la raíz", () => {
+    const tree = node("root", "div", [node("a", "section", [])]);
+    const result = applyOpToTree(tree, { kind: "move", nodeId: "root", toParentId: "a", toIndex: 0 });
+    expect(result.id).toBe("root");
+    expect(result.children).toHaveLength(1);
+  });
+
+  it("no mueve un nodo adentro de su propio subárbol (ciclo)", () => {
+    const tree = node("root", "div", [node("a", "section", [node("x", "p")])]);
+    const result = applyOpToTree(tree, { kind: "move", nodeId: "a", toParentId: "x", toIndex: 0 });
+    // El árbol queda intacto: "a" sigue siendo hijo de "root", no de su propio hijo "x".
+    expect(result.children.map((c) => c.id)).toEqual(["a"]);
+    expect(result.children[0].children.map((c) => c.id)).toEqual(["x"]);
+  });
+
+  it("moverse a sí mismo como padre es un no-op seguro", () => {
+    const tree = node("root", "div", [node("a", "section", [])]);
+    const result = applyOpToTree(tree, { kind: "move", nodeId: "a", toParentId: "a", toIndex: 0 });
+    expect(result.children.map((c) => c.id)).toEqual(["a"]);
+  });
+});
+
+describe("isDescendantOf", () => {
+  it("detecta un descendiente directo e indirecto", () => {
+    const tree = node("root", "div", [node("a", "section", [node("x", "p")])]);
+    expect(isDescendantOf(tree, "a", "x")).toBe(true);
+    expect(isDescendantOf(tree, "root", "x")).toBe(true);
+  });
+
+  it("un nodo es descendiente de sí mismo (caso borde: no dejar moverlo a sí mismo)", () => {
+    const tree = node("root", "div", [node("a", "section", [])]);
+    expect(isDescendantOf(tree, "a", "a")).toBe(true);
+  });
+
+  it("false si no hay relación de ancestro", () => {
+    const tree = node("root", "div", [node("a", "section", []), node("b", "section", [])]);
+    expect(isDescendantOf(tree, "a", "b")).toBe(false);
   });
 });

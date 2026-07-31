@@ -4,6 +4,7 @@ import {
   spliceDelete,
   spliceSwapSibling,
   spliceEditProp,
+  spliceReorderChildren,
   loadCanvasFromFile,
 } from "../jsxSplicer";
 import { TEXT_CONTENT_PROP } from "../operations";
@@ -86,6 +87,51 @@ describe("spliceSwapSibling", () => {
   });
 });
 
+describe("spliceReorderChildren", () => {
+  it("reordena 3 hijos a un orden arbitrario en un solo shot", () => {
+    const source = "function App() {\n  return (\n    <div>\n      <p>a</p>\n      <p>b</p>\n      <p>c</p>\n    </div>\n  );\n}\n";
+    const divFrom = source.indexOf("<div>");
+    const divTo = source.indexOf("</div>") + "</div>".length;
+    const aFrom = source.indexOf("<p>a</p>");
+    const bFrom = source.indexOf("<p>b</p>");
+    const cFrom = source.indexOf("<p>c</p>");
+    const ranges = [
+      { from: aFrom, to: aFrom + "<p>a</p>".length },
+      { from: bFrom, to: bFrom + "<p>b</p>".length },
+      { from: cFrom, to: cFrom + "<p>c</p>".length },
+    ];
+    // c, a, b
+    const result = spliceReorderChildren(source, { from: divFrom, to: divTo }, "div", ranges, [2, 0, 1]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const iA = result.newSource.indexOf("<p>a</p>");
+      const iB = result.newSource.indexOf("<p>b</p>");
+      const iC = result.newSource.indexOf("<p>c</p>");
+      expect(iC).toBeLessThan(iA);
+      expect(iA).toBeLessThan(iB);
+      // Sigue siendo JSX válido con la misma cantidad de hijos.
+      const reloaded = loadCanvasFromFile(result.newSource);
+      expect(reloaded.unsupported).toBe(false);
+      if (!reloaded.unsupported) expect(reloaded.tree.children).toHaveLength(3);
+    }
+  });
+
+  it("no toca nada si el orden nuevo es igual al viejo", () => {
+    const source = "function App() {\n  return (\n    <div>\n      <p>a</p>\n      <p>b</p>\n    </div>\n  );\n}\n";
+    const divFrom = source.indexOf("<div>");
+    const divTo = source.indexOf("</div>") + "</div>".length;
+    const aFrom = source.indexOf("<p>a</p>");
+    const bFrom = source.indexOf("<p>b</p>");
+    const ranges = [
+      { from: aFrom, to: aFrom + "<p>a</p>".length },
+      { from: bFrom, to: bFrom + "<p>b</p>".length },
+    ];
+    const result = spliceReorderChildren(source, { from: divFrom, to: divTo }, "div", ranges, [0, 1]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.newSource).toBe(source);
+  });
+});
+
 describe("spliceEditProp", () => {
   it("edita el valor de una prop string existente", () => {
     const source = 'function App() {\n  return <button className="old">Go</button>;\n}\n';
@@ -103,6 +149,19 @@ describe("spliceEditProp", () => {
     const result = spliceEditProp(source, { from, to }, "button", "disabled", "true");
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.newSource).toContain('disabled="true"');
+  });
+
+  it("agregar 'style' emite un objeto, no un string plano como en HTML", () => {
+    const source = "function App() {\n  return <div>hi</div>;\n}\n";
+    const from = source.indexOf("<div");
+    const to = source.indexOf("</div>") + "</div>".length;
+    const result = spliceEditProp(source, { from, to }, "div", "style", "width: 100px;");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.newSource).toContain('style={{width: "100px"}}');
+      const reloaded = loadCanvasFromFile(result.newSource);
+      expect(reloaded.unsupported).toBe(false);
+    }
   });
 
   it("saca una prop existente con value null", () => {
