@@ -21,6 +21,7 @@ export function DesignTree() {
   const applyOp = useDesignCanvasStore((s) => s.applyOp);
   const applyStructuralEdit = useDesignCanvasStore((s) => s.applyStructuralEdit);
   const [editError, setEditError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const runOp = async (op: Parameters<typeof applyOp>[0], entry?: (typeof PALETTE_ENTRIES)[number]) => {
     setEditError(null);
@@ -39,6 +40,20 @@ export function DesignTree() {
     const entry = PALETTE_ENTRIES.find((p) => p.id === entryId);
     if (!entry) return;
     void runOp({ kind: "insert", parentId, index, node: entry.build() }, entry);
+  };
+
+  // Fallback sobre el CONTENEDOR entero: si el árbol tiene poco contenido (ej. solo la raíz), la fila
+  // droppable ocupa apenas unos px arriba del panel — el resto del espacio visible quedaba sin
+  // handler y el drop ahí no hacía nada. Este handler cubre todo el panel e inserta como último hijo
+  // de la raíz; el de cada fila (con stopPropagation) sigue ganando cuando el drop es preciso sobre
+  // un nodo específico, para poder anidar en cualquier nivel.
+  const onContainerDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const entryId = e.dataTransfer.getData(DESIGN_PALETTE_MIME);
+    const entry = PALETTE_ENTRIES.find((p) => p.id === entryId);
+    if (!entry) return;
+    void runOp({ kind: "insert", parentId: tree.id, index: tree.children.length, node: entry.build() }, entry);
   };
 
   const renderRow = (node: CanvasNode, depth: number, parentId: string | null, index: number): React.ReactNode => (
@@ -83,8 +98,13 @@ export function DesignTree() {
   );
 
   return (
-    <div className="design-tree">
-      <div className="design-tree-hint">Drag components from the palette onto a row to nest them inside.</div>
+    <div
+      className={`design-tree${dragOver ? " drag-over" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onContainerDrop}
+    >
+      <div className="design-tree-hint">Drag components from the palette anywhere here — drop on a row to nest inside it.</div>
       {editError && <div className="design-save-status design-save-status--error">{editError}</div>}
       {renderRow(tree, 0, null, 0)}
     </div>
