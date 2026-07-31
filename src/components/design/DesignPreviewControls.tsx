@@ -49,6 +49,11 @@ export function DesignPreviewControls() {
 
   return (
     <div className="design-preview">
+      <p className="design-preview-hint">
+        This opens your project's own app in a real browser window — start its dev server first
+        (e.g. <code>npm run dev</code>, from the <strong>Services</strong> tab keeps it running in the
+        background), then enter the URL it prints below.
+      </p>
       <div className="design-preview-row">
         <input
           className="design-save-input"
@@ -73,7 +78,19 @@ export function DesignPreviewControls() {
             </button>
           ))}
       </div>
-      {error && <div className="design-save-status design-save-status--error">{error}</div>}
+      {error && (
+        <div className="design-save-status design-save-status--error">
+          {error.toLowerCase().includes("refused") || error.toLowerCase().includes("connect")
+            ? "Couldn't connect — is the dev server actually running at that URL?"
+            : error}
+        </div>
+      )}
+      {opened && (
+        <div className="design-preview-note">
+          If the preview window shows a browser error instead of your app, the dev server isn't
+          reachable at that URL yet — start it and click "Reopen".
+        </div>
+      )}
     </div>
   );
 }
