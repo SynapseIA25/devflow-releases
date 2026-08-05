@@ -8,6 +8,17 @@ import { useSettingsStore } from "../store/settingsStore";
 import { PROVIDER_KEY_SPECS } from "./providers";
 import { pickModel, recordModelUse, type TaskKind } from "./modelRouter";
 
+// Error dedicado para señalar un turno cancelado por el usuario. Reemplaza el sentinel string
+// "__turn_cancelled__" que se comparaba por igualdad de texto — un patrón frágil que se rompe si
+// alguien cambia el string en un lado pero no en el otro, y que potencialmente traga errores reales
+// si el mensaje de error contiene ese string por coincidencia.
+export class TurnCancelledError extends Error {
+  constructor() {
+    super("Turn cancelled by user");
+    this.name = "TurnCancelledError";
+  }
+}
+
 export type AcpSpawnConfig = { command: string; args: string[]; sidecar?: boolean };
 
 export type SessionUpdate = { sessionUpdate: string } & Record<string, unknown>;
@@ -334,8 +345,8 @@ export function cancelPermission(provider: string, id: number | string, _session
 // el agente debería abortar y cerrar el turno) y, además, destraba localmente cualquier request que
 // estemos esperando —típicamente `session/prompt`—. Esto último es clave: si el agente quedó colgado
 // (ej. ejecutando un proceso de larga duración que no termina), nunca va a responder al cancel, así
-// que no podemos depender de su respuesta para re-habilitar el chat. `__turn_cancelled__` es un
-// sentinel que el llamador (runAcp) reconoce para no mostrarlo como error.
+// que no podemos depender de su respuesta para re-habilitar el chat. `TurnCancelledError` es un
+// tipo de error que el llamador (runAcp) reconoce para no mostrarlo como error.
 export function cancel(provider: string, sessionId: string): void {
   const s = stateFor(provider);
   send(provider, { jsonrpc: "2.0", method: "session/cancel", params: { sessionId } }).catch(() => {});
@@ -344,7 +355,7 @@ export function cancel(provider: string, sessionId: string): void {
   for (const [id, p] of s.pending) {
     if (p.sessionId !== sessionId) continue;
     s.pending.delete(id);
-    p.reject(new Error("__turn_cancelled__"));
+    p.reject(new TurnCancelledError());
   }
 }
 

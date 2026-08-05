@@ -58,6 +58,15 @@ export const DEFAULT_PROVIDERS: ProviderConfig[] = [
     docsUrl: "https://opencode.ai/docs",
     nativeHttp: true,
   },
+  {
+    id: "hermes",
+    name: "Hermes Engineer",
+    description: "Nous Research's Hermes Agent via ACP — specialized in deep technical reasoning, code generation, and step-by-step problem solving.",
+    color: "#f59e0b",
+    icon: "☤",
+    docsUrl: "https://nousresearch.com",
+    acp: { command: "hermes", args: ["acp"] },
+  },
 ];
 
 // Keys que se cargan en Settings y se inyectan como env var a TODOS los procesos ACP al spawnearlos
@@ -164,6 +173,18 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     model: "",
     systemPrompt: "",
     skills: ["file-edit", "terminal", "git", "search"],
+    status: "inactive",
+  },
+  {
+    id: "hermes-engineer",
+    name: "Hermes Engineer",
+    description: "Nous Research's Hermes Agent for autonomous software engineering, step-by-step reasoning, and complex refactoring.",
+    icon: "☤",
+    color: "#f59e0b",
+    providerId: "hermes",
+    model: "hermes-3-llama-3.1-405b",
+    systemPrompt: "You are Hermes Engineer, a specialized AI coding assistant created by Nous Research. You excel at complex software architecture, step-by-step technical reasoning, deep code analysis, and autonomous tool execution.",
+    skills: ["file-edit", "terminal", "git", "search", "analysis"],
     status: "inactive",
   },
 ];

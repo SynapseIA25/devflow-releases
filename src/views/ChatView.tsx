@@ -10,6 +10,7 @@ import { useMetricsStore } from "../store/metricsStore";
 import { useWorkspaceStore, type DocBlockData, type Step, type ToolContentItem, type ToolBlockData } from "../store/workspaceStore";
 import { DEFAULT_PROVIDERS, isExpertAgent } from "../lib/providers";
 import * as acpClient from "../lib/acpClient";
+import { TurnCancelledError } from "../lib/acpClient";
 import * as opencodeClient from "../lib/opencodeClient";
 import * as ragEngine from "../lib/ragEngine";
 import { economyActive, ECONOMY_EDITOR_MAX_LINES, AUTO_MODEL, classifyTask, pickModel, effectiveModelPreference } from "../lib/modelRouter";
@@ -253,6 +254,7 @@ export function ChatView() {
   const resizing   = useRef(false);
   const startY     = useRef(0);
   const startH     = useRef(0);
+  const resizeCleanup = useRef<(() => void) | null>(null);
   // Turnos ACP en vuelo, keyed por `${provider}:${sessionId}`. Antes era un único ref global
   // (solo un turno a la vez en TODA la app); ahora es un Map → varios workspaces pueden streamear
   // en paralelo (cada uno con su sesión distinta). El handler de session/update busca acá por sesión.
@@ -336,6 +338,9 @@ export function ChatView() {
 
   useEffect(() => { docEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [ws?.blocks, ws?.running]);
 
+  // Cleanup de event listeners de resize si el componente se desmonta antes de mouseup.
+  useEffect(() => () => resizeCleanup.current?.(), []);
+
   /* drag to resize terminal */
   const onResizeDown = useCallback((e: React.MouseEvent) => {
     resizing.current = true;
@@ -345,9 +350,15 @@ export function ChatView() {
       if (!resizing.current) return;
       setTermHeight(Math.max(80, Math.min(400, startH.current + (startY.current - ev.clientY))));
     };
-    const onUp = () => { resizing.current = false; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    const onUp = () => {
+      resizing.current = false;
+      resizeCleanup.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    resizeCleanup.current = onUp;
     e.preventDefault();
   }, [termHeight]);
 
@@ -367,6 +378,17 @@ export function ChatView() {
   // (wsId:sessionId -> path -> último contenido enviado), para no re-mandar el archivo completo
   // en cada turno si no cambió desde la última vez (ver buildPromptWithContext más abajo).
   const sentContextRef = useRef(new Map<string, Map<string, string>>());
+
+  // Limpiar entries de sesiones que ya no existen cuando cambian los workspaces.
+  // Evita que el Map crezca indefinidamente con datos de sesiones cerradas.
+  useEffect(() => {
+    const activeSessions = new Set(
+      useWorkspaceStore.getState().workspaces.map((w) => `${w.id}:${w.sessionId}`)
+    );
+    for (const key of sentContextRef.current.keys()) {
+      if (!activeSessions.has(key)) sentContextRef.current.delete(key);
+    }
+  }, [workspaces]);
 
   // Suscripción única a las notificaciones de turno de cualquier agente — tanto ACP (mimo, hermes,
   // claude...) como el path nativo de OpenCode (opencodeClient emite el mismo shape de SessionUpdate,
@@ -714,14 +736,14 @@ export function ChatView() {
         }
       }
       // Si detuvieron el turno mientras se creaba la sesión, no arranquemos el prompt.
-      if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
+      if (cancelledRef.current.get(wsId)) throw new TurnCancelledError();
       const pendingImage = pendingImageRef.current.get(wsId);
       pendingImageRef.current.delete(wsId);
       await acpClient.prompt(provider, sid, fullPrompt, pendingImage);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // __turn_cancelled__ = el usuario detuvo el turno (acpClient.cancel); no es un error real.
-      if (msg !== "__turn_cancelled__") {
+      // TurnCancelledError = el usuario detuvo el turno (acpClient.cancel); no es un error real.
+      if (!(e instanceof TurnCancelledError)) {
+        const msg = e instanceof Error ? e.message : String(e);
         appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${msg}`);
       }
     } finally {
@@ -803,13 +825,13 @@ export function ChatView() {
           } catch { /* si falla el cambio, el turno sigue con el modelo actual */ }
         }
       }
-      if (cancelledRef.current.get(wsId)) throw new Error("__turn_cancelled__");
+      if (cancelledRef.current.get(wsId)) throw new TurnCancelledError();
       const pendingImage = pendingImageRef.current.get(wsId);
       pendingImageRef.current.delete(wsId);
       await opencodeClient.prompt(provider, sid, sessionCwd, fullPrompt, promptOpts, pendingImage);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg !== "__turn_cancelled__") {
+      if (!(e instanceof TurnCancelledError)) {
+        const msg = e instanceof Error ? e.message : String(e);
         appendAiChunk(wsId, aiBlockId, `\n\n**Error:** ${msg}`);
       }
     } finally {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { type ReactElement } from "react";
 import "./App.css";
 import { useProjectStore } from "./store/projectStore";
@@ -74,6 +74,10 @@ export default function App() {
   const onboardingDone                  = useSettingsStore((s) => s.onboardingDone);
   const [chatDock, setChatDock]         = useState(false);
   const [dockWidth, setDockWidth]       = useState(420);
+  const dockResizeCleanup               = useRef<(() => void) | null>(null);
+
+  // Cleanup de event listeners de resize si el componente se desmonta antes de mouseup.
+  useEffect(() => () => dockResizeCleanup.current?.(), []);
 
   // Fresh install: si el único proyecto sigue siendo la semilla hardcodeada (PROJECT_CWD), lo re-apuntamos
   // al home real del usuario — así DevFlow no arranca clavado a la ruta del repo de otra máquina.
@@ -126,11 +130,13 @@ export default function App() {
     const onMove = (ev: MouseEvent) =>
       setDockWidth(Math.max(300, Math.min(760, startW + (startX - ev.clientX))));
     const onUp = () => {
+      dockResizeCleanup.current = null;
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    dockResizeCleanup.current = onUp;
   };
 
   return (

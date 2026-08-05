@@ -13,7 +13,7 @@ const DEFAULT_IDS = new Set(DEFAULT_AGENTS.map((a) => a.id));
 // en la vista MCP), ya no es un agente de chat (su modelo local era débil). Ver investigación MiMo×Hermes.
 // "mimo-coder" se retiró en la Fase 4 (provider MiMo dado de baja) — DevFlow Code (opencode-agent) es
 // el nuevo agente líder por defecto.
-const RETIRED_AGENT_IDS = new Set(["hermes", "mimo-coder"]);
+const RETIRED_AGENT_IDS = new Set(["mimo-coder"]);
 
 export const isDefaultAgent = (id: string) => DEFAULT_IDS.has(id);
 

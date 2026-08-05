@@ -461,7 +461,13 @@ fn opencode_events_start(
     port: u16,
     state: State<OpenCodeEventStreams>,
 ) -> Result<(), String> {
-    let key = format!("{}:{}", provider, directory);
+    let clean_dir = directory.replace('\\', "/");
+    let clean_dir = if clean_dir.len() > 3 && clean_dir.ends_with('/') {
+        clean_dir[..clean_dir.len() - 1].to_string()
+    } else {
+        clean_dir
+    };
+    let key = format!("{}:{}", provider, clean_dir);
     let mut streams = state.0.lock().map_err(|e| e.to_string())?;
     if streams.contains_key(&key) {
         return Ok(());
@@ -471,7 +477,7 @@ fn opencode_events_start(
     let event_name = format!("opencode-event:{}", provider);
     let mut url = reqwest::Url::parse(&format!("http://127.0.0.1:{}/event", port))
         .map_err(|e| e.to_string())?;
-    url.query_pairs_mut().append_pair("directory", &directory);
+    url.query_pairs_mut().append_pair("directory", &clean_dir);
     std::thread::spawn(move || {
         while running_for_thread.load(Ordering::Relaxed) {
             let resp = match reqwest::blocking::get(url.clone()) {

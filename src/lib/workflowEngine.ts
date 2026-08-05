@@ -144,13 +144,32 @@ async function execTerminal(node: WorkflowNode, results: Map<string, NodeResult>
   return { output: res.output, exitCode: res.exitCode };
 }
 
+// Evaluación segura de expresiones de condition: restringe el scope a las variables de
+// resultado del workflow ({{id.output}}, {{id.exitCode}}, {{id.branch}}, {{input}}) y prohíbe
+// constructs peligrosos (llamadas a función, imports, assignments, keywords de Node.js).
+// Un usuario local que arma un workflow es el threat model — no input externo de red.
+const DANGEROUS_PATTERN = /\b(require|import|eval|Function|new\s|delete\b|void\b|typeof\s+function|process\b|global\b|window\b|this\b|self\b|console\b|alert\b|prompt\b|confirm\b)\b/i;
+const FUNCALL_PATTERN = /\b[a-zA-Z_$][a-zA-Z0-9_$]*\s*\(/;
+
+function safeEvalCondition(expr: string): boolean {
+  if (DANGEROUS_PATTERN.test(expr)) {
+    throw new Error(`Expresión contiene código no permitido: ${expr.slice(0, 100)}`);
+  }
+  if (FUNCALL_PATTERN.test(expr)) {
+    throw new Error(`Expresión contiene llamadas a función (no permitidas): ${expr.slice(0, 100)}`);
+  }
+  // new Function con scope vacío: no tiene acceso a require, import, process, global, etc.
+  // eslint-disable-next-line no-new-func
+  const fn = new Function(`return (${expr});`);
+  return Boolean(fn());
+}
+
 function execCondition(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): NodeResult {
   const raw = String(node.data.condition ?? "");
   const resolved = resolveTemplate(raw, results, input);
   let truthy: boolean;
   try {
-    // eslint-disable-next-line no-new-func
-    truthy = Boolean(new Function(`return (${resolved});`)());
+    truthy = safeEvalCondition(resolved);
   } catch (e) {
     throw new Error(`Condición inválida "${resolved}": ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -404,6 +423,12 @@ async function execHttp(node: WorkflowNode, results: Map<string, NodeResult>, in
 type PerfResourceSample = { t: number; workingSetBytes: number; cpuSeconds: number };
 
 async function execPerfResource(node: WorkflowNode, results: Map<string, NodeResult>, input: string, cb: EngineCallbacks): Promise<NodeResult> {
+  // Resource monitoring uses PowerShell Get-Process — Windows only in v1.
+  // A future version could add macOS/Linux support via `ps` or `top`.
+  const isWindows = typeof navigator !== "undefined" && /win/i.test(navigator.platform);
+  if (!isWindows) {
+    throw new Error("Resource monitoring (CPU/RAM) is only supported on Windows in this version.");
+  }
   const processMatch = resolveTemplate(String(node.data.processMatch ?? ""), results, input).trim().replace(/\.exe$/i, "");
   if (!processMatch) throw new Error("Nombre de proceso vacío");
   const durationSec = Math.max(1, Number(node.data.durationSec) || 10);

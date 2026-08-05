@@ -62,6 +62,18 @@ let clientPromise: Promise<{ client: OpencodeClient; port: number }> | null = nu
 let frontendListenerAttached = false;
 let providersCache: Promise<any> | null = null;
 
+export function normalizeCwd(p: string): string {
+  if (!p) return "";
+  let norm = p.replace(/\\/g, "/");
+  if (/^[a-z]:/i.test(norm)) {
+    norm = norm[0].toUpperCase() + norm.slice(1);
+  }
+  if (norm.length > 3 && norm.endsWith("/")) {
+    norm = norm.slice(0, -1);
+  }
+  return norm;
+}
+
 // `cwd`: si se pasa, además garantiza el puente de eventos para ESE directory (ver
 // ensureEventBridge) — pasarlo desde cualquier llamada que vaya a crear una sesión o mandar un
 // prompt en ese directory. Las llamadas que no tocan sesiones (ej. listAvailableModels) lo omiten.
@@ -75,7 +87,7 @@ async function ensureServer(provider: string, cwd?: string): Promise<OpencodeCli
     })();
   }
   const { client, port } = await clientPromise;
-  if (cwd) await ensureEventBridge(provider, cwd, port);
+  if (cwd) await ensureEventBridge(provider, normalizeCwd(cwd), port);
   return client;
 }
 
@@ -92,6 +104,7 @@ async function ensureServer(provider: string, cwd?: string): Promise<OpencodeCli
 // canal `opencode-event:{provider}` (los eventos ya traen sessionID, global y suficiente para rutear).
 const bridgedDirectories = new Set<string>();
 async function ensureEventBridge(provider: string, cwd: string, port: number): Promise<void> {
+  const cleanCwd = normalizeCwd(cwd);
   if (!frontendListenerAttached) {
     frontendListenerAttached = true;
     const { listen } = await import("@tauri-apps/api/event");
@@ -105,10 +118,10 @@ async function ensureEventBridge(provider: string, cwd: string, port: number): P
       handleEvent(provider, msg);
     });
   }
-  const key = `${provider}:${cwd}`;
+  const key = `${provider}:${cleanCwd}`;
   if (bridgedDirectories.has(key)) return;
   bridgedDirectories.add(key);
-  await opencodeEventsStart(provider, cwd, port);
+  await opencodeEventsStart(provider, cleanCwd, port);
 }
 
 function mapOpenCodeStatus(status?: string): string {
@@ -264,9 +277,14 @@ export async function listAvailableModels(provider: string): Promise<ModelOption
   if (!providersCache) {
     providersCache = withTimeout(
       client.config.providers().catch(() => ({ data: { providers: [] } })),
-      8000,
+      2500,
       { data: { providers: [] } }
-    );
+    ).then((res) => {
+      if (!res?.data?.providers || res.data.providers.length === 0) {
+        providersCache = null;
+      }
+      return res;
+    });
   }
   const res = await providersCache;
   const keys = providerKeysEnv();
@@ -354,11 +372,10 @@ export async function ensureExpertAgent(provider: string, agent: AgentConfig): P
 }
 
 export async function newSession(provider: string, cwd: string, preferredModel?: string, taskProfile?: TaskKind): Promise<string> {
-  // Le da al agente de esta sesión acceso al motor de Workflows real (crear/correr hablando) — ver
-  // mcpBridge.ts. No-op rápido si este proyecto ya tiene la entrada registrada (fast-path por Set).
-  await ensureDevflowBridgeRegistered(cwd);
-  const client = await ensureServer(provider, cwd);
-  const session = await client.session.create({ body: {}, query: { directory: cwd } });
+  const cleanCwd = normalizeCwd(cwd);
+  await ensureDevflowBridgeRegistered(cleanCwd);
+  const client = await ensureServer(provider, cleanCwd);
+  const session = await client.session.create({ body: {}, query: { directory: cleanCwd } });
   const sessionId = (session.data as any).id as string;
 
   const available = await listAvailableModels(provider);
@@ -367,9 +384,6 @@ export async function newSession(provider: string, cwd: string, preferredModel?:
   if (has(preferredModel)) target = preferredModel;
   else if (taskProfile) target = await pickModel(taskProfile, available);
   if (!target) {
-    // Sin preferencia: preferimos un modelo gratis de OpenCode Zen (siempre "andando", sin
-    // depender de que el usuario haya cargado una key) sobre dejar que el server elija su propio
-    // default de cuenta — mismo espíritu que el fallback anti-modelo-deprecado que ya existe para MiMo.
     const zen = available.find((o) => o.value.startsWith("opencode/"));
     if (zen) target = zen.value;
   }
@@ -395,7 +409,8 @@ export async function prompt(
   opts?: { system?: string; agent?: string },
   image?: { data: string; mimeType: string }
 ): Promise<{ stopReason: string }> {
-  const client = await ensureServer(provider, cwd);
+  const cleanCwd = normalizeCwd(cwd);
+  const client = await ensureServer(provider, cleanCwd);
   const modelValue = modelBySession.get(`${provider}:${sessionId}`);
   if (modelValue) recordModelUse(modelValue);
   let model: { providerID: string; modelID: string } | undefined;
@@ -409,7 +424,7 @@ export async function prompt(
   parts.push({ type: "text", text });
   const result = await client.session.prompt({
     path: { id: sessionId },
-    query: { directory: cwd },
+    query: { directory: cleanCwd },
     body: {
       parts,
       ...(model ? { model } : {}),
@@ -417,10 +432,6 @@ export async function prompt(
       ...(opts?.agent ? { agent: opts.agent } : {}),
     },
   });
-  // Dos formas de error distintas verificadas en la práctica: un 4xx real de la request (ej. "Agent
-  // not found") viene en result.error (result.data queda undefined — leerlo sin chequear esto
-  // primero explota); un error del propio turno (ej. falta de API key del provider) viene con 200
-  // OK pero embebido en result.data.info.error.
   if (result.error) throw new Error(extractErrorMessage(result.error));
   const info = (result.data as any)?.info;
   if (info?.error) throw new Error(extractErrorMessage(info.error));
