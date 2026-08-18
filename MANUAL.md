@@ -16,9 +16,13 @@ Around that chat you get:
 - A **project hub** to keep several projects organized.
 - A **team of specialized expert agents** (architecture, frontend, backend, database, DevOps,
   security, QA, product) that can be routed to automatically based on what you ask.
-- **Spec-driven development** (the "Build" view): turn an idea into a Specify → Plan → Tasks →
-  Implement pipeline instead of one giant freeform prompt.
+- **Spec-driven development** (the Specs view): turn an idea into a six-step pipeline —
+  Enrich → Specify → Plan → Tasks → Implement → Review — instead of one giant freeform prompt,
+  with a human checkpoint at every step and a project memory that carries context from one
+  finished feature into the next.
 - **Skills**: reusable, shareable playbooks the agent can learn and reuse across projects.
+- **Isolated environments**: agents can work in an ephemeral git worktree — a full copy of your
+  project — so nothing touches your real code until you review and promote the diff.
 
 ## Quickstart
 
@@ -66,15 +70,41 @@ hand-editing configuration files.
 
 ## Main areas of the app
 
-- **Chat** — talk to an agent, attach files/folders as context, pick which agent and model to use.
-- **Build** — spec-driven development: Specify, Plan, Tasks, Implement.
-- **Run** — start, stop and watch your project's own processes without leaving DevFlow.
-- **Agents** — your team of agents (built-in + area experts) and their configuration.
+- **Chat** — talk to an agent, attach files/folders as context, pick which agent and model to
+  use. For a real feature (not a small tweak), chat proposes a Given/When/Then scenario and a
+  diagram before writing code — send it to **Specs** with one click to execute it with review at
+  every step.
+- **Build** — the code editor, **Specs** (spec-driven development, see below), a codebase map, a
+  visual workflow builder, and a task planner.
+- **Run** — terminals, long-running services (`npm run dev` and friends), isolated **environments**
+  (git worktrees) for agents to experiment in, and a test runner.
+- **Agents** — your team of agents (built-in + 9 area experts) and their configuration, plus
+  reusable skills and MCP tool servers.
+- **Review** — pull requests and issues for your project's repo, without leaving the app.
 - **Project hub** (click your project's name) — overview, file structure, and a **Documentation**
   tab with a real markdown editor (live preview, create new files) for writing and keeping your
   project's docs.
 - **Settings** — API keys, local model connections, a default model per agent, permissions, and
   app preferences.
+
+### Spec-driven development, in short
+
+Specs turns a request into a written contract instead of a one-shot prompt, in six phases — each
+one writes a real file you can read and edit before the next phase runs:
+
+1. **Enrich** — restates the ask and only asks clarifying questions when something is genuinely
+   ambiguous.
+2. **Specify** — requirements in EARS syntax (`WHEN ... THE SYSTEM SHALL ...`).
+3. **Plan** — architecture and technical decisions.
+4. **Tasks** — an executable checklist, one commit-sized task at a time.
+5. **Implement** — the agent executes each task; a task that crosses several areas is split
+   across your expert agents automatically.
+6. **Review** — checks the generated code against the spec's own acceptance criteria, plus a
+   security pass.
+
+**Run all** chains whatever's left in one click. Once a spec is done, **Archive** locks it and
+folds what it learned into your project's persistent memory, so the next spec you write already
+has that context. **Create PR** opens a pull request straight from a finished spec.
 
 ## FAQ
 
