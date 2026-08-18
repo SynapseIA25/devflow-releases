@@ -32,10 +32,9 @@ coding agent (see [MANUAL.md](MANUAL.md#which-ai-models-can-i-use) for how model
 📖 **[MANUAL.md](MANUAL.md)** — quickstart, feature tour and FAQ (which models you can use,
 whether you need an API key, connecting local models, etc.).
 
-🎬 **[See it in action](https://claude.ai/code/artifact/9326a9f5-a86b-4132-b386-df142bea5626)** —
-a visual walkthrough with real screenshots of Chat, the spec-driven Specs engine, isolated
-environments and more. <!-- TODO(Pablo): swap for the real devflow.dev/demo.html link once
-landing/demo.html is deployed — this repo's editor doesn't know the production domain. -->
+🎬 **[See it in action](https://synapseia25.github.io/devflow-releases/demo.html)** — a visual
+walkthrough with real screenshots of Chat, the spec-driven Specs engine, isolated environments
+and more.
 
 ## About this repo
 
